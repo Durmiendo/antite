@@ -35,6 +35,11 @@
                 <data android:scheme="https" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".transfer.TransferActivity"
+            android:exported="false"
+            android:process=":transfer"
+            android:excludeFromRecents="true" />
         <service
             android:name=".service.MediaService"
             android:exported="false"

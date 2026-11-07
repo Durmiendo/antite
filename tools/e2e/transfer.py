@@ -1,0 +1,145 @@
+"""End-to-end check of data export, reinstall and import on a device.
+
+Usage: python3 -I tools/e2e/transfer.py --serial HOST:PORT --apk app-x86_64-debug.apk [--pin 1234]
+
+WARNING: reinstalls the browser, so all of its data on the device is replaced.
+"""
+import argparse
+import os
+import queue
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from device import PACKAGE, Device  # noqa: E402
+
+PORT = 8767
+FILE = f"e2e-{int(time.time())}.antite"
+PASSWORD = "e2e-pass-1"
+MARK_PAGE = b"""<!doctype html><meta name=viewport content="width=device-width"><body>
+<script>
+if (location.hash == '#set') { document.cookie = 'mark=c-42; max-age=31536000; path=/'; localStorage.setItem('mark', 'ls-42') }
+const r = 'cookie=' + document.cookie + ';ls=' + localStorage.getItem('mark')
+document.body.textContent = r
+fetch('/report?' + encodeURIComponent(r))
+</script>"""
+
+reports = queue.Queue()
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.startswith("/report?"):
+            reports.put(unquote(self.path[len("/report?"):]))
+            body = b"ok"
+        else:
+            body = MARK_PAGE
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+def report(timeout=20):
+    try:
+        return reports.get(timeout=timeout)
+    except queue.Empty:
+        return None
+
+
+def open_transfer_page(d):
+    d.tap("Меню", exact=True)
+    d.scroll_to("Настройки")
+    d.tap("Настройки", exact=True)
+    d.scroll_to("Перенос данных")
+    d.tap("Перенос данных", exact=True)
+
+
+def finish_transfer(d, done_text):
+    d.wait(done_text, timeout=180)
+    d.tap("Открыть браузер")
+    time.sleep(3)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--serial", required=True)
+    ap.add_argument("--apk", required=True)
+    ap.add_argument("--pin", help="device PIN, needed if the device has a screen lock")
+    ap.add_argument("--out", default="build/e2e")
+    a = ap.parse_args()
+    d = Device(a.serial, a.out)
+
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    d.adb("reverse", f"tcp:{PORT}", f"tcp:{PORT}")
+
+    print("1. set marker cookie and localStorage")
+    d.install(a.apk)
+    d.stop()
+    d.launch(f"http://localhost:{PORT}/mark#set")
+    r = report()
+    if r != "cookie=mark=c-42;ls=ls-42":
+        d.fail(f"marker not set: {r!r}")
+
+    print("2. export")
+    open_transfer_page(d)
+    d.tap("Экспортировать данные")
+    if d.find("Сохранить") is None:
+        time.sleep(2)
+        if d.find("Сохранить") is None and a.pin:
+            d.type(a.pin)
+            d.shell("input keyevent 66")
+    d.wait("Сохранить")
+    field = d.find_class("android.widget.EditText")
+    if field is None:
+        d.fail("no file name field")
+    x, y = d.center(field)
+    d.shell(f"input tap {x} {y}")
+    d.shell("input keyevent 123 " + " ".join(["67"] * 40))
+    d.type(FILE)
+    d.tap("Сохранить")
+    d.tap("Пароль", exact=True)
+    d.type(PASSWORD)
+    d.tap("Повторите пароль", exact=True)
+    d.type(PASSWORD)
+    d.tap("Экспортировать", exact=True)
+    finish_transfer(d, "Все данные сохранены")
+
+    print("3. reinstall (wipes all browser data)")
+    d.adb("uninstall", PACKAGE)
+    d.install(a.apk)
+    d.launch(f"http://localhost:{PORT}/mark")
+    r = report()
+    if r != "cookie=;ls=null":
+        d.fail(f"fresh install still has data: {r!r}")
+
+    print("4. import")
+    open_transfer_page(d)
+    d.tap("Импортировать данные")
+    d.tap(FILE)
+    d.tap("Пароль", exact=True)
+    d.type(PASSWORD)
+    d.tap("Далее", exact=True)
+    d.tap("Импортировать", exact=True)
+    finish_transfer(d, "Данные восстановлены")
+
+    print("5. check marker after import")
+    d.launch(f"http://localhost:{PORT}/mark")
+    r = report()
+    if r != "cookie=mark=c-42;ls=ls-42":
+        d.fail(f"marker lost after import: {r!r}")
+    d.delete_media(FILE)
+    print("OK")
+    server.shutdown()
+
+
+if __name__ == "__main__":
+    main()

@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
@@ -229,7 +231,7 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
                         Text(if (n >= 100) ":D" else n.toString(), color = p.text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Box(Modifier.width(40.dp).height(48.dp).clickable { b.menuOpen = true }, contentAlignment = Alignment.Center) {
+                Box(Modifier.width(40.dp).height(48.dp).clickable(onClickLabel = "Меню") { b.menuOpen = true }.semantics { contentDescription = "Меню" }, contentAlignment = Alignment.Center) {
                     Ico(R.drawable.ic_more_vert)
                 }
             }

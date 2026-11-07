@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import dev.antite.browser.transfer.TransferActivity
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
@@ -276,6 +277,15 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         saveNow()
         store.flush()
         activity.finishAndRemoveTask()
+        main.postDelayed({ System.exit(0) }, 300)
+    }
+
+    fun startTransfer(export: Boolean, uri: Uri, password: CharArray) {
+        captureThumb(current)
+        saveNow()
+        store.flush()
+        activity.startActivity(TransferActivity.intent(activity, export, uri, password))
+        password.fill(' ')
         main.postDelayed({ System.exit(0) }, 300)
     }
 

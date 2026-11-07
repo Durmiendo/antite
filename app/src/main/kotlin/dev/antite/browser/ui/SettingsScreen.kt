@@ -1,6 +1,7 @@
 package dev.antite.browser.ui
 
 import android.content.Intent
+import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -24,16 +25,20 @@ import dev.antite.browser.data.Option
 import dev.antite.browser.data.Options
 import dev.antite.browser.data.SavedLogin
 import dev.antite.browser.data.SitePerms
+import dev.antite.browser.transfer.BackupCipher
+import dev.antite.browser.transfer.WrongPasswordException
 import dev.antite.engine.Address
 import dev.antite.engine.Card
 import dev.antite.engine.Language
 import dev.antite.engine.LanguageModel
 import dev.antite.engine.PermissionValue
 import dev.antite.engine.SitePermission
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
 import kotlin.coroutines.resume
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 
 private class Page(val title: String, val content: @Composable (Nav) -> Unit)
 
@@ -131,9 +136,74 @@ private fun MainPage(b: Browser, nav: Nav) {
             }
         }
         item { SettingRow("uBlock Origin", "Панель управления, списки фильтров", onClick = b::openUboDashboard) }
+        nav(nav, "Перенос данных", "Экспорт и импорт всех данных браузера") { TransferPage(b, it) }
         section("О программе")
         item { SettingRow("Antite 0.1", "Движок ${b.engine.info.type} ${b.engine.info.version}") }
     }
+}
+
+@Composable
+private fun TransferPage(b: Browser, nav: Nav) = Screen(b, nav, "Перенос данных") {
+    item {
+        SettingRow("Экспортировать данные", "Вкладки, история, закладки, пароли, входы на сайты, настройки. Файл шифруется паролем", onClick = {
+            Auth.require(b.activity, "Экспорт данных", { exportAll(b) }, {})
+        })
+    }
+    item { SettingRow("Импортировать данные", "Все текущие данные браузера будут заменены данными из файла", onClick = { importAll(b) }) }
+    note("Браузер перезапустится. Кэш сайтов не переносится")
+}
+
+private fun exportAll(b: Browser) {
+    val name = "antite-" + java.time.LocalDate.now() + ".antite"
+    b.activity.createDocument(name, "application/octet-stream") { uri ->
+        if (uri == null) return@createDocument
+        var started = false
+        b.show(UiDialog.Form("Пароль на файл", "Без него файл не открыть. Восстановить пароль нельзя", listOf(
+            FormField("Пароль", kind = FormField.Kind.PASSWORD),
+            FormField("Повторите пароль", kind = FormField.Kind.PASSWORD),
+        ), "Экспортировать", { v ->
+            when {
+                v[0].isEmpty() -> b.toast("Введите пароль").let { false }
+                v[0] != v[1] -> b.toast("Пароли не совпадают").let { false }
+                else -> {
+                    started = true
+                    b.startTransfer(true, uri, v[0].toCharArray())
+                    true
+                }
+            }
+        }, onDismiss = {
+            if (!started) runCatching { DocumentsContract.deleteDocument(b.activity.contentResolver, uri) }
+        }))
+    }
+}
+
+private fun importAll(b: Browser) = b.activity.openDocument(listOf("application/octet-stream")) { uri ->
+    if (uri == null) return@openDocument
+    b.show(UiDialog.Form("Пароль от файла", null, listOf(FormField("Пароль", kind = FormField.Kind.PASSWORD)), "Далее", { v ->
+        val password = v[0].toCharArray()
+        b.activity.lifecycleScope.launch {
+            val error = withContext(Dispatchers.Default) {
+                try {
+                    b.activity.contentResolver.openInputStream(uri)!!.use { BackupCipher.decrypt(it, password).read() }
+                    null
+                } catch (e: WrongPasswordException) {
+                    "Неверный пароль"
+                } catch (e: Exception) {
+                    "Это не файл переноса данных Antite"
+                }
+            }
+            if (error != null) {
+                password.fill(' ')
+                return@launch b.toast(error)
+            }
+            b.show(UiDialog.Message("Заменить все данные?",
+                "Вкладки, история, закладки, пароли и входы на сайты будут заменены данными из файла. Браузер перезапустится.",
+                buttons = listOf(DialogButton("Отмена") { password.fill(' ') },
+                    DialogButton("Импортировать") { b.startTransfer(false, uri, password) }),
+                onDismiss = { password.fill(' ') }))
+        }
+        true
+    }))
 }
 
 private fun homeSummary(b: Browser) =
