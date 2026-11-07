@@ -146,6 +146,7 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var field by remember { mutableStateOf(TextFieldValue("")) }
+    var hadFocus by remember { mutableStateOf(false) }
 
     LaunchedEffect(b.urlFocused) {
         if (b.urlFocused) {
@@ -193,7 +194,13 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                         keyboardActions = KeyboardActions(onGo = { b.navigate(field.text) }),
                         modifier = Modifier.fillMaxWidth().focusRequester(focus).onFocusChanged {
-                            if (it.isFocused && !b.urlFocused) b.urlFocused = true
+                            if (it.isFocused) {
+                                hadFocus = true
+                                if (!b.urlFocused) b.urlFocused = true
+                            } else if (hadFocus) {
+                                hadFocus = false
+                                b.urlFocused = false
+                            }
                         },
                         decorationBox = { inner ->
                             Box(contentAlignment = Alignment.CenterStart) {
