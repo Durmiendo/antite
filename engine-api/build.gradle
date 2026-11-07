@@ -8,6 +8,11 @@ android {
 
     defaultConfig {
         minSdk 30
+        buildConfigField 'int', 'ENGINE_API', engineApi
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     compileOptions {

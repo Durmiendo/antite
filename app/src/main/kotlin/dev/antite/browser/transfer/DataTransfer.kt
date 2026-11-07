@@ -24,6 +24,7 @@ object DataTransfer {
     private const val IN_DIR = "transfer-in"
     private const val OLD_DIR = "transfer-old"
     private val SKIPPED = setOf("cache", "code_cache", "lib", OUT_DIR, IN_DIR, OLD_DIR)
+    private const val ENGINES = "files/engines"
     private val SECRET_COLUMNS = listOf("logins" to "password", "addresses" to "data", "cards" to "number")
 
     fun export(context: Context, root: File, out: OutputStream, password: CharArray, progress: (Progress) -> Unit) {
@@ -38,7 +39,7 @@ object DataTransfer {
                 rewriteSecrets(copy) { Crypto.decrypt(it) }
             } else null
 
-            val files = collect(root).filter { (rel, _) -> !rel.startsWith("databases/vault.db") }
+            val files = collect(root).filter { (rel, _) -> !rel.startsWith("databases/vault.db") && !isEngine(rel) }
             val total = files.sumOf { it.second.length() } + (plainVault?.length() ?: 0)
             var done = 0L
             ZipOutputStream(BackupCipher.encrypt(out, password)).use { zip ->
@@ -94,7 +95,7 @@ object DataTransfer {
                     val target = File(stage, e.name).canonicalFile
                     if (!target.path.startsWith(base.path + File.separator)) throw IOException("bad entry ${e.name}")
                     val top = e.name.substringBefore('/')
-                    if (top in SKIPPED) continue
+                    if (top in SKIPPED || isEngine(e.name)) continue
                     if (e.isDirectory) {
                         target.mkdirs()
                     } else {
@@ -130,8 +131,16 @@ object DataTransfer {
             old.listFiles()?.forEach { it.renameTo(File(root, it.name)) }
             throw e
         }
+        val engines = File(old, ENGINES)
+        if (engines.exists()) {
+            File(root, ENGINES).apply { parentFile?.mkdirs(); deleteRecursively() }
+            if (!engines.renameTo(File(root, ENGINES))) throw IOException("cannot keep the engine")
+        }
         old.deleteRecursively()
     }
+
+    // The engine is downloaded, not part of the user's data, and stays with the current install.
+    private fun isEngine(rel: String) = rel == ENGINES || rel.startsWith("$ENGINES/")
 
     private fun collect(root: File): List<Pair<String, File>> {
         val out = mutableListOf<Pair<String, File>>()

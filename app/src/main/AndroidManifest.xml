@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -13,6 +14,9 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application
+        android:name=".AntiteApp"
+        android:appComponentFactory="dev.antite.browser.engine.ShellFactory"
+        tools:replace="android:appComponentFactory"
         android:label="Antite"
         android:icon="@android:drawable/ic_menu_compass"
         android:allowBackup="false"
@@ -35,6 +39,9 @@
                 <data android:scheme="https" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".engine.EngineSetupActivity"
+            android:exported="false" />
         <activity
             android:name=".transfer.TransferActivity"
             android:exported="false"

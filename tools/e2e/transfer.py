@@ -1,5 +1,7 @@
 """End-to-end check of data export, reinstall and import on a device.
 
+Needs ./gradlew :engine-gecko:adapterPackage first: each fresh install downloads the engine from a local source.
+
 Usage: python3 -I tools/e2e/transfer.py --serial HOST:PORT --apk app-x86_64-debug.apk [--pin 1234]
 
 WARNING: reinstalls the browser, so all of its data on the device is replaced.
@@ -12,6 +14,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
 from server import ReportServer  # noqa: E402
+from engine_setup import download_engine, engine_pages  # noqa: E402
 
 PORT = 8767
 FILE = f"e2e-{int(time.time())}.antite"
@@ -47,12 +50,13 @@ def main():
     a = ap.parse_args()
     d = Device(a.serial, a.out)
 
-    server = ReportServer(PORT, {"/mark": MARK_PAGE})
+    server = ReportServer(PORT, {**engine_pages(PORT), "/mark": MARK_PAGE})
     server.attach(d)
 
-    print("1. set marker cookie and localStorage")
+    print("1. clean install with an engine, set marker cookie and localStorage")
+    d.adb("uninstall", PACKAGE, check=False)
     d.install(a.apk)
-    d.stop()
+    download_engine(d, PORT)
     d.launch(f"http://localhost:{PORT}/mark#set")
     r = server.report()
     if r != "cookie=mark=c-42;ls=ls-42":
@@ -85,6 +89,7 @@ def main():
     print("3. reinstall (wipes all browser data)")
     d.adb("uninstall", PACKAGE)
     d.install(a.apk)
+    download_engine(d, PORT)
     d.launch(f"http://localhost:{PORT}/mark")
     r = server.report()
     if r != "cookie=;ls=null":

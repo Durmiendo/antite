@@ -21,7 +21,7 @@ android {
 }
 
 dependencies {
-    compileOnly 'org.mozilla.geckoview:geckoview:159.0.20261102144711'
+    compileOnly "org.mozilla.geckoview:geckoview:$geckoviewVersion"
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.4.20'
     implementation 'androidx.annotation:annotation:1.11.0'
     implementation 'androidx.annotation:annotation-experimental:1.6.0'

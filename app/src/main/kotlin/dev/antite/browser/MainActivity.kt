@@ -25,10 +25,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
 import dev.antite.browser.data.Tab
+import dev.antite.browser.engine.EngineSetupActivity
+import dev.antite.browser.engine.Engines
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.BrowserScreen
 import dev.antite.browser.ui.LocalBrowser
-import dev.antite.engine.gecko.GeckoEngine
 
 class MainActivity : ComponentActivity() {
     lateinit var browser: Browser
@@ -68,7 +69,13 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
-        browser = Browser(this, GeckoEngine.FACTORY.create(this))
+        val engine = Engines.create(this)
+        if (engine == null) {
+            startActivity(Intent(this, EngineSetupActivity::class.java).putExtras(intent))
+            finish()
+            return
+        }
+        browser = Browser(this, engine)
         browser.attachView(browser.engine.createView(this))
         browser.restore()
         if (state == null) {

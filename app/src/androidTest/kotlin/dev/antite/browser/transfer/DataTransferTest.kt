@@ -103,6 +103,18 @@ class DataTransferTest {
     }
 
     @Test
+    fun engineIsNeitherExportedNorReplaced() {
+        write(src, "files/engines/old-engine/ready", byteArrayOf())
+        write(dst, "files/engines/current/ready", byteArrayOf())
+        write(dst, "files/engines/active", "current".toByteArray())
+        import(export("secret"), "secret")
+        assertFalse(File(dst, "files/engines/old-engine").exists())
+        assertTrue(File(dst, "files/engines/current/ready").exists())
+        assertEquals("current", File(dst, "files/engines/active").readText())
+        assertEquals("[1,2,3]", File(dst, "files/tabs.json").readText())
+    }
+
+    @Test
     fun exportLeavesSourceUntouched() {
         val before = column(File(src, "databases/vault.db"), "logins", "password")
         export("secret")

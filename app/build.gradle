@@ -14,6 +14,9 @@ android {
         versionCode 1
         versionName '0.1'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        def publisherKey = rootProject.file('keys/publisher.pub.pem').readLines().findAll { !it.startsWith('-----') }.join('')
+        buildConfigField 'String', 'PUBLISHER_KEY', "\"$publisherKey\""
+        buildConfigField 'String', 'ENGINE_INDEX_URL', "\"$engineIndexUrl\""
     }
 
     def keysDir = findProperty('antite.keysDir')
@@ -45,6 +48,7 @@ android {
 
     buildFeatures {
         compose true
+        buildConfig true
     }
 
     splits {
@@ -57,17 +61,76 @@ android {
     }
 }
 
+configurations {
+    geckoAar { transitive = false }
+}
+
 dependencies {
-    implementation project(':engine-gecko')
+    implementation project(':engine-api')
+    // GeckoView's own dependencies stay in the shell; GeckoView itself comes with the engine package.
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.4.20'
+    implementation 'androidx.annotation:annotation:1.11.0'
+    implementation 'androidx.annotation:annotation-experimental:1.6.0'
+    implementation 'androidx.collection:collection:1.6.0'
+    implementation 'androidx.core:core:1.19.1'
+    implementation 'androidx.lifecycle:lifecycle-common:2.11.0'
+    implementation 'androidx.lifecycle:lifecycle-process:2.11.0'
+    implementation 'com.google.android.gms:play-services-fido:21.3.1'
+    implementation 'org.yaml:snakeyaml:2.2'
+    implementation 'androidx.media3:media3-common:1.11.1'
+    implementation 'androidx.media3:media3-datasource:1.11.1'
+    implementation 'androidx.media3:media3-decoder:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'
+    geckoAar "org.mozilla.geckoview:geckoview:$geckoviewVersion@aar"
     implementation platform('androidx.compose:compose-bom:2026.09.00')
     implementation 'androidx.compose.material3:material3'
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.activity:activity-compose:1.13.0'
     implementation 'sh.calvin.reorderable:reorderable:3.1.0'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20260814'
     androidTestImplementation 'androidx.test:runner:1.7.0'
     androidTestImplementation 'androidx.test.ext:junit:1.3.0'
     androidTestImplementation platform('androidx.compose:compose-bom:2026.09.00')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
+}
+
+abstract class GeckoManifestTask extends DefaultTask {
+    @InputFiles
+    abstract ConfigurableFileCollection getAar()
+
+    @OutputFile
+    abstract RegularFileProperty getOutputManifest()
+
+    @TaskAction
+    void run() {
+        def src = new java.util.zip.ZipFile(aar.singleFile).withCloseable { z ->
+            z.getInputStream(z.getEntry('AndroidManifest.xml')).getText('UTF-8')
+        }
+        def perms = (src =~ /<uses-permission[^>]*\/>/).collect { it }
+        def open = (src =~ /<application[^>]*>/)
+        open.find()
+        def body = src.substring(open.end(), src.indexOf('</application>'))
+        outputManifest.get().asFile.text = """<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+${perms.join('\n')}
+    <application>
+$body
+    </application>
+</manifest>
+"""
+    }
+}
+
+def geckoManifest = tasks.register('geckoManifest', GeckoManifestTask) {
+    aar.from(configurations.geckoAar)
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.manifests.addGeneratedManifestFile(geckoManifest, { it.outputManifest })
+    }
 }

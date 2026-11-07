@@ -18,5 +18,67 @@ android {
 
 dependencies {
     api project(':engine-api')
-    implementation 'org.mozilla.geckoview:geckoview:159.0.20261102144711'
+    compileOnly "org.mozilla.geckoview:geckoview:$geckoviewVersion"
+}
+
+configurations {
+    geckoAar { transitive = false }
+}
+
+dependencies {
+    geckoAar "org.mozilla.geckoview:geckoview:$geckoviewVersion@aar"
+}
+
+tasks.register('adapterPackage') {
+    description = 'Builds the engine adapter package: adapter and GeckoView dex, engine.json, assets.'
+    dependsOn 'assembleRelease'
+    def aar = layout.buildDirectory.file('outputs/aar/engine-gecko-release.aar')
+    def work = layout.buildDirectory.dir('tmp/adapterPackage')
+    def out = layout.buildDirectory.file("outputs/engine/gecko-$geckoviewVersion-adapter.zip")
+    def geckoAar = configurations.geckoAar
+    def sdkDir = androidComponents.sdkComponents.sdkDirectory
+    def api = engineApi
+    def version = geckoviewVersion
+    inputs.file(aar)
+    inputs.files(geckoAar)
+    outputs.file(out)
+    doLast {
+        def w = work.get().asFile
+        w.deleteDir()
+        new File(w, 'dex').mkdirs()
+        def extract = { File zip, String entry, File to ->
+            new java.util.zip.ZipFile(zip).withCloseable { z -> to.bytes = z.getInputStream(z.getEntry(entry)).bytes }
+        }
+        def adapterJar = new File(w, 'adapter.jar')
+        def geckoJar = new File(w, 'geckoview.jar')
+        extract(aar.get().asFile, 'classes.jar', adapterJar)
+        extract(geckoAar.singleFile, 'classes.jar', geckoJar)
+        def sdk = sdkDir.get().asFile
+        def buildTools = new File(sdk, 'build-tools').listFiles().findAll { new File(it, 'd8').exists() }.max { it.name }
+        def d8 = new File(buildTools, 'd8').path
+        def cmd = [d8, '--release', '--min-api', '30', '--lib', new File(sdk, 'platforms/android-36/android.jar').path,
+                   '--output', new File(w, 'dex').path, adapterJar.path, geckoJar.path]
+        def p = new ProcessBuilder(cmd).redirectErrorStream(true).start()
+        def log = p.inputStream.text
+        if (p.waitFor() != 0) throw new GradleException("d8 failed:\n$log")
+        def json = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([
+            type: 'gecko', api: api as int, version: version, minShell: 1,
+            factory: 'dev.antite.engine.gecko.GeckoEngineFactory',
+        ]))
+        def zipFile = out.get().asFile
+        zipFile.parentFile.mkdirs()
+        new java.util.zip.ZipOutputStream(new FileOutputStream(zipFile)).withCloseable { zos ->
+            def put = { String name, byte[] bytes ->
+                zos.putNextEntry(new java.util.zip.ZipEntry(name)); zos.write(bytes); zos.closeEntry()
+            }
+            put('engine.json', json.getBytes('UTF-8'))
+            new File(w, 'dex').listFiles().sort { it.name }.each { put(it.name, it.bytes) }
+            new java.util.zip.ZipFile(aar.get().asFile).withCloseable { z ->
+                z.entries().findAll { !it.directory && it.name.startsWith('assets/') }.sort { it.name }.each { e ->
+                    put(e.name, z.getInputStream(e).bytes)
+                }
+            }
+        }
+        logger.lifecycle("adapter package: $zipFile (${zipFile.length()} bytes)")
+    }
 }
