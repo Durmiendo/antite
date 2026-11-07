@@ -1,11 +1,13 @@
 package dev.antite.engine.gecko
 
 import android.net.Uri
+import android.util.Base64
 import dev.antite.engine.AndroidPermissionRequest
 import dev.antite.engine.ContentPermissionRequest
 import dev.antite.engine.ContextInfo
 import dev.antite.engine.DownloadRequest
 import dev.antite.engine.EngineTab
+import dev.antite.engine.LoadError
 import dev.antite.engine.MediaController
 import dev.antite.engine.MediaEvent
 import dev.antite.engine.MediaMetadata
@@ -29,6 +31,7 @@ import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.MediaSession
 import org.mozilla.geckoview.TranslationsController.SessionTranslation
 import org.mozilla.geckoview.WebExtension
+import org.mozilla.geckoview.WebRequestError
 import org.mozilla.geckoview.WebResponse
 import java.io.InputStream
 import java.util.WeakHashMap
@@ -189,6 +192,22 @@ internal class GeckoTab(
                 perms: List<ContentPermission>,
                 hasUserGesture: Boolean,
             ) = callbacks.onLocationChange(url ?: "")
+
+            override fun onLoadError(s: GeckoSession, uri: String?, error: WebRequestError): GeckoResult<String>? {
+                val kind = when {
+                    error.code == WebRequestError.ERROR_UNKNOWN_HOST -> LoadError.HOST_NOT_FOUND
+                    error.code == WebRequestError.ERROR_CONNECTION_REFUSED -> LoadError.CONNECTION
+                    error.code == WebRequestError.ERROR_NET_TIMEOUT -> LoadError.TIMEOUT
+                    error.code == WebRequestError.ERROR_OFFLINE -> LoadError.OFFLINE
+                    error.category == WebRequestError.ERROR_CATEGORY_SECURITY -> LoadError.SECURITY
+                    error.category == WebRequestError.ERROR_CATEGORY_SAFEBROWSING -> LoadError.BLOCKED
+                    else -> LoadError.OTHER
+                }
+                val html = callbacks.errorPage(uri ?: "", kind) ?: return null
+                return GeckoResult.fromValue(
+                    "data:text/html;charset=utf-8;base64," + Base64.encodeToString(html.toByteArray(), Base64.NO_WRAP),
+                )
+            }
 
             override fun onCanGoBack(s: GeckoSession, can: Boolean) {
                 back = can

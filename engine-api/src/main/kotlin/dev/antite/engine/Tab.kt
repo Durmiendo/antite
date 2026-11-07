@@ -92,8 +92,12 @@ sealed interface MediaEvent {
     data class Stopped(val controller: MediaController) : MediaEvent
 }
 
+enum class LoadError { HOST_NOT_FOUND, CONNECTION, TIMEOUT, OFFLINE, SECURITY, BLOCKED, OTHER }
+
 interface TabCallbacks {
     fun onLocationChange(url: String)
+
+    fun errorPage(url: String, error: LoadError): String?
 
     fun onTitleChange(title: String)
 

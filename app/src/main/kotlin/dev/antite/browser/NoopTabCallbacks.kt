@@ -5,6 +5,7 @@ import dev.antite.engine.ContentPermissionRequest
 import dev.antite.engine.ContextInfo
 import dev.antite.engine.DownloadRequest
 import dev.antite.engine.EngineTab
+import dev.antite.engine.LoadError
 import dev.antite.engine.MediaEvent
 import dev.antite.engine.MediaPermissionRequest
 import dev.antite.engine.Prompt
@@ -15,6 +16,7 @@ import dev.antite.engine.TranslationState
 
 open class NoopTabCallbacks : TabCallbacks {
     override fun onLocationChange(url: String) {}
+    override fun errorPage(url: String, error: LoadError): String? = null
     override fun onTitleChange(title: String) {}
     override fun onPageStart(url: String) {}
     override fun onPageStop(success: Boolean) {}

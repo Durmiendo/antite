@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
-import dev.antite.browser.transfer.TransferActivity
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
@@ -25,6 +24,9 @@ import dev.antite.browser.service.AutofillBridge
 import dev.antite.browser.service.Downloads
 import dev.antite.browser.service.MediaPlayback
 import dev.antite.browser.service.WebNotifications
+import dev.antite.browser.transfer.TransferActivity
+import dev.antite.browser.ui.DarkPalette
+import dev.antite.browser.ui.LightPalette
 import dev.antite.engine.AndroidPermissionRequest
 import dev.antite.engine.ContentPermissionRequest
 import dev.antite.engine.ContextInfo
@@ -33,6 +35,7 @@ import dev.antite.engine.DownloadRequest
 import dev.antite.engine.Engine
 import dev.antite.engine.EngineTab
 import dev.antite.engine.EngineView
+import dev.antite.engine.LoadError
 import dev.antite.engine.MediaEvent
 import dev.antite.engine.MediaPermissionRequest
 import dev.antite.engine.Prompt
@@ -721,6 +724,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             t.url = url
             refreshBookmarked(t)
         }
+
+        override fun errorPage(url: String, error: LoadError): String =
+            ErrorPage.html(url, error, if (prefs.isDark()) DarkPalette else LightPalette)
 
         override fun onTitleChange(title: String) {
             t.title = title
