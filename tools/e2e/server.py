@@ -1,0 +1,44 @@
+import queue
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote
+
+
+class ReportServer:
+    """Serves fixed pages and collects what they send to /report?..."""
+
+    def __init__(self, port, pages):
+        self.port = port
+        self.reports = queue.Queue()
+        reports = self.reports
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path.startswith("/report?"):
+                    reports.put(unquote(self.path[len("/report?"):]))
+                    body = b"ok"
+                else:
+                    body = pages.get(self.path.split("?")[0].split("#")[0], b"")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        self.http = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+        threading.Thread(target=self.http.serve_forever, daemon=True).start()
+
+    def attach(self, device):
+        device.adb("reverse", f"tcp:{self.port}", f"tcp:{self.port}")
+
+    def report(self, timeout=20):
+        try:
+            return self.reports.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    def close(self):
+        self.http.shutdown()

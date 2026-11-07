@@ -1,0 +1,39 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'dev.antite.proto'
+    compileSdkVersion 'android-37.2'
+
+    defaultConfig {
+        applicationId 'dev.antite.proto'
+        minSdk 30
+        targetSdk 36
+        versionCode 1
+        versionName 'proto'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    compileOnly 'org.mozilla.geckoview:geckoview:159.0.20261102144711'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.4.20'
+    implementation 'androidx.annotation:annotation:1.11.0'
+    implementation 'androidx.annotation:annotation-experimental:1.6.0'
+    implementation 'androidx.collection:collection:1.6.0'
+    implementation 'androidx.core:core:1.19.1'
+    implementation 'androidx.lifecycle:lifecycle-common:2.11.0'
+    implementation 'androidx.lifecycle:lifecycle-process:2.11.0'
+    implementation 'com.google.android.gms:play-services-fido:21.3.1'
+    implementation 'org.yaml:snakeyaml:2.2'
+    implementation 'androidx.media3:media3-common:1.11.1'
+    implementation 'androidx.media3:media3-datasource:1.11.1'
+    implementation 'androidx.media3:media3-decoder:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'
+}

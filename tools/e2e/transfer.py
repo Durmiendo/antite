@@ -6,15 +6,12 @@ WARNING: reinstalls the browser, so all of its data on the device is replaced.
 """
 import argparse
 import os
-import queue
 import sys
-import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
+from server import ReportServer  # noqa: E402
 
 PORT = 8767
 FILE = f"e2e-{int(time.time())}.antite"
@@ -26,33 +23,6 @@ const r = 'cookie=' + document.cookie + ';ls=' + localStorage.getItem('mark')
 document.body.textContent = r
 fetch('/report?' + encodeURIComponent(r))
 </script>"""
-
-reports = queue.Queue()
-
-
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path.startswith("/report?"):
-            reports.put(unquote(self.path[len("/report?"):]))
-            body = b"ok"
-        else:
-            body = MARK_PAGE
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def log_message(self, *args):
-        pass
-
-
-def report(timeout=20):
-    try:
-        return reports.get(timeout=timeout)
-    except queue.Empty:
-        return None
-
 
 def open_transfer_page(d):
     d.tap("Меню", exact=True)
@@ -77,15 +47,14 @@ def main():
     a = ap.parse_args()
     d = Device(a.serial, a.out)
 
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    d.adb("reverse", f"tcp:{PORT}", f"tcp:{PORT}")
+    server = ReportServer(PORT, {"/mark": MARK_PAGE})
+    server.attach(d)
 
     print("1. set marker cookie and localStorage")
     d.install(a.apk)
     d.stop()
     d.launch(f"http://localhost:{PORT}/mark#set")
-    r = report()
+    r = server.report()
     if r != "cookie=mark=c-42;ls=ls-42":
         d.fail(f"marker not set: {r!r}")
 
@@ -117,7 +86,7 @@ def main():
     d.adb("uninstall", PACKAGE)
     d.install(a.apk)
     d.launch(f"http://localhost:{PORT}/mark")
-    r = report()
+    r = server.report()
     if r != "cookie=;ls=null":
         d.fail(f"fresh install still has data: {r!r}")
 
@@ -133,12 +102,12 @@ def main():
 
     print("5. check marker after import")
     d.launch(f"http://localhost:{PORT}/mark")
-    r = report()
+    r = server.report()
     if r != "cookie=mark=c-42;ls=ls-42":
         d.fail(f"marker lost after import: {r!r}")
     d.delete_media(FILE)
     print("OK")
-    server.shutdown()
+    server.close()
 
 
 if __name__ == "__main__":
