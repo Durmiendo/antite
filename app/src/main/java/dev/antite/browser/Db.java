@@ -5,13 +5,9 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
-import android.os.Handler;
-import android.os.Looper;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -36,8 +32,7 @@ final class Db extends SQLiteOpenHelper {
 
     private static Db instance;
 
-    private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private final Handler main = new Handler(Looper.getMainLooper());
+    private final Worker worker = new Worker();
 
     static synchronized Db get(Context c) {
         if (instance == null) instance = new Db(c.getApplicationContext());
@@ -50,14 +45,11 @@ final class Db extends SQLiteOpenHelper {
     }
 
     void run(Runnable work) {
-        io.execute(work);
+        worker.run(work);
     }
 
     <T> void read(Supplier<T> query, Consumer<T> onMain) {
-        io.execute(() -> {
-            T v = query.get();
-            main.post(() -> onMain.accept(v));
-        });
+        worker.read(query, onMain);
     }
 
     @Override

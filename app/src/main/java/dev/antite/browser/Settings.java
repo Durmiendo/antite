@@ -65,7 +65,7 @@ final class Settings extends LinearLayout {
             "tr", "zh", "ja", "ko", "ar", "he", "hi", "fi", "sv", "nl", "el", "hu", "ro", "bg", "sr", "ka", "hy",
             "az", "uz", "lv", "lt", "et", "vi", "id", "th", "fa"};
 
-    interface Host {
+    interface Host extends AutofillSettings.Files {
         void closeSettings();
 
         void clearData(boolean cache, boolean siteData, boolean permissions, boolean history);
@@ -91,11 +91,12 @@ final class Settings extends LinearLayout {
     private final GeckoRuntime runtime;
     private final SharedPreferences prefs;
     private final SitePerms perms;
+    private final AutofillSettings autofill;
     private final LinearLayout list;
     private final ScrollView scroll;
     private final TextView title;
     private final List<Page> stack = new ArrayList<>();
-    private int generation;
+    int generation;
 
     Settings(Activity a, Host host, GeckoRuntime runtime, SharedPreferences prefs, SitePerms perms) {
         super(a);
@@ -104,6 +105,7 @@ final class Settings extends LinearLayout {
         this.runtime = runtime;
         this.prefs = prefs;
         this.perms = perms;
+        this.autofill = new AutofillSettings(a, this, prefs, Vault.get(a), host);
         setOrientation(VERTICAL);
         setBackgroundColor(Ui.SWITCHER_BG);
         setClickable(true);
@@ -156,13 +158,13 @@ final class Settings extends LinearLayout {
         return true;
     }
 
-    private void push(String name, Runnable build) {
+    void push(String name, Runnable build) {
         stack.get(stack.size() - 1).scroll = scroll.getScrollY();
         stack.add(new Page(name, build));
         render(0);
     }
 
-    private void refresh() {
+    void refresh() {
         render(scroll.getScrollY());
     }
 
@@ -178,6 +180,9 @@ final class Settings extends LinearLayout {
     private void buildMain() {
         section("Основные");
         choice("Поисковая система", ENGINE_NAMES, "engine", 0, false);
+        nav("Менеджер паролей", "Сохранённые пароли, импорт и экспорт", autofill::buildPasswords);
+        nav("Способы оплаты", "Банковские карты", autofill::buildCards);
+        nav("Адреса и другие данные", "Имя, адрес, телефон, почта", autofill::buildAddresses);
         nav("Конфиденциальность и безопасность", "HTTPS, DNS, cookie, отслеживание, WebRTC",
                 this::buildPrivacy);
         row("Уведомления", "Системные настройки уведомлений браузера", null, () -> {
@@ -597,14 +602,14 @@ final class Settings extends LinearLayout {
                 .show();
     }
 
-    private View wrap(View v) {
+    View wrap(View v) {
         LinearLayout l = new LinearLayout(a);
         l.setPadding(Ui.dp(a, 20), Ui.dp(a, 8), Ui.dp(a, 20), 0);
         l.addView(v, new LayoutParams(-1, -2));
         return l;
     }
 
-    private void confirm(String text, Runnable ok) {
+    void confirm(String text, Runnable ok) {
         new Sheet(a)
                 .setMessage(text)
                 .setPositiveButton("Удалить", (d, w) -> ok.run())
@@ -612,7 +617,7 @@ final class Settings extends LinearLayout {
                 .show();
     }
 
-    private void pick(String name, String[] options, int cur, IntConsumer done) {
+    void pick(String name, String[] options, int cur, IntConsumer done) {
         int[] sel = {cur};
         push(name, () -> {
             for (int i = 0; i < options.length; i++) {
@@ -650,7 +655,7 @@ final class Settings extends LinearLayout {
         list.addView(r, new LayoutParams(-1, -2));
     }
 
-    private void section(String name) {
+    void section(String name) {
         TextView t = new TextView(a);
         t.setText(name);
         t.setTextSize(14);
@@ -660,7 +665,7 @@ final class Settings extends LinearLayout {
         list.addView(t);
     }
 
-    private void note(String text) {
+    void note(String text) {
         TextView t = new TextView(a);
         t.setText(text);
         t.setTextSize(13);
@@ -669,11 +674,11 @@ final class Settings extends LinearLayout {
         list.addView(t);
     }
 
-    private void nav(String name, String summary, Runnable build) {
+    void nav(String name, String summary, Runnable build) {
         row(name, summary, null, () -> push(name, build));
     }
 
-    private LinearLayout row(String title, String summary, View end, Runnable click) {
+    LinearLayout row(String title, String summary, View end, Runnable click) {
         LinearLayout r = new LinearLayout(a);
         r.setOrientation(HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
@@ -712,7 +717,7 @@ final class Settings extends LinearLayout {
         }));
     }
 
-    private void toggle(String title, String summary, String key, boolean def, boolean engine) {
+    void toggle(String title, String summary, String key, boolean def, boolean engine) {
         toggleRow(title, summary, prefs.getBoolean(key, def), v -> {
             prefs.edit().putBoolean(key, v).apply();
             if (engine) EngineSettings.apply(runtime, prefs);
@@ -720,11 +725,11 @@ final class Settings extends LinearLayout {
         });
     }
 
-    private interface BoolConsumer {
+    interface BoolConsumer {
         void accept(boolean v);
     }
 
-    private void toggleRow(String title, String summary, boolean on, BoolConsumer changed) {
+    void toggleRow(String title, String summary, boolean on, BoolConsumer changed) {
         Switch sw = new Switch(a);
         sw.setChecked(on);
         sw.setClickable(false);

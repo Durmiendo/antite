@@ -123,6 +123,20 @@ final class EngineSettings {
 
         pref("privacy.donottrackheader.enabled", p.getBoolean("dnt", false));
 
+        s.setLoginAutofillEnabled(p.getBoolean("passwordsAutofill", true));
+        pref("signon.rememberSignons", p.getBoolean("passwordsSave", true));
+        pref("signon.generation.enabled", p.getBoolean("passwordsSave", true));
+        boolean addresses = p.getBoolean("addressesEnabled", true);
+        GeckoPreferenceController.setGeckoPref("extensions.formautofill.available", "on",
+                GeckoPreferenceController.PREF_BRANCH_USER);
+        GeckoPreferenceController.setGeckoPref("extensions.formautofill.addresses.supported",
+                addresses ? "on" : "off", GeckoPreferenceController.PREF_BRANCH_USER);
+        GeckoPreferenceController.setGeckoPref("extensions.formautofill.addresses.capture.requiredFields",
+                "street-address,address-level2", GeckoPreferenceController.PREF_BRANCH_USER);
+        pref("extensions.formautofill.addresses.enabled", addresses);
+        pref("extensions.formautofill.addresses.capture.enabled", addresses);
+        pref("extensions.formautofill.creditCards.enabled", p.getBoolean("cardsEnabled", true));
+
         boolean preload = p.getBoolean("preload", false);
         for (String name : PRELOAD_BOOLS) pref(name, preload);
         pref("network.dns.disablePrefetch", !preload);

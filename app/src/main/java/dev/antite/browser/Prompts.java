@@ -7,6 +7,7 @@ import android.text.InputType;
 import android.widget.EditText;
 
 import org.mozilla.geckoview.AllowOrDeny;
+import org.mozilla.geckoview.Autocomplete;
 import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate;
@@ -21,6 +22,7 @@ final class Prompts implements PromptDelegate {
     private FilePrompt pendingFile;
     private GeckoResult<PromptResponse> pendingFileResult;
     java.util.function.Predicate<GeckoSession> popupPolicy;
+    AutofillPrompts autofill;
 
     Prompts(Activity activity) {
         this.activity = activity;
@@ -111,6 +113,42 @@ final class Prompts implements PromptDelegate {
         }
         b.setOnCancelListener(d -> r.complete(p.dismiss())).show();
         return r;
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> onLoginSave(GeckoSession s,
+                                                   AutocompleteRequest<Autocomplete.LoginSaveOption> r) {
+        return autofill.loginSave(r);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> onLoginSelect(GeckoSession s,
+                                                     AutocompleteRequest<Autocomplete.LoginSelectOption> r) {
+        return autofill.loginSelect(r);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> onCreditCardSave(GeckoSession s,
+                                                        AutocompleteRequest<Autocomplete.CreditCardSaveOption> r) {
+        return autofill.cardSave(r);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> onCreditCardSelect(GeckoSession s,
+                                                          AutocompleteRequest<Autocomplete.CreditCardSelectOption> r) {
+        return autofill.cardSelect(r);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> onAddressSave(GeckoSession s,
+                                                     AutocompleteRequest<Autocomplete.AddressSaveOption> r) {
+        return autofill.addressSave(r);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> onAddressSelect(GeckoSession s,
+                                                       AutocompleteRequest<Autocomplete.AddressSelectOption> r) {
+        return autofill.addressSelect(r);
     }
 
     @Override

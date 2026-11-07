@@ -119,6 +119,7 @@ public class MainActivity extends Activity
         if (runtime == null) startEngine();
         dialogs = new Prompts(this);
         dialogs.popupPolicy = s -> sitePrompts.allowPopup(tabFor(s));
+        dialogs.autofill = new AutofillPrompts(this, prefs, Vault.get(this));
         sitePrompts = new SitePrompts(this, sitePerms);
         downloads = new Downloads(this, db, () -> {
             if (listPage.getVisibility() == View.VISIBLE) listPage.refresh();
@@ -146,6 +147,7 @@ public class MainActivity extends Activity
         sitePerms.attach(runtime);
         EngineSettings.apply(runtime, prefs);
         runtime.setWebNotificationDelegate(new WebNotifications(app));
+        runtime.setAutocompleteStorageDelegate(new AutofillStorage(Vault.get(app)));
         icons = new IconCache(app, runtime);
         setupExtensions();
         runtime.getWebExtensionController()
@@ -230,6 +232,33 @@ public class MainActivity extends Activity
         super.onActivityResult(request, result, data);
         if (request == Prompts.FILE_REQUEST) dialogs.onFileResult(result, data);
         if (request == Downloads.REQUEST) downloads.onTarget(result, data);
+        if (request == FILE_PICK_REQUEST && filePicked != null) {
+            java.util.function.Consumer<Uri> cb = filePicked;
+            filePicked = null;
+            if (result == RESULT_OK && data != null && data.getData() != null) cb.accept(data.getData());
+        }
+    }
+
+    private static final int FILE_PICK_REQUEST = 4260;
+    private java.util.function.Consumer<Uri> filePicked;
+
+    @Override
+    public void openFile(String mime, java.util.function.Consumer<Uri> picked) {
+        filePicked = picked;
+        startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*")
+                .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{mime, "text/csv", "text/comma-separated-values"}),
+                FILE_PICK_REQUEST);
+    }
+
+    @Override
+    public void createFile(String name, String mime, java.util.function.Consumer<Uri> picked) {
+        filePicked = picked;
+        startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType(mime)
+                .putExtra(Intent.EXTRA_TITLE, name), FILE_PICK_REQUEST);
     }
 
     @Override

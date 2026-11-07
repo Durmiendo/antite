@@ -39,6 +39,7 @@ final class Sheet {
     private DialogInterface.OnCancelListener cancel;
     private DialogInterface.OnDismissListener dismiss;
     private boolean stacked;
+    private boolean focused;
 
     Sheet(Context c) {
         this.c = c;
@@ -321,7 +322,10 @@ final class Sheet {
                 wrap.addView(e, new LinearLayout.LayoutParams(-1, -2));
                 view = wrap;
             }
-            e.requestFocus();
+            if (!focused) {
+                focused = true;
+                e.requestFocus();
+            }
             return;
         }
         if (v instanceof ViewGroup) {
