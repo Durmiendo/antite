@@ -1,0 +1,22 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'dev.antite.engine.gecko'
+    compileSdkVersion 'android-37.2'
+
+    defaultConfig {
+        minSdk 30
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    api project(':engine-api')
+    implementation 'org.mozilla.geckoview:geckoview:159.0.20261102144711'
+}
