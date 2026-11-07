@@ -23,22 +23,38 @@ public class ProtoFactory extends AppComponentFactory {
         return new File(ai.dataDir, "files/engine");
     }
 
+    static volatile ClassLoader zygoteLoader;
+    static volatile String zygoteState = "preload did not run in this process's zygote";
+
     @Override
     public ClassLoader instantiateClassLoader(ClassLoader cl, ApplicationInfo ai) {
-        File dir = engineDir(ai);
+        if (zygoteLoader != null) {
+            Log.i(TAG, "using engine loader inherited from app zygote");
+            return zygoteLoader;
+        }
         try {
-            install(dir);
+            install(engineDir(ai));
+            return engineLoader(ai, cl.getParent());
         } catch (IOException e) {
+            if (android.os.Process.isIsolated()) {
+                throw new IllegalStateException("no engine in isolated process; app zygote: " + zygoteState
+                    + "; files: " + e.getMessage());
+            }
             Log.e(TAG, "engine install failed", e);
             return cl;
         }
+    }
+
+    static ClassLoader engineLoader(ApplicationInfo ai, ClassLoader parent) throws IOException {
+        File dir = engineDir(ai);
+        if (!new File(dir, "ready").exists()) throw new IOException("engine not readable at " + dir);
         List<String> dex = new ArrayList<>();
         dex.add(ai.sourceDir);
         File[] files = dir.listFiles((d, name) -> name.endsWith(".dex"));
         if (files != null) for (File f : files) dex.add(f.getPath());
         String libs = new File(dir, "lib").getPath() + File.pathSeparator + ai.nativeLibraryDir;
         Log.i(TAG, "engine class loader: " + dex + " libs=" + libs);
-        return new DexClassLoader(String.join(File.pathSeparator, dex), null, libs, cl.getParent());
+        return new DexClassLoader(String.join(File.pathSeparator, dex), null, libs, parent);
     }
 
     private static synchronized void install(File dir) throws IOException {

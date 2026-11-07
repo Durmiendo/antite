@@ -38,7 +38,7 @@
     <application
         android:name=".ProtoApp"
         android:appComponentFactory="dev.antite.proto.ProtoFactory"
-        android:zygotePreloadName="org.mozilla.gecko.process.ZygotePreload"
+        android:zygotePreloadName="dev.antite.proto.ProtoZygotePreload"
         android:label="Antite proto"
         android:extractNativeLibs="false"
         tools:replace="android:appComponentFactory"

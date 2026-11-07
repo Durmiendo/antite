@@ -17,7 +17,6 @@ src = src.replace("${applicationId}", APP_ID)
 perms = re.findall(r"<uses-permission[^>]*/>", src)
 features = re.findall(r"<uses-feature[^>]*/>", src, re.S)
 app_open = re.search(r"<application([^>]*)>", src)
-zygote = re.search(r'android:zygotePreloadName="([^"]+)"', app_open.group(1)).group(1)
 body = src[app_open.end():src.index("</application>")]
 
 out = f"""<?xml version="1.0" encoding="utf-8"?>
@@ -31,7 +30,7 @@ out = f"""<?xml version="1.0" encoding="utf-8"?>
     <application
         android:name=".ProtoApp"
         android:appComponentFactory="dev.antite.proto.ProtoFactory"
-        android:zygotePreloadName="{zygote}"
+        android:zygotePreloadName="dev.antite.proto.ProtoZygotePreload"
         android:label="Antite proto"
         android:extractNativeLibs="false"
         tools:replace="android:appComponentFactory"
