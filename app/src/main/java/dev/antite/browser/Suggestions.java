@@ -73,16 +73,27 @@ final class Suggestions extends ScrollView {
             setVisibility(GONE);
             return;
         }
-        List<Db.Entry> local = incognito ? new ArrayList<>() : db.suggest(text, 5);
-        render(local, new ArrayList<>());
+        String q = text;
+        List<Db.Entry> local = new ArrayList<>();
+        List<String> remote = new ArrayList<>();
+        if (incognito) {
+            render(local, remote);
+        } else {
+            db.read(() -> db.suggest(q, 5), found -> {
+                if (gen != generation) return;
+                local.addAll(found);
+                render(local, remote);
+            });
+        }
         if (prefs.getBoolean("searchSuggest", true)) {
-            String q = text;
             main.postDelayed(() -> {
                 if (gen != generation) return;
                 net.execute(() -> {
-                    List<String> remote = fetch(q);
+                    List<String> fetched = fetch(q);
                     main.post(() -> {
-                        if (gen == generation) render(local, remote);
+                        if (gen != generation) return;
+                        remote.addAll(fetched);
+                        render(local, remote);
                     });
                 });
             }, 150);
@@ -126,7 +137,7 @@ final class Suggestions extends ScrollView {
         for (Db.Entry e : local) {
             String title = e.title == null || e.title.isEmpty() ? e.url : e.title;
             row("b".equals(e.extra) ? R.drawable.ic_star : R.drawable.ic_history,
-                    icons.get(NewTabPage.hostOf(e.url)), title, e.url,
+                    icons.get(Urls.host(e.url)), title, e.url,
                     () -> host.go(e.url), () -> host.fill(e.url));
         }
         for (String s : remote) {

@@ -1,11 +1,9 @@
 package dev.antite.browser;
 
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
-import android.content.res.Configuration;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.text.InputType;
@@ -19,10 +17,7 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import org.mozilla.geckoview.ContentBlocking;
-import org.mozilla.geckoview.GeckoPreferenceController;
 import org.mozilla.geckoview.GeckoRuntime;
-import org.mozilla.geckoview.GeckoRuntimeSettings;
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate;
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission;
 import org.mozilla.geckoview.StorageController;
@@ -39,13 +34,6 @@ import java.util.function.IntConsumer;
 
 final class Settings extends LinearLayout {
     static final String[] ENGINE_NAMES = {"DuckDuckGo", "Google", "Яндекс", "Bing", "Startpage"};
-    static final String[] ENGINE_URLS = {
-            "https://duckduckgo.com/?q=",
-            "https://www.google.com/search?q=",
-            "https://yandex.ru/search/?text=",
-            "https://www.bing.com/search?q=",
-            "https://www.startpage.com/do/search?q=",
-    };
 
     static final String[] TRACKING = {"Стандартная", "Строгая", "Выключена"};
     static final String[] COOKIES = {
@@ -54,23 +42,9 @@ final class Settings extends LinearLayout {
             "Блокировать все сторонние",
             "Разрешить все",
     };
-    private static final int[] COOKIE_VALUES = {
-            ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS,
-            ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS,
-            ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY,
-            ContentBlocking.CookieBehavior.ACCEPT_ALL,
-    };
     static final String[] DOH_NAMES = {"Выключено", "Cloudflare", "Quad9", "Mullvad", "AdGuard (с блокировкой рекламы)"};
-    private static final String[] DOH_URLS = {
-            null,
-            "https://mozilla.cloudflare-dns.com/dns-query",
-            "https://dns.quad9.net/dns-query",
-            "https://dns.mullvad.net/dns-query",
-            "https://dns.adguard-dns.com/dns-query",
-    };
     static final String[] DOH_MODES = {"Если доступен (иначе обычный DNS)", "Только защищённый DNS"};
     static final String[] FONT_NAMES = {"80%", "90%", "100%", "110%", "120%", "130%", "150%", "175%", "200%"};
-    private static final float[] FONT_VALUES = {0.8f, 0.9f, 1f, 1.1f, 1.2f, 1.3f, 1.5f, 1.75f, 2f};
     static final String[] STARTUP = {"Последние вкладки", "Новая вкладка"};
     static final String[] EXTERNAL = {"В новой вкладке", "В текущей вкладке"};
     static final String[] THEMES = {"Как в системе", "Светлая", "Тёмная"};
@@ -91,9 +65,6 @@ final class Settings extends LinearLayout {
             "tr", "zh", "ja", "ko", "ar", "he", "hi", "fi", "sv", "nl", "el", "hu", "ro", "bg", "sr", "ka", "hy",
             "az", "uz", "lv", "lt", "et", "vi", "id", "th", "fa"};
 
-    private static final String[] PRELOAD_BOOLS = {"network.prefetch-next", "network.predictor.enabled",
-            "browser.places.speculativeConnect.enabled"};
-
     interface Host {
         void closeSettings();
 
@@ -102,116 +73,6 @@ final class Settings extends LinearLayout {
         void openUboDashboard();
 
         void onChromeSettingsChanged();
-    }
-
-    static int theme(SharedPreferences p) {
-        if (p.contains("theme")) return p.getInt("theme", 2);
-        return p.getBoolean("dark", true) ? 2 : 1;
-    }
-
-    static boolean isDark(Context c, SharedPreferences p) {
-        int t = theme(p);
-        if (t == 0) {
-            return (c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                    == Configuration.UI_MODE_NIGHT_YES;
-        }
-        return t == 2;
-    }
-
-    static String[] locales(SharedPreferences p) {
-        String s = p.getString("langs", "");
-        if (s.isEmpty()) return new String[0];
-        return s.split(",");
-    }
-
-    static String translateTarget(SharedPreferences p) {
-        String t = p.getString("translateTo", "");
-        if (!t.isEmpty()) return t;
-        String[] l = locales(p);
-        return l.length > 0 ? l[0] : Locale.getDefault().getLanguage();
-    }
-
-    static void apply(GeckoRuntime runtime, SharedPreferences p) {
-        GeckoRuntimeSettings s = runtime.getSettings();
-        int theme = theme(p);
-        s.setPreferredColorScheme(theme == 0 ? GeckoRuntimeSettings.COLOR_SCHEME_SYSTEM
-                : theme == 2 ? GeckoRuntimeSettings.COLOR_SCHEME_DARK : GeckoRuntimeSettings.COLOR_SCHEME_LIGHT);
-        s.setJavaScriptEnabled(true);
-        s.setAutomaticFontSizeAdjustment(false);
-        s.setFontSizeFactor(FONT_VALUES[Math.min(p.getInt("font", 2), FONT_VALUES.length - 1)]);
-        s.setForceUserScalableEnabled(p.getBoolean("forceZoom", false));
-        s.setDoubleTapZoomingEnabled(p.getBoolean("doubleTapZoom", true));
-        s.setGlobalPrivacyControl(p.getBoolean("gpc", true));
-        s.setAllowInsecureConnections(p.getBoolean("httpsOnly", false)
-                ? GeckoRuntimeSettings.HTTPS_ONLY : GeckoRuntimeSettings.ALLOW_ALL);
-        s.setTranslationsOfferPopup(p.getBoolean("translateOffer", true));
-        String[] langs = locales(p);
-        if (langs.length > 0) s.setLocales(langs);
-
-        int doh = p.getInt("doh", 0);
-        if (doh == 0) {
-            s.setTrustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_OFF);
-        } else {
-            s.setTrustedRecursiveResolverUri(DOH_URLS[doh]);
-            s.setTrustedRecursiveResolverMode(p.getInt("dohMode", 0) == 1
-                    ? GeckoRuntimeSettings.TRR_MODE_ONLY : GeckoRuntimeSettings.TRR_MODE_FIRST);
-        }
-
-        ContentBlocking.Settings cb = s.getContentBlocking();
-        int tracking = p.getInt("tracking", 0);
-        if (tracking == 1) {
-            cb.setEnhancedTrackingProtectionLevel(ContentBlocking.EtpLevel.STRICT);
-            cb.setAntiTracking(ContentBlocking.AntiTracking.STRICT);
-            cb.setStrictSocialTrackingProtection(true);
-        } else if (tracking == 2) {
-            cb.setEnhancedTrackingProtectionLevel(ContentBlocking.EtpLevel.NONE);
-            cb.setAntiTracking(ContentBlocking.AntiTracking.NONE);
-            cb.setStrictSocialTrackingProtection(false);
-        } else {
-            cb.setEnhancedTrackingProtectionLevel(ContentBlocking.EtpLevel.DEFAULT);
-            cb.setAntiTracking(ContentBlocking.AntiTracking.DEFAULT);
-            cb.setStrictSocialTrackingProtection(false);
-        }
-        int cookies = COOKIE_VALUES[p.getInt("cookies", 0)];
-        cb.setCookieBehavior(cookies);
-        cb.setCookieBehaviorPrivateMode(cookies);
-        boolean strip = p.getBoolean("strip", true);
-        cb.setQueryParameterStrippingEnabled(strip);
-        cb.setQueryParameterStrippingPrivateBrowsingEnabled(strip);
-        cb.setSafeBrowsing(p.getBoolean("safeBrowsing", false)
-                ? ContentBlocking.SafeBrowsing.DEFAULT : ContentBlocking.SafeBrowsing.NONE);
-
-        int fp = p.getInt("fingerprint", 0);
-        s.setFingerprintingProtection(fp >= 1);
-        s.setFingerprintingProtectionPrivateBrowsing(true);
-        pref("privacy.resistFingerprinting", fp == 2);
-
-        pref("privacy.donottrackheader.enabled", p.getBoolean("dnt", false));
-
-        boolean preload = p.getBoolean("preload", false);
-        for (String name : PRELOAD_BOOLS) pref(name, preload);
-        pref("network.dns.disablePrefetch", !preload);
-        GeckoPreferenceController.setGeckoPref("network.http.speculative-parallel-limit", preload ? 6 : 0,
-                GeckoPreferenceController.PREF_BRANCH_USER);
-
-        int rtc = p.getInt("webrtc", 1);
-        pref("media.peerconnection.enabled", rtc != 3);
-        pref("media.peerconnection.ice.default_address_only", rtc >= 1);
-        pref("media.peerconnection.ice.no_host", rtc >= 1);
-        pref("media.peerconnection.ice.proxy_only_if_behind_proxy", rtc >= 1);
-        pref("media.peerconnection.ice.proxy_only", rtc == 2);
-    }
-
-    private static void pref(String name, boolean value) {
-        GeckoPreferenceController.setGeckoPref(name, value, GeckoPreferenceController.PREF_BRANCH_USER);
-    }
-
-    static int autoplayDecision(SitePerms perms, String host, int permission) {
-        int mode = perms.decide(SitePerms.AUTOPLAY, host);
-        if (mode == SitePerms.ALLOW) return ContentPermission.VALUE_ALLOW;
-        if (mode == SitePerms.BLOCK) return ContentPermission.VALUE_DENY;
-        return permission == PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE
-                ? ContentPermission.VALUE_ALLOW : ContentPermission.VALUE_DENY;
     }
 
     private static final class Page {
@@ -324,10 +185,10 @@ final class Settings extends LinearLayout {
                     .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, a.getPackageName());
             a.startActivity(i);
         });
-        int th = theme(prefs);
+        int th = EngineSettings.theme(prefs);
         row("Тема", THEMES[th], null, () -> pick("Тема", THEMES, th, w -> {
             prefs.edit().putInt("theme", w).remove("dark").apply();
-            apply(runtime, prefs);
+            EngineSettings.apply(runtime, prefs);
             refresh();
         }));
 
@@ -386,14 +247,14 @@ final class Settings extends LinearLayout {
         toggleRow("Использовать безопасный DNS", "DNS-запросы шифруются и уходят выбранному провайдеру",
                 doh != 0, on -> {
                     prefs.edit().putInt("doh", on ? Math.max(1, prefs.getInt("dohLast", 1)) : 0).apply();
-                    apply(runtime, prefs);
+                    EngineSettings.apply(runtime, prefs);
                     refresh();
                 });
         if (doh == 0) return;
         String[] names = Arrays.copyOfRange(DOH_NAMES, 1, DOH_NAMES.length);
         row("Провайдер", DOH_NAMES[doh], null, () -> pick("Провайдер", names, doh - 1, w -> {
             prefs.edit().putInt("doh", w + 1).putInt("dohLast", w + 1).apply();
-            apply(runtime, prefs);
+            EngineSettings.apply(runtime, prefs);
             refresh();
         }));
         choice("Режим", DOH_MODES, "dohMode", 0, true);
@@ -508,7 +369,7 @@ final class Settings extends LinearLayout {
                     .setTitle("Добавить сайт")
                     .setView(wrap(in))
                     .setPositiveButton("Далее", (d, w) -> {
-                        String h = hostOf(in.getText().toString());
+                        String h = Urls.hostOfInput(in.getText().toString());
                         if (!h.isEmpty()) editException(c, h);
                     })
                     .setNegativeButton("Отмена", null)
@@ -611,18 +472,18 @@ final class Settings extends LinearLayout {
     private void buildLanguages() {
         section("Языки сайтов");
         note("Сайты получают этот список в заголовке Accept-Language и выбирают по нему язык");
-        String[] cur = locales(prefs);
+        String[] cur = EngineSettings.locales(prefs);
         if (cur.length == 0) {
-            row(langName(Locale.getDefault().getLanguage()), "Язык системы", null, null);
+            row(Urls.langName(Locale.getDefault().getLanguage()), "Язык системы", null, null);
         }
         for (int i = 0; i < cur.length; i++) {
             int idx = i;
-            row(langName(cur[i]), i == 0 ? "Основной" : null, null, () -> {
+            row(Urls.langName(cur[i]), i == 0 ? "Основной" : null, null, () -> {
                 List<String> acts = new ArrayList<>();
                 if (idx > 0) acts.add("Сделать основным");
                 acts.add("Удалить");
                 new Sheet(a)
-                        .setTitle(langName(cur[idx]))
+                        .setTitle(Urls.langName(cur[idx]))
                         .setItems(acts.toArray(new String[0]), (d, w) -> {
                             List<String> l = new ArrayList<>(Arrays.asList(cur));
                             String code = l.remove(idx);
@@ -640,7 +501,7 @@ final class Settings extends LinearLayout {
             for (String c : LANG_CODES) {
                 if (have.contains(c)) continue;
                 codes.add(c);
-                names.add(langName(c));
+                names.add(Urls.langName(c));
             }
             push("Добавить язык", () -> {
                 for (int i = 0; i < codes.size(); i++) {
@@ -648,7 +509,7 @@ final class Settings extends LinearLayout {
                     row(names.get(i), null, null, () -> {
                         have.add(code);
                         prefs.edit().putString("langs", String.join(",", have)).apply();
-                        apply(runtime, prefs);
+                        EngineSettings.apply(runtime, prefs);
                         back();
                     });
                 }
@@ -658,8 +519,8 @@ final class Settings extends LinearLayout {
         section("Перевод");
         toggle("Предлагать перевод страниц", "Перевод выполняется на устройстве, текст никуда не отправляется",
                 "translateOffer", true, true);
-        String target = translateTarget(prefs);
-        row("Переводить на", langName(target), null, () -> RuntimeTranslation.listSupportedLanguages().accept(sup -> {
+        String target = EngineSettings.translateTarget(prefs);
+        row("Переводить на", Urls.langName(target), null, () -> RuntimeTranslation.listSupportedLanguages().accept(sup -> {
             if (sup == null || sup.toLanguages == null) return;
             List<Language> to = new ArrayList<>(sup.toLanguages);
             String[] names = new String[to.size()];
@@ -679,15 +540,8 @@ final class Settings extends LinearLayout {
 
     private void saveLangs(List<String> l) {
         prefs.edit().putString("langs", String.join(",", l)).apply();
-        apply(runtime, prefs);
+        EngineSettings.apply(runtime, prefs);
         refresh();
-    }
-
-    private static String langName(String code) {
-        Locale l = Locale.forLanguageTag(code);
-        String n = l.getDisplayName(Locale.forLanguageTag("ru"));
-        if (n.isEmpty()) return code;
-        return n.substring(0, 1).toUpperCase(Locale.ROOT) + n.substring(1);
     }
 
     private void buildModels() {
@@ -741,14 +595,6 @@ final class Settings extends LinearLayout {
                         host.clearData(checked[0], checked[1], checked[2], checked[3]))
                 .setNegativeButton("Отмена", null)
                 .show();
-    }
-
-    static String hostOf(String in) {
-        String s = in.trim();
-        if (s.isEmpty()) return "";
-        if (!s.contains("://")) s = "https://" + s;
-        String h = Uri.parse(s).getHost();
-        return h == null ? "" : h.toLowerCase(Locale.ROOT);
     }
 
     private View wrap(View v) {
@@ -861,7 +707,7 @@ final class Settings extends LinearLayout {
         int cur = Math.min(prefs.getInt(key, def), options.length - 1);
         row(title, options[cur], null, () -> pick(title, options, cur, w -> {
             prefs.edit().putInt(key, w).apply();
-            if (engine) apply(runtime, prefs);
+            if (engine) EngineSettings.apply(runtime, prefs);
             refresh();
         }));
     }
@@ -869,7 +715,7 @@ final class Settings extends LinearLayout {
     private void toggle(String title, String summary, String key, boolean def, boolean engine) {
         toggleRow(title, summary, prefs.getBoolean(key, def), v -> {
             prefs.edit().putBoolean(key, v).apply();
-            if (engine) apply(runtime, prefs);
+            if (engine) EngineSettings.apply(runtime, prefs);
             host.onChromeSettingsChanged();
         });
     }

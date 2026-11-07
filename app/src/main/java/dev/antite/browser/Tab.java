@@ -26,6 +26,8 @@ final class Tab {
     int progress;
     String docLang;
     boolean translated;
+    boolean thumbRequested;
+    boolean bookmarked;
 
     Tab(long id, boolean incognito) {
         this.id = id;

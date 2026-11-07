@@ -47,6 +47,7 @@ final class ListPage extends LinearLayout {
 
     private final Activity a;
     private final Runnable onClose;
+    private int generation;
     private final TextView title;
     private final EditText search;
     private final TextView clear;
@@ -147,12 +148,22 @@ final class ListPage extends LinearLayout {
     }
 
     void refresh() {
-        if (source == null) return;
-        items.clear();
-        items.addAll(source.load(search.getText().toString().trim()));
+        Source src = source;
+        if (src == null) return;
+        int gen = ++generation;
+        String filter = search.getText().toString().trim();
+        Db.get(a).read(() -> src.load(filter), loaded -> {
+            if (gen != generation) return;
+            items.clear();
+            items.addAll(loaded);
+            adapter.notifyDataSetChanged();
+            empty.setText(src.emptyText());
+            empty.setVisibility(items.isEmpty() ? VISIBLE : GONE);
+        });
+    }
+
+    void redraw() {
         adapter.notifyDataSetChanged();
-        empty.setText(source.emptyText());
-        empty.setVisibility(items.isEmpty() ? VISIBLE : GONE);
     }
 
     static String ago(long time) {

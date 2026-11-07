@@ -34,6 +34,59 @@ public class MediaService extends Service {
 
     private android.media.session.MediaSession session;
 
+    static MediaSession.Delegate delegateFor(Context c, Tab t, IconCache icons, Runnable onFirstPlay) {
+        return new MediaSession.Delegate() {
+            @Override
+            public void onActivated(org.mozilla.geckoview.GeckoSession s, MediaSession ms) {
+                gecko = ms;
+                title = t.title;
+                artist = Urls.host(t.url);
+                art = icons.get(Urls.host(t.url));
+            }
+
+            @Override
+            public void onDeactivated(org.mozilla.geckoview.GeckoSession s, MediaSession ms) {
+                if (gecko == ms) stop(c);
+            }
+
+            @Override
+            public void onMetadata(org.mozilla.geckoview.GeckoSession s, MediaSession ms, MediaSession.Metadata meta) {
+                if (gecko != ms) return;
+                title = meta.title != null && !meta.title.isEmpty() ? meta.title : t.title;
+                artist = meta.artist != null && !meta.artist.isEmpty() ? meta.artist : Urls.host(t.url);
+                if (meta.artwork != null) {
+                    meta.artwork.getBitmap(256).accept(b -> {
+                        if (b != null && gecko == ms) {
+                            art = b;
+                            update(c);
+                        }
+                    }, e -> { });
+                }
+                if (playing) update(c);
+            }
+
+            @Override
+            public void onPlay(org.mozilla.geckoview.GeckoSession s, MediaSession ms) {
+                gecko = ms;
+                playing = true;
+                onFirstPlay.run();
+                update(c);
+            }
+
+            @Override
+            public void onPause(org.mozilla.geckoview.GeckoSession s, MediaSession ms) {
+                if (gecko != ms) return;
+                playing = false;
+                update(c);
+            }
+
+            @Override
+            public void onStop(org.mozilla.geckoview.GeckoSession s, MediaSession ms) {
+                if (gecko == ms) stop(c);
+            }
+        };
+    }
+
     static void update(Context c) {
         c.startForegroundService(new Intent(c, MediaService.class).setAction(ACTION_UPDATE));
     }

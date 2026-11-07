@@ -5,11 +5,15 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.os.Handler;
+import android.os.Looper;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 final class Db extends SQLiteOpenHelper {
     static final class Entry {
@@ -30,10 +34,30 @@ final class Db extends SQLiteOpenHelper {
 
     private static final long HISTORY_KEEP_MS = 90L * 24 * 3600 * 1000;
 
-    private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private static Db instance;
 
-    Db(Context c) {
+    private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final Handler main = new Handler(Looper.getMainLooper());
+
+    static synchronized Db get(Context c) {
+        if (instance == null) instance = new Db(c.getApplicationContext());
+        return instance;
+    }
+
+    private Db(Context c) {
         super(c, "antite.db", null, 2);
+        setWriteAheadLoggingEnabled(true);
+    }
+
+    void run(Runnable work) {
+        io.execute(work);
+    }
+
+    <T> void read(Supplier<T> query, Consumer<T> onMain) {
+        io.execute(() -> {
+            T v = query.get();
+            main.post(() -> onMain.accept(v));
+        });
     }
 
     @Override
@@ -113,7 +137,6 @@ final class Db extends SQLiteOpenHelper {
     }
 
     List<Site> frequent(java.util.Set<String> skipHosts, int limit) {
-        flush();
         List<Site> out = new ArrayList<>();
         java.util.Map<String, int[]> score = new java.util.LinkedHashMap<>();
         java.util.Map<String, String> titles = new java.util.HashMap<>();
@@ -148,7 +171,6 @@ final class Db extends SQLiteOpenHelper {
     }
 
     List<Entry> suggest(String text, int limit) {
-        flush();
         List<Entry> out = new ArrayList<>();
         String f = "%" + text + "%";
         java.util.Set<String> seen = new java.util.HashSet<>();
@@ -171,28 +193,23 @@ final class Db extends SQLiteOpenHelper {
     }
 
     void visit(String url, String title) {
-        long now = System.currentTimeMillis();
-        io.execute(() -> {
-            SQLiteDatabase db = getWritableDatabase();
-            ContentValues v = new ContentValues();
-            v.put("url", url);
-            v.put("visited", now);
-            if (title != null && !title.isEmpty()) v.put("title", title);
-            if (db.update("history", v, "url=?", new String[]{url}) == 0) {
-                db.insert("history", null, v);
-            } else {
-                db.execSQL("UPDATE history SET visits=visits+1 WHERE url=?", new Object[]{url});
-            }
-        });
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues v = new ContentValues();
+        v.put("url", url);
+        v.put("visited", System.currentTimeMillis());
+        if (title != null && !title.isEmpty()) v.put("title", title);
+        if (db.update("history", v, "url=?", new String[]{url}) == 0) {
+            db.insert("history", null, v);
+        } else {
+            db.execSQL("UPDATE history SET visits=visits+1 WHERE url=?", new Object[]{url});
+        }
     }
 
     void title(String url, String title) {
         if (title == null || title.isEmpty()) return;
-        io.execute(() -> {
-            ContentValues v = new ContentValues();
-            v.put("title", title);
-            getWritableDatabase().update("history", v, "url=?", new String[]{url});
-        });
+        ContentValues v = new ContentValues();
+        v.put("title", title);
+        getWritableDatabase().update("history", v, "url=?", new String[]{url});
     }
 
     boolean[] visited(String[] urls) {
@@ -212,11 +229,11 @@ final class Db extends SQLiteOpenHelper {
     }
 
     void deleteHistory(long id) {
-        io.execute(() -> getWritableDatabase().delete("history", "id=?", new String[]{String.valueOf(id)}));
+        getWritableDatabase().delete("history", "id=?", new String[]{String.valueOf(id)});
     }
 
     void clearHistory() {
-        io.execute(() -> getWritableDatabase().delete("history", null, null));
+        getWritableDatabase().delete("history", null, null);
     }
 
     private void prune() {
@@ -289,18 +306,15 @@ final class Db extends SQLiteOpenHelper {
         getWritableDatabase().delete("downloads", "id=?", new String[]{String.valueOf(id)});
     }
 
-    void addClosed(Tab t) {
-        if (t.incognito || t.url.isEmpty() || "about:blank".equals(t.url)) return;
+    void addClosed(String url, String title, String state) {
         ContentValues v = new ContentValues();
-        v.put("url", t.url);
-        v.put("title", t.title);
-        v.put("state", t.state);
+        v.put("url", url);
+        v.put("title", title);
+        v.put("state", state);
         v.put("closed", System.currentTimeMillis());
-        io.execute(() -> {
-            SQLiteDatabase db = getWritableDatabase();
-            db.insert("closed", null, v);
-            db.execSQL("DELETE FROM closed WHERE id NOT IN (SELECT id FROM closed ORDER BY closed DESC LIMIT 50)");
-        });
+        SQLiteDatabase db = getWritableDatabase();
+        db.insert("closed", null, v);
+        db.execSQL("DELETE FROM closed WHERE id NOT IN (SELECT id FROM closed ORDER BY closed DESC LIMIT 50)");
     }
 
     List<Entry> closed(String filter) {
@@ -312,7 +326,6 @@ final class Db extends SQLiteOpenHelper {
     }
 
     private List<Entry> query(String base, String order, String filter, int limit) {
-        flush();
         List<Entry> out = new ArrayList<>();
         String sql = base;
         String[] args = null;
@@ -330,12 +343,5 @@ final class Db extends SQLiteOpenHelper {
             }
         }
         return out;
-    }
-
-    void flush() {
-        try {
-            io.submit(() -> { }).get();
-        } catch (Exception ignored) {
-        }
     }
 }

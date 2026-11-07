@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Typeface;
-import android.net.Uri;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -50,39 +49,58 @@ final class NewTabPage extends ScrollView {
         addView(content, new LayoutParams(-1, -2));
     }
 
-    static String hostOf(String url) {
-        String h = url == null ? null : Uri.parse(url).getHost();
-        if (h == null) return url == null ? "" : url;
-        return h.startsWith("www.") ? h.substring(4) : h;
-    }
+    private final Runnable reload = this::load;
+    private List<Db.Entry> pins = new ArrayList<>();
+    private List<Db.Site> frequent = new ArrayList<>();
+    private int generation;
 
     void refresh() {
+        removeCallbacks(reload);
+        postDelayed(reload, generation == 0 ? 0 : 150);
+    }
+
+    private void load() {
+        int gen = ++generation;
+        Set<String> hidden = new HashSet<>(prefs.getStringSet("hiddenHosts", new HashSet<>()));
+        db.read(() -> {
+            List<Db.Entry> p = db.pins();
+            Set<String> skip = new HashSet<>(hidden);
+            for (Db.Entry e : p) skip.add(Urls.host(e.url));
+            return new Object[]{p, db.frequent(skip, FREQUENT)};
+        }, r -> {
+            if (gen != generation) return;
+            @SuppressWarnings("unchecked") List<Db.Entry> p = (List<Db.Entry>) r[0];
+            @SuppressWarnings("unchecked") List<Db.Site> f = (List<Db.Site>) r[1];
+            pins = p;
+            frequent = f;
+            redraw();
+        });
+    }
+
+    void redraw() {
         content.removeAllViews();
         int cols = Math.max(4, Math.min(8, (getWidth() > 0 ? getWidth() : a.getResources().getDisplayMetrics().widthPixels)
                 / Ui.dp(a, 88)));
-
-        List<Db.Entry> pins = db.pins();
         header("Закреплённые");
         List<android.view.View> tiles = new ArrayList<>();
-        Set<String> pinnedHosts = new HashSet<>();
         for (Db.Entry p : pins) {
-            pinnedHosts.add(hostOf(p.url));
             tiles.add(tile(p.title, p.url, () -> host.openUrl(p.url, false), () -> pinActions(p)));
         }
         tiles.add(addTile());
         grid(tiles, cols);
-
-        Set<String> skip = new HashSet<>(prefs.getStringSet("hiddenHosts", new HashSet<>()));
-        skip.addAll(pinnedHosts);
-        List<Db.Site> freq = db.frequent(skip, FREQUENT);
-        if (!freq.isEmpty()) {
+        if (!frequent.isEmpty()) {
             header("Часто посещаемые");
             List<android.view.View> ft = new ArrayList<>();
-            for (Db.Site s : freq) {
+            for (Db.Site s : frequent) {
                 ft.add(tile(s.host, s.url, () -> host.openUrl(s.url, false), () -> frequentActions(s)));
             }
             grid(ft, cols);
         }
+    }
+
+    private void change(Runnable write) {
+        db.run(write);
+        refresh();
     }
 
     private void header(String text) {
@@ -139,12 +157,12 @@ final class NewTabPage extends ScrollView {
         FrameLayout circle = new FrameLayout(a);
         circle.setBackground(Ui.round(Ui.CARD, Ui.dp(a, 28)));
         ImageView icon = new ImageView(a);
-        Bitmap b = icons.get(hostOf(url));
-        if (b == null) b = Ui.letterIcon(a, hostOf(url), 36);
+        Bitmap b = icons.get(Urls.host(url));
+        if (b == null) b = Ui.letterIcon(a, Urls.host(url), 36);
         icon.setImageBitmap(b);
         circle.addView(icon, new FrameLayout.LayoutParams(Ui.dp(a, 36), Ui.dp(a, 36), Gravity.CENTER));
         t.addView(circle, new LinearLayout.LayoutParams(Ui.dp(a, 56), Ui.dp(a, 56)));
-        label(t, title == null || title.isEmpty() ? hostOf(url) : title);
+        label(t, title == null || title.isEmpty() ? Urls.host(url) : title);
         t.setOnClickListener(v -> click.run());
         t.setOnLongClickListener(v -> {
             longClick.run();
@@ -170,14 +188,14 @@ final class NewTabPage extends ScrollView {
     private void pinActions(Db.Entry p) {
         String[] items = {"Открыть в новой вкладке", "Изменить", "Сдвинуть влево", "Сдвинуть вправо", "Открепить"};
         new Sheet(a)
-                .setTitle(p.title == null || p.title.isEmpty() ? hostOf(p.url) : p.title)
+                .setTitle(p.title == null || p.title.isEmpty() ? Urls.host(p.url) : p.title)
                 .setItems(items, (d, w) -> {
                     switch (w) {
                         case 0: host.openUrl(p.url, true); break;
                         case 1: editPin(p, p.title, p.url); break;
-                        case 2: db.movePin(p.id, -1); refresh(); break;
-                        case 3: db.movePin(p.id, 1); refresh(); break;
-                        case 4: db.deletePin(p.id); refresh(); break;
+                        case 2: change(() -> db.movePin(p.id, -1)); break;
+                        case 3: change(() -> db.movePin(p.id, 1)); break;
+                        case 4: change(() -> db.deletePin(p.id)); break;
                     }
                 })
                 .show();
@@ -191,8 +209,7 @@ final class NewTabPage extends ScrollView {
                     if (w == 0) {
                         host.openUrl(s.url, true);
                     } else if (w == 1) {
-                        db.addPin(s.url, s.host);
-                        refresh();
+                        change(() -> db.addPin(s.url, s.host));
                     } else {
                         Set<String> hidden = new HashSet<>(prefs.getStringSet("hiddenHosts", new HashSet<>()));
                         hidden.add(s.host);
@@ -229,13 +246,15 @@ final class NewTabPage extends ScrollView {
                     }
                     if (!u.contains("://")) u = "https://" + u;
                     String n = name.getText().toString().trim();
-                    if (n.isEmpty()) n = hostOf(u);
-                    if (p == null) {
-                        db.addPin(u, n);
-                    } else {
-                        db.updatePin(p.id, u, n);
-                    }
-                    refresh();
+                    String target = u;
+                    String label = n.isEmpty() ? Urls.host(u) : n;
+                    change(() -> {
+                        if (p == null) {
+                            db.addPin(target, label);
+                        } else {
+                            db.updatePin(p.id, target, label);
+                        }
+                    });
                 })
                 .setNegativeButton("Отмена", null)
                 .show();

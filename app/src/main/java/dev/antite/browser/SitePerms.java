@@ -252,6 +252,14 @@ final class SitePerms {
         }
     }
 
+    int autoplay(String host, int permission) {
+        int mode = decide(AUTOPLAY, host);
+        if (mode == ALLOW) return ContentPermission.VALUE_ALLOW;
+        if (mode == BLOCK) return ContentPermission.VALUE_DENY;
+        return permission == PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE
+                ? ContentPermission.VALUE_ALLOW : ContentPermission.VALUE_DENY;
+    }
+
     String label(Cat c, int value) {
         for (int i = 0; i < c.values.length; i++) {
             if (c.values[i] == value) return c.labels[i];

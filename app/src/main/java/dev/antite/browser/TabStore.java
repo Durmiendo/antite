@@ -23,6 +23,7 @@ final class TabStore {
     private final File file;
     private final File thumbs;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
 
     TabStore(Context c) {
         file = new File(c.getFilesDir(), "tabs.json");
@@ -107,9 +108,19 @@ final class TabStore {
         });
     }
 
-    Bitmap loadThumb(long id) {
-        File f = new File(thumbs, id + ".jpg");
-        return f.exists() ? BitmapFactory.decodeFile(f.getPath()) : null;
+    void loadThumb(Tab t, Runnable onLoaded) {
+        if (t.incognito || t.thumb != null || t.thumbRequested) return;
+        t.thumbRequested = true;
+        long id = t.id;
+        io.execute(() -> {
+            File f = new File(thumbs, id + ".jpg");
+            Bitmap b = f.exists() ? BitmapFactory.decodeFile(f.getPath()) : null;
+            if (b == null) return;
+            main.post(() -> {
+                if (t.thumb == null) t.thumb = b;
+                onLoaded.run();
+            });
+        });
     }
 
     void deleteThumb(long id) {

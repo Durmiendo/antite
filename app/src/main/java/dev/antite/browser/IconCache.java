@@ -62,9 +62,18 @@ final class IconCache {
         if (host == null || host.isEmpty()) return null;
         Bitmap b = mem.get(host);
         if (b == null) {
-            File f = file(host);
-            b = f.exists() ? BitmapFactory.decodeFile(f.getPath()) : null;
-            mem.put(host, b == null ? MISSING : b);
+            mem.put(host, MISSING);
+            io.execute(() -> {
+                File f = file(host);
+                Bitmap d = f.exists() ? BitmapFactory.decodeFile(f.getPath()) : null;
+                if (d == null) return;
+                main.post(() -> {
+                    mem.put(host, d);
+                    iconColors.remove(host);
+                    if (listener != null) listener.onIcon(host);
+                });
+            });
+            return null;
         }
         return b == MISSING ? null : b;
     }
@@ -87,8 +96,9 @@ final class IconCache {
         Integer c = iconColors.get(host);
         if (c == null) {
             Bitmap b = get(host);
-            c = b == null ? 0 : dominant(b);
-            if (b != null) iconColors.put(host, c);
+            if (b == null) return 0;
+            c = dominant(b);
+            iconColors.put(host, c);
         }
         return c;
     }
@@ -115,12 +125,14 @@ final class IconCache {
 
     void onPageIcon(String host, String iconUrl, String origin) {
         if (host == null || host.isEmpty() || iconUrl == null) return;
-        File f = file(host);
-        if (f.exists() && System.currentTimeMillis() - f.lastModified() < REFRESH_MS) return;
-        synchronized (inFlight) {
-            if (!inFlight.add(host)) return;
-        }
-        fetch(host, iconUrl, origin + "/favicon.ico");
+        io.execute(() -> {
+            File f = file(host);
+            if (f.exists() && System.currentTimeMillis() - f.lastModified() < REFRESH_MS) return;
+            synchronized (inFlight) {
+                if (!inFlight.add(host)) return;
+            }
+            main.post(() -> fetch(host, iconUrl, origin + "/favicon.ico"));
+        });
     }
 
     private void fetch(String host, String url, String fallback) {
