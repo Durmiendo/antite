@@ -1,0 +1,19 @@
+# build output
+build/
+.gradle/
+*.apk
+*.aab
+local.properties
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+
+# AI assistant files - never published
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+AGENTS.md
+.cursor/
+.aider*

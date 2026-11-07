@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'dev.antite.browser'
+    compileSdkVersion 'android-37.2'
+
+    defaultConfig {
+        applicationId 'dev.antite.browser'
+        minSdk 30
+        targetSdk 36
+        versionCode 1
+        versionName '0.1'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'x86_64'
+            universalApk false
+        }
+    }
+}
+
+dependencies {
+    implementation 'org.mozilla.geckoview:geckoview:159.0.20261102144711'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+}
