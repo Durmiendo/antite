@@ -15,10 +15,25 @@ android {
         versionName '0.1'
     }
 
+    def keysDir = findProperty('antite.keysDir')
+    signingConfigs {
+        if (keysDir) {
+            release {
+                def password = new File(keysDir, 'password').text.trim()
+                storeFile new File(keysDir, 'apk.p12')
+                storeType 'pkcs12'
+                storePassword password
+                keyAlias 'antite'
+                keyPassword password
+                enableV3Signing true
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            if (keysDir) signingConfig signingConfigs.release
         }
     }
 
