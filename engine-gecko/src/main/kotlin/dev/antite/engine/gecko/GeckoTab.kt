@@ -83,6 +83,7 @@ internal class GeckoTab(
                 override fun stop() = ms.stop()
                 override fun next() = ms.nextTrack()
                 override fun previous() = ms.previousTrack()
+                override fun seekTo(seconds: Double) = ms.seekTo(seconds, false)
             }
         }
     }

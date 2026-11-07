@@ -46,6 +46,8 @@ import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission
 import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.GeckoWebExecutor
+import org.mozilla.geckoview.WebRequest
 import org.mozilla.geckoview.StorageController
 import org.mozilla.geckoview.TranslationsController.RuntimeTranslation
 import org.mozilla.geckoview.WebExtension
@@ -113,6 +115,39 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
         GeckoTab(this, options, callbacks, open = true)
 
     override fun createView(context: Context): EngineView = GeckoEngineView(GeckoView(context))
+
+    private val web by lazy { GeckoWebExecutor(runtime) }
+    private val io = java.util.concurrent.Executors.newCachedThreadPool()
+
+    override fun fetch(url: String, maxBytes: Int, done: (ByteArray?) -> Unit) {
+        val request = try {
+            WebRequest.Builder(url).build()
+        } catch (e: Exception) {
+            done(null)
+            return
+        }
+        web.fetch(request).accept({ resp ->
+            io.execute {
+                val bytes = try {
+                    val body = resp?.body
+                    if (resp == null || resp.statusCode !in 200..299 || body == null) null
+                    else body.use { input ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buf = ByteArray(16 * 1024)
+                        while (out.size() <= maxBytes) {
+                            val n = input.read(buf)
+                            if (n <= 0) break
+                            out.write(buf, 0, n)
+                        }
+                        if (out.size() > maxBytes) null else out.toByteArray()
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+                main.post { done(bytes) }
+            }
+        }, { main.post { done(null) } })
+    }
 
     override fun applySettings(settings: EngineSettings) {
         val s = runtime.settings

@@ -33,6 +33,8 @@ interface Engine {
     fun createTab(options: TabOptions, callbacks: TabCallbacks): EngineTab
 
     fun createView(context: Context): EngineView
+
+    fun fetch(url: String, maxBytes: Int, done: (ByteArray?) -> Unit)
 }
 
 fun interface EngineFactory {

@@ -78,6 +78,8 @@ interface MediaController {
     fun next()
 
     fun previous()
+
+    fun seekTo(seconds: Double)
 }
 
 sealed interface MediaEvent {
