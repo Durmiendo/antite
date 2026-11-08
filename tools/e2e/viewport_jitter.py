@@ -20,7 +20,7 @@ from server import ReportServer  # noqa: E402
 PORT = 8773
 PAGE = b"""<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">
 <body style="margin:0">
-<input id=i style="position:absolute;top:300px;left:5%;width:90%;font-size:20px;height:40px">
+<input id=i style="position:absolute;top:200px;left:5%;width:90%;font-size:20px;height:200px">
 <div style="height:8000px;background:linear-gradient(#335,#a53)"></div>
 <script>
 addEventListener('resize', () => fetch('/report?resize,' + innerHeight + ',' + scrollY));

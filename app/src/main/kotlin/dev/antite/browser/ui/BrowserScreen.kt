@@ -3,6 +3,8 @@ package dev.antite.browser.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -102,6 +104,7 @@ fun BrowserScreen(b: Browser) {
     var imeWasVisible by remember { mutableStateOf(false) }
     LaunchedEffect(imeInset > 0) {
         if (imeWasVisible && imeInset == 0 && b.urlFocused) b.urlFocused = false
+        if (imeWasVisible && imeInset == 0) b.dismissLoginOffer()
         imeWasVisible = imeInset > 0
     }
 
@@ -151,6 +154,7 @@ fun BrowserScreen(b: Browser) {
                 Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(with(density) { navInset.toDp() }).background(bar))
             }
             b.translateOffer?.let { TranslateBar(b, it, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() })) }
+            b.loginOffer?.let { if (imeInset > 0 && !b.urlFocused && b.overlay == Overlay.NONE) LoginBar(b, it, Modifier.align(Alignment.BottomCenter)) }
             if (b.defaultBrowserOffer && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
                 DefaultBrowserBar(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() }))
             }
@@ -359,6 +363,30 @@ private fun FindBar(b: Browser) {
         IconBtn(R.drawable.ic_close, "Закрыть") { b.hideFind() }
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}
+
+@Composable
+private fun LoginBar(b: Browser, offer: dev.antite.engine.Prompt.SelectLogin, modifier: Modifier) {
+    val p = LocalPalette.current
+    Row(
+        modifier.fillMaxWidth().height(48.dp).background(p.menu).padding(start = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+            offer.options.forEachIndexed { i, o ->
+                Row(
+                    Modifier.padding(horizontal = 4.dp).height(36.dp).background(p.pill, RoundedCornerShape(18.dp))
+                        .clickable { b.pickLogin(i) }.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Ico(R.drawable.ic_key, size = 18)
+                    Text(if (o.generated) "Предложить надёжный пароль" else o.login.username.ifEmpty { "Без имени пользователя" },
+                        color = p.text, fontSize = 14.sp, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        }
+        IconBtn(R.drawable.ic_close, "Скрыть") { b.dismissLoginOffer() }
+    }
 }
 
 @Composable

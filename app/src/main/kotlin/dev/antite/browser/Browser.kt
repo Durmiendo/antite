@@ -91,6 +91,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var findResult by mutableStateOf("")
     var translateOffer by mutableStateOf<String?>(null)
     var defaultBrowserOffer by mutableStateOf(false)
+    var loginOffer by mutableStateOf<Prompt.SelectLogin?>(null)
     private var defaultBrowserChecked = false
     var menuOpen by mutableStateOf(false)
     var suggestQuery by mutableStateOf("")
@@ -189,6 +190,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         setToolbarHidden(0f)
         hideFind()
         translateOffer = null
+        dismissLoginOffer()
         trimSessions()
         refreshBookmarked(t)
         scheduleSave()
@@ -438,6 +440,18 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             later -> prefs.edit { putLong("defaultBrowserLater", System.currentTimeMillis() + 3L * 24 * 3600 * 1000) }
             else -> prefs.edit { putBoolean("defaultBrowserNever", true) }
         }
+    }
+
+    fun dismissLoginOffer() {
+        val p = loginOffer ?: return
+        loginOffer = null
+        p.dismiss()
+    }
+
+    fun pickLogin(index: Int) {
+        val p = loginOffer ?: return
+        loginOffer = null
+        p.select(index)
     }
 
     // ---------------------------------------------------------------- page actions
@@ -747,6 +761,11 @@ class Browser(val activity: MainActivity, val engine: Engine) {
                 if (uris.isNullOrEmpty()) p.dismiss() else p.confirm(uris)
             }
             is Prompt.SaveLogin -> AutofillPrompts.saveLogin(this, p)
+            // Like Chrome, saved logins and a strong password are offered above the keyboard; typing ignores them.
+            is Prompt.SelectLogin -> if (t !== current) p.dismiss() else {
+                dismissLoginOffer()
+                loginOffer = p
+            }
             is Prompt.SelectCard -> Auth.require(activity, "Заполнить данные карты", { show(UiDialog.Engine(p)) }, { p.dismiss() })
             is Prompt.SaveCard -> if (prefs.bool("cardsEnabled", true)) show(UiDialog.Engine(p)) else p.dismiss()
             is Prompt.SaveAddress -> if (prefs.bool("addressesEnabled", true)) show(UiDialog.Engine(p)) else p.dismiss()

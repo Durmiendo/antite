@@ -281,11 +281,6 @@ private fun EnginePromptDialog(prompt: Prompt, remove: () -> Unit) {
             DialogButton("Остаться"), DialogButton("Покинуть") { prompt.leave() }), false, dismiss)
         is Prompt.Repost -> MessageDialog(null, "Отправить данные формы повторно?", 0, listOf(
             DialogButton("Отмена"), DialogButton("Отправить") { prompt.resend() }), false, dismiss)
-        is Prompt.SelectLogin -> ItemsDialog("Войти как", prompt.options.mapIndexed { i, o ->
-            DialogButton(if (o.generated) "Предложить надёжный пароль" else o.login.username.ifEmpty { "Без имени пользователя" }) {
-                remove(); prompt.select(i)
-            }
-        }, dismiss)
         is Prompt.SelectCard -> ItemsDialog("Выберите карту", prompt.cards.mapIndexed { i, c ->
             DialogButton("•••• " + c.number.filter { it.isDigit() }.takeLast(4) + if (c.name.isEmpty()) "" else "  ${c.name}") {
                 remove(); prompt.select(i)
@@ -303,7 +298,7 @@ private fun EnginePromptDialog(prompt: Prompt, remove: () -> Unit) {
         }
         is Prompt.SaveAddress -> MessageDialog("Сохранить адрес?", addressLine(prompt.address), 0,
             listOf(DialogButton("Сохранить") { prompt.save() }, DialogButton("Не сейчас")), true, dismiss)
-        is Prompt.SaveLogin, is Prompt.File, is Prompt.Popup -> LaunchedEffect(prompt) { dismiss() }
+        is Prompt.SaveLogin, is Prompt.SelectLogin, is Prompt.File, is Prompt.Popup -> LaunchedEffect(prompt) { dismiss() }
     }
 }
 
