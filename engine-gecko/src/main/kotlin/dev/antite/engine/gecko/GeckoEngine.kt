@@ -184,13 +184,13 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
     private val io = java.util.concurrent.Executors.newCachedThreadPool()
 
     override fun fetch(url: String, maxBytes: Int, done: (ByteArray?) -> Unit) {
-        val request = try {
-            WebRequest.Builder(url).build()
+        val result = try {
+            web.fetch(WebRequest.Builder(url).build())
         } catch (e: Exception) {
             done(null)
             return
         }
-        web.fetch(request).accept({ resp ->
+        result.accept({ resp ->
             io.execute {
                 val bytes = try {
                     val body = resp?.body
