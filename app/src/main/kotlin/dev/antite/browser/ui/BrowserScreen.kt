@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,9 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imeAnimationSource
+import androidx.compose.foundation.layout.imeAnimationTarget
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -34,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +76,7 @@ import dev.antite.browser.R
 import dev.antite.browser.Urls
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BrowserScreen(b: Browser) {
     val p = LocalPalette.current
@@ -81,6 +87,16 @@ fun BrowserScreen(b: Browser) {
     val bar = if (t?.incognito == true) p.toolbarIncognito else p.toolbar
     val navInset = WindowInsets.navigationBars.getBottom(density)
     val imeInset = WindowInsets.ime.getBottom(density)
+    val navHidden by remember(toolbarPx) {
+        derivedStateOf { !b.fullscreen && b.hidden >= toolbarPx && b.overlay == Overlay.NONE && !b.urlFocused }
+    }
+    // The page is resized once per transition, not on every animation frame: each resize makes Gecko lay the page
+    // out again and the page jerks. The keyboard counts from where its animation ends when showing, from where it
+    // starts when hiding. The navigation bar counts as gone only once it has left the screen: resized while the bar is
+    // still there, Gecko lays fixed bottom elements out a toolbar height too high (tools/e2e/fixed_bottom.py).
+    val imeTarget = WindowInsets.imeAnimationTarget.getBottom(density)
+    val imeSettled = if (imeInset == imeTarget) imeInset else minOf(WindowInsets.imeAnimationSource.getBottom(density), imeTarget)
+    val navFull = WindowInsets.navigationBarsIgnoringVisibility.getBottom(density)
     // Back with the keyboard open hides the keyboard; like Firefox, that also ends address editing.
     var imeWasVisible by remember { mutableStateOf(false) }
     LaunchedEffect(imeInset > 0) {
@@ -90,12 +106,11 @@ fun BrowserScreen(b: Browser) {
 
     Box(
         Modifier.fillMaxSize().background(bar)
-            .then(if (b.fullscreen) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top)))
-            .windowInsetsPadding(WindowInsets.ime.only(WindowInsetsSides.Bottom)),
+            .then(if (b.fullscreen) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top))),
     ) {
         val view = b.engineView
         if (view != null) {
-            val bottomGap = if (b.fullscreen || imeInset > 0) 0 else navInset
+            val bottomGap = if (b.fullscreen) 0 else maxOf(if (navHidden && navInset == 0) 0 else navFull, imeSettled)
             AndroidView(
                 factory = { view.view },
                 modifier = Modifier.fillMaxSize()
@@ -118,42 +133,43 @@ fun BrowserScreen(b: Browser) {
                 onDispose { view.view.removeOnLayoutChangeListener(listener) }
             }
         }
-        if (t != null && Urls.isBlank(t.url) && b.overlay == Overlay.NONE) {
-            NewTabPage(b, Modifier.padding(top = 56.dp).fillMaxSize().background(p.background))
-        }
-        // Full-screen pages cover the toolbar, so it must not stay focusable or tappable under them.
-        if (!b.fullscreen && b.overlay == Overlay.NONE) {
-            Box(Modifier.fillMaxWidth().clipToBounds()) {
-                Toolbar(b, Modifier.offset { IntOffset(0, -b.hidden.toInt()) })
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.only(WindowInsetsSides.Bottom))) {
+            if (t != null && Urls.isBlank(t.url) && b.overlay == Overlay.NONE) {
+                NewTabPage(b, Modifier.padding(top = 56.dp).fillMaxSize().background(p.background))
             }
-            if (b.urlFocused) Suggestions(b, Modifier.padding(top = 56.dp).fillMaxSize().background(bar))
-            if (b.findVisible) FindBar(b)
-        }
-        // The navigation bar is transparent with edge-to-edge; while it is shown the page must not show through it.
-        if (!b.fullscreen && imeInset == 0 && navInset > 0) {
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(with(density) { navInset.toDp() }).background(bar))
-        }
-        b.translateOffer?.let { TranslateBar(b, it, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() })) }
-        if (b.overlay != Overlay.NONE) {
-            // Being hit is enough to keep touches from the page below; consuming them would break scrolling.
-            Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }) {
-                when (b.overlay) {
-                    Overlay.SWITCHER -> TabSwitcher(b)
-                    Overlay.SETTINGS -> SettingsScreen(b)
-                    Overlay.LIBRARY -> LibraryScreen(b)
-                    Overlay.NONE -> {}
+            // Full-screen pages cover the toolbar, so it must not stay focusable or tappable under them.
+            if (!b.fullscreen && b.overlay == Overlay.NONE) {
+                Box(Modifier.fillMaxWidth().clipToBounds()) {
+                    Toolbar(b, Modifier.offset { IntOffset(0, -b.hidden.toInt()) })
+                }
+                if (b.urlFocused) Suggestions(b, Modifier.padding(top = 56.dp).fillMaxSize().background(bar))
+                if (b.findVisible) FindBar(b)
+            }
+            // The navigation bar is transparent with edge-to-edge; while it is shown the page must not show through it.
+            if (!b.fullscreen && imeInset == 0 && navInset > 0) {
+                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(with(density) { navInset.toDp() }).background(bar))
+            }
+            b.translateOffer?.let { TranslateBar(b, it, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() })) }
+            if (b.overlay != Overlay.NONE) {
+                // Being hit is enough to keep touches from the page below; consuming them would break scrolling.
+                Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }) {
+                    when (b.overlay) {
+                        Overlay.SWITCHER -> TabSwitcher(b)
+                        Overlay.SETTINGS -> SettingsScreen(b)
+                        Overlay.LIBRARY -> LibraryScreen(b)
+                        Overlay.NONE -> {}
+                    }
                 }
             }
+            BrowserMenu(b)
+            b.extensionPopup?.let { ExtensionPopup(b, it) }
+            DialogHost(b)
+            Messages(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() } + 12.dp))
         }
-        BrowserMenu(b)
-        b.extensionPopup?.let { ExtensionPopup(b, it) }
-        DialogHost(b)
-        Messages(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() } + 12.dp))
     }
 
     LaunchedEffect(Unit) {
-        snapshotFlow { !b.fullscreen && b.hidden >= toolbarPx && b.overlay == Overlay.NONE && !b.urlFocused }
-            .collect { b.activity.setNavigationBarHidden(it) }
+        snapshotFlow { navHidden }.collect { b.activity.setNavigationBarHidden(it) }
     }
 }
 
