@@ -1,5 +1,5 @@
-"""A page's fixed bottom bar sits right above the system navigation bar whether the toolbar is shown or hidden,
-and the page never shows through the navigation bar.
+"""Scrolling down hides the toolbar and the system navigation bar, like Cromite: a page's fixed bottom bar then sits at
+the very bottom of the screen. With the bars shown it sits right above the navigation bar, which is opaque.
 
 Usage: python3 -I tools/e2e/fixed_bottom.py --serial HOST:PORT
 """
@@ -30,7 +30,7 @@ def measure(d):
     if not red:
         d.fail("fixed bar is not on screen")
     below = {px[20, y] for y in range(max(red) + 1, h - 1)}
-    return max(red), below
+    return max(red), below, h
 
 
 def main():
@@ -44,17 +44,26 @@ def main():
     d.stop()
     d.launch(f"http://localhost:{PORT}/fixed")
     time.sleep(6)
-    shown, below_shown = measure(d)
+    shown, below_shown, height = measure(d)
     for _ in range(2):
         d.shell("input swipe 540 1700 540 900 300")
         time.sleep(1)
     time.sleep(2)
     if d.find("Меню", exact=True) is not None:
         d.fail("toolbar did not hide on scroll")
-    hidden, below_hidden = measure(d)
-    print(f"bar bottom: toolbar shown {shown}, hidden {hidden}")
-    if shown != hidden:
-        d.fail(f"fixed bar moved when the toolbar hid: {shown} -> {hidden}")
+    hidden, below_hidden, _ = measure(d)
+    print(f"bar bottom: bars shown {shown}, hidden {hidden}")
+    if hidden != height - 1:
+        d.fail(f"with the bars hidden the fixed bar should touch the screen bottom, ends at {hidden}")
+    if shown >= hidden:
+        d.fail(f"with the bars shown the fixed bar should sit above the navigation bar, ends at {shown}")
+    for _ in range(2):
+        d.shell("input swipe 540 900 540 1700 300")
+        time.sleep(1)
+    time.sleep(2)
+    again, _, _ = measure(d)
+    if again != shown:
+        d.fail(f"after scrolling back the fixed bar ends at {again}, not {shown}")
     for name, below in (("shown", below_shown), ("hidden", below_hidden)):
         if len(below) > 1:
             d.fail(f"page shows under the navigation bar (toolbar {name}): {sorted(below)[:4]}")

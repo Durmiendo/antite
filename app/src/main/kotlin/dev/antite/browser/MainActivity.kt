@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
     private var createResult: ((Uri?) -> Unit)? = null
     private var openResult: ((Uri?) -> Unit)? = null
     private var permissionsResult: ((Boolean) -> Unit)? = null
+    private var navHidden = false
 
     private val pickOne = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         filesResult?.invoke(uri?.let { listOf(it) })
@@ -168,6 +169,20 @@ class MainActivity : ComponentActivity() {
             c.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         } else {
             c.show(WindowInsets.Type.systemBars())
+            navHidden = false
+        }
+    }
+
+    // Like Cromite: the navigation bar slides away with the toolbar while scrolling down.
+    fun setNavigationBarHidden(hide: Boolean) {
+        val c = window.insetsController ?: return
+        if (browser.fullscreen || hide == navHidden) return
+        navHidden = hide
+        if (hide) {
+            c.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            c.hide(WindowInsets.Type.navigationBars())
+        } else {
+            c.show(WindowInsets.Type.navigationBars())
         }
     }
 

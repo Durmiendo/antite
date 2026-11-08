@@ -31,6 +31,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -108,6 +109,14 @@ fun BrowserScreen(b: Browser) {
             LaunchedEffect(view) {
                 snapshotFlow { if (b.fullscreen) 0 else -b.hidden.toInt() }.collect { view.setVerticalClipping(it) }
             }
+            // Gecko drops the clipping when the view is resized (the navigation bar hiding), so it is sent again.
+            DisposableEffect(view) {
+                val listener = android.view.View.OnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+                    if (bottom - top != oldBottom - oldTop) view.setVerticalClipping(if (b.fullscreen) 0 else -b.hidden.toInt())
+                }
+                view.view.addOnLayoutChangeListener(listener)
+                onDispose { view.view.removeOnLayoutChangeListener(listener) }
+            }
         }
         if (t != null && Urls.isBlank(t.url) && b.overlay == Overlay.NONE) {
             NewTabPage(b, Modifier.padding(top = 56.dp).fillMaxSize().background(p.background))
@@ -120,7 +129,7 @@ fun BrowserScreen(b: Browser) {
             if (b.urlFocused) Suggestions(b, Modifier.padding(top = 56.dp).fillMaxSize().background(bar))
             if (b.findVisible) FindBar(b)
         }
-        // Like Firefox, the system navigation bar stays and is opaque; the page must not show through it.
+        // The navigation bar is transparent with edge-to-edge; while it is shown the page must not show through it.
         if (!b.fullscreen && imeInset == 0 && navInset > 0) {
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(with(density) { navInset.toDp() }).background(bar))
         }
@@ -140,6 +149,11 @@ fun BrowserScreen(b: Browser) {
         b.extensionPopup?.let { ExtensionPopup(b, it) }
         DialogHost(b)
         Messages(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() } + 12.dp))
+    }
+
+    LaunchedEffect(Unit) {
+        snapshotFlow { !b.fullscreen && b.hidden >= toolbarPx && b.overlay == Overlay.NONE && !b.urlFocused }
+            .collect { b.activity.setNavigationBarHidden(it) }
     }
 }
 
