@@ -145,7 +145,7 @@ fun BrowserScreen(b: Browser) {
                 }
             }
         }
-        if (b.menuOpen) BrowserMenu(b)
+        BrowserMenu(b)
         b.extensionPopup?.let { ExtensionPopup(b, it) }
         DialogHost(b)
         Messages(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() } + 12.dp))
