@@ -49,6 +49,10 @@ def foreign_source(out_dir):
 def open_updates(d):
     d.stop()
     d.launch()
+    # A cold start can be slow; Back before the page is up would send the browser to the background.
+    end = time.time() + 20
+    while time.time() < end and d.find("Меню", exact=True) is None:
+        time.sleep(1)
     for _ in range(4):
         if d.find("Меню", exact=True) is not None:
             break

@@ -52,6 +52,9 @@ def main():
         d.wait("Установить с адреса", timeout=10, exact=True)
 
         print("2. an engine from a plain http address, without a signature")
+        # The new row appears under the navigation bar; a tap there would press Home.
+        d.shell("input swipe 540 1900 540 1000 300")
+        time.sleep(0.6)
         d.tap("Установить с адреса", exact=True)
         d.tap("Адрес engines.json", exact=True)
         d.shell("input keyevent 123 " + " ".join(["67"] * 80))
