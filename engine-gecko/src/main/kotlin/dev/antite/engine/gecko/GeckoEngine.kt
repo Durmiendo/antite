@@ -5,7 +5,11 @@ import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Choreographer
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.View
+import android.view.ViewGroup
 import dev.antite.engine.AutofillStore
 import dev.antite.engine.BackgroundService
 import dev.antite.engine.Capability
@@ -599,6 +603,36 @@ internal fun geckoTypes(p: SitePermission): List<String> = when (p) {
 internal class GeckoEngineView(private val gecko: GeckoView) : EngineView {
     override val view: View get() = gecko
 
+    init {
+        findSurfaceView(gecko)?.holder?.addCallback(RedrawSync())
+    }
+
+    // Like Chrome: Android shows a resized SurfaceView only together with the frame drawn into it, instead of
+    // stretching the old frame until Gecko draws. GeckoView's own callback does not take part in this sync. Gecko
+    // resizes its compositor synchronously in surfaceChanged and draws on its own thread by the next vsyncs; it gives
+    // no usable signal for that (CompositorController draw callbacks never fire here), so the sync waits a few frames.
+    private inner class RedrawSync : SurfaceHolder.Callback2 {
+        override fun surfaceCreated(holder: SurfaceHolder) {}
+
+        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+
+        override fun surfaceDestroyed(holder: SurfaceHolder) {}
+
+        override fun surfaceRedrawNeeded(holder: SurfaceHolder) {}
+
+        override fun surfaceRedrawNeededAsync(holder: SurfaceHolder, drawingFinished: Runnable) {
+            if (gecko.session == null) return drawingFinished.run()
+            var frames = 0
+            val choreographer = Choreographer.getInstance()
+            choreographer.postFrameCallback(object : Choreographer.FrameCallback {
+                override fun doFrame(frameTimeNanos: Long) {
+                    if (++frames < REDRAW_WAIT_FRAMES) return choreographer.postFrameCallback(this)
+                    drawingFinished.run()
+                }
+            })
+        }
+    }
+
     override fun show(tab: EngineTab?) {
         val session = (tab as GeckoTab?)?.session
         if (gecko.session === session) return
@@ -617,4 +651,14 @@ internal class GeckoEngineView(private val gecko: GeckoView) : EngineView {
     override fun setToolbarMaxHeight(px: Int) = gecko.setDynamicToolbarMaxHeight(px)
 
     override fun setVerticalClipping(px: Int) = gecko.setVerticalClipping(px)
+
+    private companion object {
+        const val REDRAW_WAIT_FRAMES = 3
+
+        fun findSurfaceView(v: View): SurfaceView? = when (v) {
+            is SurfaceView -> v
+            is ViewGroup -> (0 until v.childCount).firstNotNullOfOrNull { findSurfaceView(v.getChildAt(it)) }
+            else -> null
+        }
+    }
 }
