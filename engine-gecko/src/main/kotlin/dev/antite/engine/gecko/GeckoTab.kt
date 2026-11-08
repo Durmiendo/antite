@@ -376,6 +376,9 @@ internal class GeckoTab(
             override fun onPause(s: GeckoSession, ms: MediaSession) = callbacks.onMedia(MediaEvent.Paused(controller(ms)))
 
             override fun onStop(s: GeckoSession, ms: MediaSession) = callbacks.onMedia(MediaEvent.Stopped(controller(ms)))
+
+            override fun onFullscreen(s: GeckoSession, ms: MediaSession, full: Boolean, meta: MediaSession.ElementMetadata?) =
+                callbacks.onMedia(MediaEvent.Fullscreen(controller(ms), full, meta?.width ?: 0, meta?.height ?: 0))
         }
         session.promptDelegate = GeckoPrompts(engine.context, callbacks)
     }

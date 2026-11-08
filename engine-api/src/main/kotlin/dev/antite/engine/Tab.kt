@@ -91,6 +91,7 @@ sealed interface MediaEvent {
     data class Playing(val controller: MediaController) : MediaEvent
     data class Paused(val controller: MediaController) : MediaEvent
     data class Stopped(val controller: MediaController) : MediaEvent
+    data class Fullscreen(val controller: MediaController, val full: Boolean, val width: Long, val height: Long) : MediaEvent
 }
 
 enum class LoadError { HOST_NOT_FOUND, CONNECTION, TIMEOUT, OFFLINE, SECURITY, BLOCKED, OTHER }

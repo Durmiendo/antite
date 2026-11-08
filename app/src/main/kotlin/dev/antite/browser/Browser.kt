@@ -86,6 +86,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     var hidden by mutableFloatStateOf(0f)
     var fullscreen by mutableStateOf(false)
+    var pip by mutableStateOf(false)
     var urlFocused by mutableStateOf(false)
     var findVisible by mutableStateOf(false)
     var findResult by mutableStateOf("")
@@ -925,6 +926,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }
 
         override fun onMedia(event: MediaEvent) {
+            activity.pip.onMedia(event, t === current)
             media.onEvent(event, t.title, Urls.host(t.url), icons.get(Urls.host(t.url))) {
                 activity.requestNotificationPermission(true)
             }

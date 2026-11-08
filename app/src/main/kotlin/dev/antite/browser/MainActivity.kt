@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.Bitmap
@@ -25,6 +26,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.lifecycle.Lifecycle
 import dev.antite.browser.data.Tab
 import dev.antite.browser.engine.EngineSetupActivity
 import dev.antite.browser.engine.Engines
@@ -39,6 +41,7 @@ class MainActivity : ComponentActivity() {
 
     lateinit var browser: Browser
         private set
+    val pip = Pip(this)
 
     private var filesResult: ((List<Uri>?) -> Unit)? = null
     private var createResult: ((Uri?) -> Unit)? = null
@@ -86,6 +89,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         browser = Browser(this, engine)
+        pip.register()
         val store = Engines.store(this)
         window.decorView.postDelayed({ Thread { store.markStarted() }.start() }, STARTED_AFTER_MS)
         browser.attachView(browser.engine.createView(this))
@@ -138,6 +142,21 @@ class MainActivity : ComponentActivity() {
         browser.onStop()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::browser.isInitialized) pip.unregister()
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        pip.onUserLeaveHint()
+    }
+
+    override fun onPictureInPictureModeChanged(inPip: Boolean, config: Configuration) {
+        super.onPictureInPictureModeChanged(inPip, config)
+        pip.onModeChanged(inPip, lifecycle.currentState == Lifecycle.State.CREATED)
+    }
+
     fun pickFiles(mimeTypes: List<String>, multiple: Boolean, done: (List<Uri>?) -> Unit) {
         filesResult = done
         val mime = mimeTypes.singleOrNull()?.takeIf { '/' in it } ?: "*/*"
@@ -183,6 +202,7 @@ class MainActivity : ComponentActivity() {
 
     fun setFullscreen(full: Boolean) {
         browser.fullscreen = full
+        pip.update()
         val c = window.insetsController ?: return
         if (full) {
             c.hide(WindowInsets.Type.systemBars())

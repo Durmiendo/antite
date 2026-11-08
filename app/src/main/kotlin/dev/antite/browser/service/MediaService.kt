@@ -49,6 +49,7 @@ class MediaPlayback(private val context: Context) {
                 MediaService.update(context)
             }
             is MediaEvent.Stopped -> if (s.controller === event.controller) MediaService.stop(context)
+            is MediaEvent.Fullscreen -> {}
         }
     }
 }

@@ -124,7 +124,8 @@ fun BrowserScreen(b: Browser) {
                         translationY = if (b.fullscreen) 0f else toolbarPx - b.hidden
                     },
             )
-            SideEffect { view.setToolbarMaxHeight(toolbarPx.toInt()) }
+            // Gecko keeps room for the toolbar at the bottom of the page; in the small PiP window that is half of it.
+            SideEffect { view.setToolbarMaxHeight(if (b.pip) 0 else toolbarPx.toInt()) }
             // The toolbar offset is read only in deferred lambdas, so it must be pushed to Gecko on every change.
             LaunchedEffect(view) {
                 snapshotFlow { if (b.fullscreen) 0 else -b.hidden.toInt() }.collect { view.setVerticalClipping(it) }
@@ -138,7 +139,8 @@ fun BrowserScreen(b: Browser) {
                 onDispose { view.view.removeOnLayoutChangeListener(listener) }
             }
         }
-        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.only(WindowInsetsSides.Bottom))) {
+        // The picture-in-picture window shows the video alone.
+        if (!b.pip) Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.only(WindowInsetsSides.Bottom))) {
             if (t != null && Urls.isBlank(t.url) && b.overlay == Overlay.NONE) {
                 NewTabPage(b, Modifier.padding(top = 56.dp).fillMaxSize().background(p.background))
             }
