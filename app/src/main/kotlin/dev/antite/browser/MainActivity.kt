@@ -1,6 +1,7 @@
 package dev.antite.browser
 
 import android.Manifest
+import android.app.role.RoleManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -43,6 +44,7 @@ class MainActivity : ComponentActivity() {
     private var createResult: ((Uri?) -> Unit)? = null
     private var openResult: ((Uri?) -> Unit)? = null
     private var permissionsResult: ((Boolean) -> Unit)? = null
+    private var roleResult: ((Boolean) -> Unit)? = null
     private var navHidden = false
 
     private val pickOne = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -60,6 +62,10 @@ class MainActivity : ComponentActivity() {
     private val open = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         openResult?.invoke(uri)
         openResult = null
+    }
+    private val requestRole = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        roleResult?.invoke(r.resultCode == RESULT_OK)
+        roleResult = null
     }
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
         permissionsResult?.invoke(r.isNotEmpty() && r.values.all { it })
@@ -114,7 +120,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::browser.isInitialized) browser.engineNews.onResume()
+        if (::browser.isInitialized) {
+            browser.engineNews.onResume()
+            browser.checkDefaultBrowserOffer()
+        }
     }
 
     override fun onPause() {
@@ -159,6 +168,16 @@ class MainActivity : ComponentActivity() {
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(listOf(Manifest.permission.POST_NOTIFICATIONS)) {}
         }
+    }
+
+    fun canBeDefaultBrowser() = getSystemService(RoleManager::class.java).isRoleAvailable(RoleManager.ROLE_BROWSER)
+
+    fun isDefaultBrowser() = getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_BROWSER)
+
+    // The system asks the user; it answers "no" at once without asking after the user refused twice.
+    fun requestDefaultBrowser(done: (Boolean) -> Unit) {
+        roleResult = done
+        requestRole.launch(getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_BROWSER))
     }
 
     fun setFullscreen(full: Boolean) {

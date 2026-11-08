@@ -90,6 +90,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var findVisible by mutableStateOf(false)
     var findResult by mutableStateOf("")
     var translateOffer by mutableStateOf<String?>(null)
+    var defaultBrowserOffer by mutableStateOf(false)
+    private var defaultBrowserChecked = false
     var menuOpen by mutableStateOf(false)
     var suggestQuery by mutableStateOf("")
     var suggestFill by mutableStateOf<String?>(null)
@@ -411,6 +413,31 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val dy = y - lastScrollY
         lastScrollY = y
         setToolbarHidden(if (y <= 0) 0f else hidden + dy)
+    }
+
+    // Once per start: offer to become the default browser, unless refused for good or postponed.
+    fun checkDefaultBrowserOffer() {
+        if (defaultBrowserOffer && activity.isDefaultBrowser()) defaultBrowserOffer = false
+        if (defaultBrowserChecked) return
+        defaultBrowserChecked = true
+        if (prefs.bool("defaultBrowserNever", false) || System.currentTimeMillis() < prefs.sp.getLong("defaultBrowserLater", 0)) return
+        if (activity.canBeDefaultBrowser() && !activity.isDefaultBrowser()) defaultBrowserOffer = true
+    }
+
+    fun makeDefaultBrowser() {
+        activity.requestDefaultBrowser { ok ->
+            if (ok || activity.isDefaultBrowser()) toast("Antite - браузер по умолчанию")
+            else toast("Не вышло. Браузер по умолчанию выбирается в настройках Android")
+        }
+    }
+
+    fun answerDefaultBrowser(yes: Boolean, later: Boolean) {
+        defaultBrowserOffer = false
+        when {
+            yes -> makeDefaultBrowser()
+            later -> prefs.edit { putLong("defaultBrowserLater", System.currentTimeMillis() + 3L * 24 * 3600 * 1000) }
+            else -> prefs.edit { putBoolean("defaultBrowserNever", true) }
+        }
     }
 
     // ---------------------------------------------------------------- page actions

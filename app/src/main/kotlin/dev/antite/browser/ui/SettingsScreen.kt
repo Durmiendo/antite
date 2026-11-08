@@ -132,6 +132,13 @@ private fun MainPage(b: Browser, nav: Nav) {
             })
         }
         choice(b, nav, "Тема", "theme", Options.themes, 2, true)
+        item {
+            val isDefault = b.activity.isDefaultBrowser()
+            SettingRow("Браузер по умолчанию", if (isDefault) "Antite" else "Другой браузер. Нажмите, чтобы выбрать Antite", onClick = {
+                if (isDefault) b.activity.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+                else b.makeDefaultBrowser()
+            })
+        }
         section("Дополнительные")
         nav(nav, "Главная страница", if (p.bool("homeButton", false)) homeSummary(b) else "Выключено") { HomePage(b, it) }
         nav(nav, "Вкладки", "Вид списка, запуск, ссылки из приложений, инкогнито") { TabsPage(b, it) }

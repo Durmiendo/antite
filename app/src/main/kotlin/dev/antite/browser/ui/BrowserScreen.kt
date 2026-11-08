@@ -3,6 +3,7 @@ package dev.antite.browser.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -150,6 +151,9 @@ fun BrowserScreen(b: Browser) {
                 Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(with(density) { navInset.toDp() }).background(bar))
             }
             b.translateOffer?.let { TranslateBar(b, it, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() })) }
+            if (b.defaultBrowserOffer && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
+                DefaultBrowserBar(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() }))
+            }
             if (b.overlay != Overlay.NONE) {
                 // Being hit is enough to keep touches from the page below; consuming them would break scrolling.
                 Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }) {
@@ -355,6 +359,26 @@ private fun FindBar(b: Browser) {
         IconBtn(R.drawable.ic_close, "Закрыть") { b.hideFind() }
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}
+
+@Composable
+private fun DefaultBrowserBar(b: Browser, modifier: Modifier) {
+    val p = LocalPalette.current
+    Column(modifier.fillMaxWidth().background(p.menu).padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Ico(R.drawable.ic_public)
+            Text("Сделать Antite браузером по умолчанию?", color = p.text, fontSize = 14.sp,
+                modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            listOf("Нет" to { b.answerDefaultBrowser(yes = false, later = false) },
+                "Позже" to { b.answerDefaultBrowser(yes = false, later = true) },
+                "Да" to { b.answerDefaultBrowser(yes = true, later = false) }).forEach { (label, action) ->
+                Text(label, color = p.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                    modifier = Modifier.clickable(onClick = action).padding(12.dp))
+            }
+        }
+    }
 }
 
 @Composable
