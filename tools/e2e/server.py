@@ -13,10 +13,13 @@ class ReportServer:
         rates = rates if rates is not None else {}
         self.port = port
         self.reports = queue.Queue()
+        self.requests = []
         reports = self.reports
+        requests = self.requests
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
+                requests.append(self.path)
                 if self.path.startswith("/report?"):
                     reports.put(unquote(self.path[len("/report?"):]))
                     body = b"ok"

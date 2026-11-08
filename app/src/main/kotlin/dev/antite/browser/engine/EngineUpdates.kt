@@ -70,25 +70,21 @@ object EngineUpdates {
 
     class Found(val offer: Offer?, val shell: ShellOffer?, val errors: List<String>)
 
-    // The newest engine across enabled sources, skipping engines that already failed here.
-    fun best(context: Context): Found {
-        val rejected = Engines.store(context).rejected()
-        val errors = mutableListOf<String>()
-        val fetched = Sources.enabled(context).mapNotNull { s ->
-            try {
-                fetch(context, s)
-            } catch (e: IndexException) {
-                errors += "${s.name}: подпись не прошла проверку"
-                null
-            } catch (e: Exception) {
-                errors += "${s.name}: ${e.message ?: e.javaClass.simpleName}"
-                null
-            }
+    // What the update source offers, skipping engines that already failed here. Other sources are not asked.
+    fun best(context: Context): Found = fromSource(context, Sources.updateSource(context))
+
+    fun fromSource(context: Context, s: Source): Found {
+        val fetched = try {
+            fetch(context, s)
+        } catch (e: IndexException) {
+            return Found(null, null, listOf("${s.name}: подпись не прошла проверку"))
+        } catch (e: Exception) {
+            return Found(null, null, listOf("${s.name}: ${e.message ?: e.javaClass.simpleName}"))
         }
-        val offers = fetched.mapNotNull { it.engine }.filter { it.dirName !in rejected }
-        val best = offers.fold(null as Offer?) { acc, o -> if (acc == null || newer(o.entry.version, acc.entry.version)) o else acc }
-        val shell = fetched.mapNotNull { it.shell }.filter { it.version > BuildConfig.VERSION_CODE }.maxByOrNull { it.version }
-        return Found(best, shell, errors)
+        val rejected = Engines.store(context).rejected()
+        val offer = fetched.engine?.takeIf { it.dirName !in rejected }
+        val shell = fetched.shell?.takeIf { it.version > BuildConfig.VERSION_CODE }
+        return Found(offer, shell, emptyList())
     }
 
     fun newer(a: String, b: String): Boolean {
@@ -101,12 +97,17 @@ object EngineUpdates {
         return false
     }
 
-    // An engine newer than both the running and the already downloaded one, and a newer shell.
-    fun check(context: Context): Updates {
+    // The offer if it is newer than both the running and the already downloaded engine.
+    fun newerThanInstalled(context: Context, offer: Offer?): Offer? {
         val store = Engines.store(context)
-        val found = best(context)
         val installed = listOfNotNull(store.active(), store.pending()).mapNotNull(store::version)
-        val result = found.offer?.takeIf { o -> installed.none { !newer(o.entry.version, it) } }
+        return offer?.takeIf { o -> installed.none { !newer(o.entry.version, it) } }
+    }
+
+    // An engine newer than the installed ones and a newer shell, from the update source.
+    fun check(context: Context): Updates {
+        val found = best(context)
+        val result = newerThanInstalled(context, found.offer)
         state(context).edit().putLong("lastCheck", System.currentTimeMillis())
             .putString("lastError", found.errors.joinToString("\n").ifEmpty { null })
             .putString("available", result?.entry?.version)

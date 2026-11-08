@@ -398,6 +398,11 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
         if (b.prefs.int(EngineUpdates.INSTALL, EngineUpdates.INSTALL_ASK) == EngineUpdates.INSTALL_AUTO) {
             toggle(b, "Скачивать только по Wi-Fi", "Около 95 МБ за обновление", EngineUpdates.WIFI_ONLY, true, false)
         }
+        item(key = "updateSource") {
+            SettingRow("Источник обновлений", remember(revision) { Sources.updateSource(ctx).name }, onClick = {
+                nav.push("Источник обновлений") { n -> UpdateSourcePage(b, n) { revision++ } }
+            })
+        }
         nav(nav, "Источники", Sources.enabled(ctx).joinToString(", ") { it.name }) { SourcesPage(b, it) }
         section("Установлено")
         item(key = "shellVersion") { SettingRow("Antite ${BuildConfig.VERSION_NAME}", "Сборка ${BuildConfig.VERSION_CODE}") }
@@ -410,6 +415,28 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
             }
         }
         note("Если новый движок ${EngineStore.MAX_FAILED_STARTS} раза подряд не запустится, браузер сам вернёт предыдущий")
+    }
+}
+
+@Composable
+private fun UpdateSourcePage(b: Browser, nav: Nav, changed: () -> Unit) {
+    val ctx = b.activity
+    var revision by remember { mutableIntStateOf(0) }
+    val sources = remember(revision) { Sources.enabled(ctx) }
+    val current = remember(revision) { Sources.updateSource(ctx).id }
+    RadioPage(b, nav, "Источник обновлений", sources.map { it.name }, { sources.indexOfFirst { it.id == current } }) { i ->
+        val s = sources[i]
+        if (s.id == current) return@RadioPage
+        b.confirm("Обновления движка и Antite будут приходить только из «${s.name}».\n\n" +
+            "Отпечаток ключа SHA-256:\n${s.fingerprint}", "Сменить") {
+            try {
+                Sources.setUpdateSource(ctx, s.id)
+                revision++
+                changed()
+            } catch (e: SourceException) {
+                b.toast(e.message ?: "")
+            }
+        }
     }
 }
 
@@ -443,7 +470,7 @@ private fun SourcesPage(b: Browser, nav: Nav) {
         }))
     Screen(b, nav, "Источники") {
         note("Источник - адрес списка движков и ключ его издателя. Движок ставится, только если список подписан этим ключом. " +
-            "Если включено несколько источников, берётся самый новый движок")
+            "Обновления приходят только из источника обновлений, остальные источники можно проверить вручную на их странице")
         list.forEach { s ->
             item(key = "src:${s.id}") {
                 SettingRow(s.name, (if (s.enabled) "" else "Выключен\n") + s.url, onClick = {
@@ -460,9 +487,31 @@ private fun SourcePage(b: Browser, nav: Nav, id: String, changed: () -> Unit) {
     val ctx = b.activity
     var revision by remember { mutableIntStateOf(0) }
     val s = remember(revision) { Sources.find(ctx, id) } ?: return
+    val isUpdateSource = remember(revision) { Sources.updateSource(ctx).id == id }
+    var busy by remember { mutableStateOf<String?>(null) }
+    fun checkThis() = ctx.lifecycleScope.launch {
+        busy = "Проверяем…"
+        val (found, offer) = withContext(Dispatchers.IO) {
+            EngineUpdates.fromSource(ctx, s).let { it to EngineUpdates.newerThanInstalled(ctx, it.offer) }
+        }
+        busy = null
+        when {
+            found.errors.isNotEmpty() -> b.toast("Не удалось проверить: ${found.errors.joinToString()}")
+            offer == null -> b.toast(found.offer?.let { "Gecko ${it.entry.version} из этого источника не новее установленного" }
+                ?: "Подходящего движка в источнике нет")
+            else -> b.confirm("В источнике «${s.name}» есть Gecko ${offer.entry.version}, " +
+                "${(offer.size + 512 * 1024) / (1024 * 1024)} МБ. Это не источник обновлений: следующие обновления придут из " +
+                "«${Sources.updateSource(ctx).name}». Скачать?", "Скачать") {
+                busy = "Скачиваем…"
+                b.engineNews.install(offer, { busy = "Скачиваем… $it%" }) { busy = null }
+            }
+        }
+    }
     Screen(b, nav, s.name) {
         item(key = "enabled") {
-            SwitchRow("Использовать", if (s.builtin) "Встроенный источник Antite" else null, s.enabled) { v ->
+            val summary = listOfNotNull(if (s.builtin) "Встроенный источник Antite" else null,
+                if (isUpdateSource) "Источник обновлений" else null).joinToString(". ").ifEmpty { null }
+            SwitchRow("Использовать", summary, s.enabled) { v ->
                 try {
                     Sources.setEnabled(ctx, id, v)
                     revision++
@@ -470,6 +519,12 @@ private fun SourcePage(b: Browser, nav: Nav, id: String, changed: () -> Unit) {
                 } catch (e: SourceException) {
                     b.toast(e.message ?: "")
                 }
+            }
+        }
+        if (!isUpdateSource) {
+            item(key = "check") {
+                SettingRow("Проверить этот источник", busy ?: "Обновления отсюда сами не приходят",
+                    onClick = { if (busy == null) checkThis() })
             }
         }
         item(key = "url") { SettingRow("Адрес", s.url) }

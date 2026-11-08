@@ -22,6 +22,7 @@ class SourceException(message: String) : Exception(message)
 
 object Sources {
     const val BUILTIN = "builtin"
+    private const val UPDATE = "updateSource"
 
     fun builtin(enabled: Boolean = true) =
         Source(BUILTIN, "Antite", BuildConfig.ENGINE_INDEX_URL, BuildConfig.PUBLISHER_KEY, enabled, builtin = true)
@@ -60,6 +61,18 @@ object Sources {
 
     fun find(context: Context, id: String?) = list(context).firstOrNull { it.id == id }
 
+    // The only source asked for updates; any other source could otherwise win them with a bigger version.
+    fun updateSource(context: Context): Source {
+        val enabled = enabled(context)
+        val id = state(context).getString(UPDATE, BUILTIN)
+        return enabled.firstOrNull { it.id == id } ?: enabled.first()
+    }
+
+    fun setUpdateSource(context: Context, id: String) {
+        if (enabled(context).none { it.id == id }) throw SourceException("источник выключен или удалён")
+        state(context).edit().putString(UPDATE, id).remove("available").remove("shellAvailable").commit()
+    }
+
     @Synchronized
     fun save(context: Context, sources: List<Source>) {
         if (sources.none { it.enabled }) throw SourceException("должен остаться хотя бы один включённый источник")
@@ -79,15 +92,23 @@ object Sources {
         val current = list(context)
         val s = Source("s" + System.currentTimeMillis(), name.ifBlank { android.net.Uri.parse(url).host ?: url }, url, parseKey(key), true)
         save(context, current.map { if (onlyThis) it.copy(enabled = false) else it } + s)
+        if (onlyThis) setUpdateSource(context, s.id)
         return s
     }
 
-    fun setEnabled(context: Context, id: String, enabled: Boolean) =
+    fun setEnabled(context: Context, id: String, enabled: Boolean) {
+        if (!enabled) requireNotUpdateSource(context, id)
         save(context, list(context).map { if (it.id == id) it.copy(enabled = enabled) else it })
+    }
 
     fun remove(context: Context, id: String) {
+        requireNotUpdateSource(context, id)
         save(context, list(context).filter { it.id != id || it.builtin })
         state(context).edit().remove("serial.$id").commit()
+    }
+
+    private fun requireNotUpdateSource(context: Context, id: String) {
+        if (updateSource(context).id == id) throw SourceException("это источник обновлений, сначала выберите другой")
     }
 
     private fun Source.copy(enabled: Boolean) = Source(id, name, url, key, enabled, builtin)

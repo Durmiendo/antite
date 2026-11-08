@@ -44,9 +44,9 @@ class EngineSetupActivity : ComponentActivity() {
     private fun useTestSource() {
         val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         val url = intent.getStringExtra("indexUrl")?.takeIf { debuggable } ?: return
-        if (Sources.list(this).none { it.url == url && it.enabled }) {
-            Sources.add(this, "Тестовый", url, BuildConfig.PUBLISHER_KEY, onlyThis = true)
-        }
+        val existing = Sources.list(this).firstOrNull { it.url == url && it.enabled }
+        if (existing == null) Sources.add(this, "Тестовый", url, BuildConfig.PUBLISHER_KEY, onlyThis = true)
+        else Sources.setUpdateSource(this, existing.id)
     }
 
     override fun onCreate(saved: Bundle?) {
