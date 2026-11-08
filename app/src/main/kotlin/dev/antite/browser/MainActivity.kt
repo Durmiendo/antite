@@ -32,6 +32,10 @@ import dev.antite.browser.ui.BrowserScreen
 import dev.antite.browser.ui.LocalBrowser
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        private const val STARTED_AFTER_MS = 10_000L
+    }
+
     lateinit var browser: Browser
         private set
 
@@ -76,6 +80,8 @@ class MainActivity : ComponentActivity() {
             return
         }
         browser = Browser(this, engine)
+        val store = Engines.store(this)
+        window.decorView.postDelayed({ Thread { store.markStarted() }.start() }, STARTED_AFTER_MS)
         browser.attachView(browser.engine.createView(this))
         browser.restore()
         if (state == null) {
@@ -104,6 +110,11 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         browser.handleIntent(intent, false)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::browser.isInitialized) browser.engineNews.onResume()
     }
 
     override fun onPause() {

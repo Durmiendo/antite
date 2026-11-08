@@ -28,7 +28,9 @@ import dev.antite.browser.data.SavedLogin
 import dev.antite.browser.data.SitePerms
 import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.engine.Engines
-import dev.antite.browser.engine.Offer
+import dev.antite.browser.engine.EngineStore
+import dev.antite.browser.engine.SourceException
+import dev.antite.browser.engine.Sources
 import dev.antite.browser.transfer.BackupCipher
 import dev.antite.browser.transfer.WrongPasswordException
 import dev.antite.engine.Address
@@ -257,7 +259,8 @@ private fun serviceSummary(s: BackgroundService, on: Boolean) = buildString {
 private fun NetworkPage(b: Browser, nav: Nav) = Screen(b, nav, "Что отправляет браузер") {
     note("Запросы, которые браузер делает сам. Открытые вами страницы и их собственные запросы сюда не входят")
     section("Antite")
-    nav(nav, "Обновления", "Раз в день: список движков\nКуда: ${Uri.parse(EngineUpdates.sourceUrl(b.activity)).host}") {
+    nav(nav, "Обновления", "Раз в день: список движков\nКуда: " +
+        Sources.enabled(b.activity).joinToString(", ") { Uri.parse(it.url).host ?: it.url }) {
         UpdatesPage(b, it)
     }
     toggle(b, "Подсказки поисковой системы",
@@ -290,8 +293,14 @@ private fun NetworkPage(b: Browser, nav: Nav) = Screen(b, nav, "Что отпр�
     note("Телеметрия, отчёты о сбоях, синхронизация и аккаунты Mozilla: в Antite их нет")
 }
 
-private class UpdateInfo(val active: String?, val pending: String?, val lastCheck: Long, val lastError: String?,
-                         val available: String?, val source: String)
+private class UpdateInfo(
+    val active: String?, val activeFrom: String?,
+    val pending: String?, val pendingFrom: String?,
+    val previous: String?, val previousFrom: String?,
+    val lastCheck: Long, val lastError: String?, val available: String?,
+)
+
+private fun from(origin: String?) = if (origin == null) "" else ", источник «$origin»"
 
 @Composable
 private fun UpdatesPage(b: Browser, nav: Nav) {
@@ -302,27 +311,16 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
         value = withContext(Dispatchers.IO) {
             val store = Engines.store(ctx)
             val st = EngineUpdates.state(ctx)
-            UpdateInfo(store.active()?.let(store::version), store.pending()?.let(store::version), st.getLong("lastCheck", 0),
-                st.getString("lastError", null), st.getString("available", null), EngineUpdates.sourceUrl(ctx))
+            val a = store.active()
+            val p = store.pending()
+            val prev = store.previous()
+            UpdateInfo(
+                a?.let(store::version), a?.let { EngineUpdates.origin(ctx, it) },
+                p?.let(store::version), p?.let { EngineUpdates.origin(ctx, it) },
+                prev?.let(store::version), prev?.let { EngineUpdates.origin(ctx, it) },
+                st.getLong("lastCheck", 0), st.getString("lastError", null), st.getString("available", null),
+            )
         }
-    }
-    fun download(offer: Offer) = ctx.lifecycleScope.launch {
-        busy = "Скачиваем…"
-        val ok = withContext(Dispatchers.IO) {
-            runCatching {
-                var last = -1L
-                EngineUpdates.install(ctx, offer) { done, total ->
-                    val pct = done * 100 / total
-                    if (pct != last) {
-                        last = pct
-                        ctx.runOnUiThread { busy = "Скачиваем… $pct%" }
-                    }
-                }
-            }
-        }
-        busy = null
-        revision++
-        b.toast(if (ok.isSuccess) "Движок скачан, перезапустите браузер" else "Не удалось скачать: ${ok.exceptionOrNull()?.message}")
     }
     fun checkNow() = ctx.lifecycleScope.launch {
         busy = "Проверяем…"
@@ -333,42 +331,148 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
         when {
             r.isFailure -> b.toast("Не удалось проверить обновления")
             offer == null -> b.toast("Обновлений нет")
-            else -> b.confirm("Доступен Gecko ${offer.entry.version}, ${(offer.size + 512 * 1024) / (1024 * 1024)} МБ. Скачать?",
-                "Скачать") { download(offer) }
+            else -> b.confirm("Доступен Gecko ${offer.entry.version} из источника «${offer.source.name}», " +
+                "${(offer.size + 512 * 1024) / (1024 * 1024)} МБ. Скачать?", "Скачать") {
+                busy = "Скачиваем…"
+                b.engineNews.install(offer, { busy = "Скачиваем… $it%" }) {
+                    busy = null
+                    revision++
+                }
+            }
+        }
+    }
+    fun rollBack(i: UpdateInfo) = b.confirm("Вернуть Gecko ${i.previous}? Gecko ${i.active} больше не будет предлагаться. " +
+        "Браузер перезапустится.", "Вернуть") {
+        ctx.lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                val store = Engines.store(ctx)
+                store.active()?.let(store::reject)
+                store.previous()?.let(store::setPending)
+            }
+            b.engineNews.restart()
         }
     }
     Screen(b, nav, "Обновления") {
         val i = info ?: return@Screen
         if (i.pending != null) {
             item(key = "restart") {
-                SettingRow("Перезапустить браузер", "Скачан Gecko ${i.pending}, начнёт работать после перезапуска", onClick = {
-                    b.saveNow()
-                    Engines.restart(ctx)
-                })
+                SettingRow("Перезапустить браузер", "Скачан Gecko ${i.pending}, начнёт работать после перезапуска",
+                    onClick = b.engineNews::restart)
             }
         }
-        item(key = "engine") { SettingRow("Движок", "${b.engine.info.type} ${i.active ?: b.engine.info.version}") }
         item(key = "check") {
             val last = when {
                 i.lastCheck == 0L -> "Ещё не проверялось"
                 else -> "Последняя проверка: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,
                     java.text.DateFormat.SHORT).format(java.util.Date(i.lastCheck)) + when {
-                    i.lastError != null -> ", ошибка: ${i.lastError}"
                     i.available != null -> ", доступен Gecko ${i.available}"
+                    i.lastError != null -> ", ошибка: ${i.lastError}"
                     else -> ", обновлений нет"
                 }
             }
             SettingRow("Проверить сейчас", busy ?: last, onClick = { if (busy == null) checkNow() })
         }
+        section("Как обновлять")
         item(key = "auto") {
-            SwitchRow("Проверять раз в день", "Новый движок скачивается в фоне", b.prefs.bool(EngineUpdates.AUTO, true)) { v ->
+            SwitchRow("Проверять раз в день", null, b.prefs.bool(EngineUpdates.AUTO, true)) { v ->
                 b.prefs.edit { putBoolean(EngineUpdates.AUTO, v) }
                 EngineUpdates.schedule(ctx)
             }
         }
-        toggle(b, "Скачивать только по Wi-Fi", "Около 95 МБ за обновление. Проверка списка идёт по любой сети",
-            EngineUpdates.WIFI_ONLY, true, false)
-        item(key = "source") { SettingRow("Источник", i.source) }
+        choice(b, nav, "Установка", EngineUpdates.INSTALL, Options.updateInstall, EngineUpdates.INSTALL_ASK, false)
+        if (b.prefs.int(EngineUpdates.INSTALL, EngineUpdates.INSTALL_ASK) == EngineUpdates.INSTALL_AUTO) {
+            toggle(b, "Скачивать только по Wi-Fi", "Около 95 МБ за обновление", EngineUpdates.WIFI_ONLY, true, false)
+        }
+        nav(nav, "Источники", Sources.enabled(ctx).joinToString(", ") { it.name }) { SourcesPage(b, it) }
+        section("Установленные движки")
+        item(key = "active") { SettingRow("${b.engine.info.type} ${i.active ?: b.engine.info.version}", "Работает" + from(i.activeFrom)) }
+        if (i.pending != null) item(key = "pending") { SettingRow("gecko ${i.pending}", "После перезапуска" + from(i.pendingFrom)) }
+        if (i.previous != null) {
+            item(key = "previous") {
+                SettingRow("gecko ${i.previous}", "Предыдущий" + from(i.previousFrom) + ". Нажмите, чтобы вернуть его",
+                    onClick = { rollBack(i) })
+            }
+        }
+        note("Если новый движок ${EngineStore.MAX_FAILED_STARTS} раза подряд не запустится, браузер сам вернёт предыдущий")
+    }
+}
+
+@Composable
+private fun SourcesPage(b: Browser, nav: Nav) {
+    val ctx = b.activity
+    var revision by remember { mutableIntStateOf(0) }
+    val list = remember(revision) { Sources.list(ctx) }
+    fun addSource() = b.show(UiDialog.Form("Добавить источник", "Источник сможет устанавливать код, который выполняется в браузере",
+        listOf(
+            FormField("Название", kind = FormField.Kind.TEXT),
+            FormField("Адрес индекса (https://…/engines.json)", kind = FormField.Kind.URL),
+            FormField("Открытый ключ издателя", kind = FormField.Kind.URL),
+        ), "Далее", { v ->
+            val key = try {
+                Sources.parseKey(v[2])
+            } catch (e: SourceException) {
+                b.toast(e.message ?: "")
+                return@Form false
+            }
+            b.confirm("Отпечаток ключа SHA-256:\n${Sources.fingerprint(key)}\n\nСверьте его с отпечатком, который опубликовал " +
+                "издатель. Добавлять источник?", "Добавить") {
+                try {
+                    Sources.add(ctx, v[0].trim(), v[1].trim(), key)
+                    revision++
+                } catch (e: SourceException) {
+                    b.toast(e.message ?: "")
+                }
+            }
+            true
+        }))
+    Screen(b, nav, "Источники") {
+        note("Источник - адрес списка движков и ключ его издателя. Движок ставится, только если список подписан этим ключом. " +
+            "Если включено несколько источников, берётся самый новый движок")
+        list.forEach { s ->
+            item(key = "src:${s.id}") {
+                SettingRow(s.name, (if (s.enabled) "" else "Выключен\n") + s.url, onClick = {
+                    nav.push(s.name) { n -> SourcePage(b, n, s.id) { revision++ } }
+                })
+            }
+        }
+        item(key = "add") { SettingRow("Добавить источник", onClick = ::addSource) }
+    }
+}
+
+@Composable
+private fun SourcePage(b: Browser, nav: Nav, id: String, changed: () -> Unit) {
+    val ctx = b.activity
+    var revision by remember { mutableIntStateOf(0) }
+    val s = remember(revision) { Sources.find(ctx, id) } ?: return
+    Screen(b, nav, s.name) {
+        item(key = "enabled") {
+            SwitchRow("Использовать", if (s.builtin) "Встроенный источник Antite" else null, s.enabled) { v ->
+                try {
+                    Sources.setEnabled(ctx, id, v)
+                    revision++
+                    changed()
+                } catch (e: SourceException) {
+                    b.toast(e.message ?: "")
+                }
+            }
+        }
+        item(key = "url") { SettingRow("Адрес", s.url) }
+        item(key = "key") { SettingRow("Отпечаток ключа SHA-256", s.fingerprint) }
+        if (!s.builtin) {
+            item(key = "remove") {
+                SettingRow("Удалить источник", onClick = {
+                    b.confirm("Удалить источник «${s.name}»? Уже установленные движки останутся.", "Удалить") {
+                        try {
+                            Sources.remove(ctx, id)
+                            changed()
+                            nav.back()
+                        } catch (e: SourceException) {
+                            b.toast(e.message ?: "")
+                        }
+                    }
+                })
+            }
+        }
     }
 }
 

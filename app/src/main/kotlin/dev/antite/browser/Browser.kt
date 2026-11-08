@@ -66,6 +66,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     val icons = IconCache(activity, engine) { prefs.bool("siteIcons", true) }
     private val store = TabStore(activity)
     val downloads = Downloads(this)
+    val engineNews = EngineNews(this)
     private val media = MediaPlayback(activity)
     private val main = Handler(Looper.getMainLooper())
     private val saveTask = Runnable { saveNow() }

@@ -13,7 +13,9 @@ object Engines {
     fun store(context: Context) = EngineStore(context.filesDir)
 
     fun create(context: Context): Engine? {
-        val dir = store(context).active() ?: return null
+        val store = store(context)
+        val dir = store.active() ?: return null
+        store.countStart()
         val factory = JSONObject(File(dir, "engine.json").readText()).getString("factory")
         val cls = try {
             Class.forName(factory, true, context.classLoader)

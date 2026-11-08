@@ -16,7 +16,10 @@ class ShellFactory : AppComponentFactory() {
         val store = EngineStore(File(ai.dataDir, "files"))
         // Child processes of a running browser must keep its engine, so only a fresh main process switches.
         if (Application.getProcessName() == ai.packageName) {
-            runCatching { store.applyPending() }.onFailure { Log.w("Antite", "cannot switch engine", it) }
+            runCatching {
+                store.applyPending()
+                if (store.rollbackIfCrashing()) Log.w("Antite", "engine kept failing at start, rolled back")
+            }.onFailure { Log.w("Antite", "cannot switch engine", it) }
         }
         val engine = store.active() ?: return cl
         val dex = store.dexFiles(engine).joinToString(File.pathSeparator) { it.path }

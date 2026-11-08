@@ -1,9 +1,11 @@
-"""Engine update: the daily job finds a newer engine in the source, downloads it, the restart button switches to it.
+"""Engine updates: the browser asks before installing (or installs by itself in auto mode), restart switches,
+and an engine that keeps crashing at start is rolled back.
 
 Usage: ./gradlew :engine-gecko:adapterPackage :app:assembleDebug
        python3 -I tools/e2e/engine_update.py --serial SERIAL --apk app/build/outputs/apk/debug/app-x86_64-debug.apk
 
-The newer engine is the same GeckoView with a bumped version in the adapter's engine.json.
+Newer engines are the same GeckoView with a bumped version in the adapter's engine.json;
+the broken one names a factory class that is not an engine.
 Reinstalls the browser, so its data is lost.
 """
 import argparse
@@ -24,13 +26,13 @@ from server import ReportServer  # noqa: E402
 PORT = 8770
 
 
-def bumped(version):
+def bumped(version, step=1):
     head, last = version.rsplit(".", 1)
-    return f"{head}.{int(last) + 1}"
+    return f"{head}.{int(last) + step}"
 
 
-def newer_pages(pages, version):
-    """Rewrite the local source so that it offers `version`."""
+def newer_pages(pages, version, factory=None):
+    """Rewrite the local source so that it offers `version`; `factory` breaks the engine on purpose."""
     src = zipfile.ZipFile(io.BytesIO(pages["/adapter.zip"]))
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
@@ -39,6 +41,8 @@ def newer_pages(pages, version):
             if item.filename == "engine.json":
                 manifest = json.loads(data)
                 manifest["version"] = version
+                if factory:
+                    manifest["factory"] = factory
                 data = json.dumps(manifest).encode()
             z.writestr(item, data)
     adapter = out.getvalue()
@@ -52,7 +56,8 @@ def newer_pages(pages, version):
     sig = subprocess.run(
         ["openssl", "dgst", "-sha256", "-sign", f"{KEYS}/publisher.key.pem", "-passin", f"file:{KEYS}/password"],
         input=body, capture_output=True, check=True).stdout
-    pages.update({"/engines.json": body, "/engines.json.sig": sig, "/adapter.zip": adapter})
+    pages.update({"/engines.json": body, "/engines.json.sig": sig})
+    pages["/adapter.zip"] = adapter
 
 
 def open_page(d, server):
@@ -71,6 +76,14 @@ def open_updates(d):
     d.tap("Настройки", exact=True)
     d.scroll_to("Обновления")
     d.tap("Обновления", exact=True)
+
+
+def run_job(d):
+    d.shell(f"cmd jobscheduler run -f {PACKAGE} 1")
+
+
+def crashes(d):
+    return d.shell("logcat -d -b crash", check=False).count("FATAL EXCEPTION")
 
 
 def main():
@@ -93,38 +106,70 @@ def main():
     download_engine(d, PORT)
     open_page(d, server)
 
-    print("2. the source offers a newer engine, run the daily job")
-    new = bumped(version)
-    newer_pages(pages, new)
-    d.shell(f"cmd jobscheduler run -f {PACKAGE} 1")
+    print("2. ask mode: the job finds a newer engine, the browser asks")
+    v2 = bumped(version)
+    newer_pages(pages, v2)
+    run_job(d)
+    end = time.time() + 120
+    while d.find("Доступен новый движок", exact=True) is None:
+        if time.time() > end:
+            d.fail("the browser did not offer the update")
+        time.sleep(3)
+        d.shell("input keyevent HOME")
+        d.launch()
+        time.sleep(2)
+    d.wait(f"Gecko {v2}")
+    d.tap("Обновить", exact=True)
+    d.wait("Движок скачан", timeout=300, exact=True)
+    d.tap("Перезапустить", exact=True)
+    d.wait("Меню", timeout=60, exact=True)
     open_updates(d)
+    d.wait(f"gecko {v2}")
+    d.wait("Работает")
+    open_page(d, server)
+
+    print("3. auto mode installs a broken engine without asking")
+    v3 = bumped(version, 2)
+    newer_pages(pages, v3, factory="java.lang.Object")
+    open_updates(d)
+    d.tap("Установка", exact=True)
+    d.tap("Автоматически", exact=True)
+    d.shell("input keyevent BACK")
+    run_job(d)
     end = time.time() + 300
     while d.find("Перезапустить браузер", exact=True) is None:
         if time.time() > end:
-            d.fail("the job did not download the new engine")
+            d.fail("the job did not download the engine")
         d.shell("input keyevent BACK")
+        d.scroll_to("Обновления")
         d.tap("Обновления", exact=True)
         time.sleep(3)
-    d.wait(f"Скачан Gecko {new}")
-    d.wait(f"gecko {version}")
-
-    print("3. restart into the new engine")
+    d.shell("logcat -b crash -c")
     d.tap("Перезапустить браузер", exact=True)
-    d.wait("Меню", timeout=60, exact=True)
-    open_updates(d)
-    d.wait(f"gecko {new}")
-    if d.find("Перезапустить браузер", exact=True) is not None:
-        d.fail("restart row is still shown")
 
-    print("4. a page works on the new engine")
-    open_page(d, server)
-
-    print("5. the source has nothing newer")
+    print("4. it crashes at start; after 3 failed starts the previous engine comes back")
+    for i in range(3):
+        if i > 0:
+            d.stop()
+            d.launch()
+        end = time.time() + 30
+        while crashes(d) < i + 1:
+            if time.time() > end:
+                d.fail(f"broken engine did not crash on start {i + 1}")
+            time.sleep(1)
+        time.sleep(2)
+        if d.find("Закрыть приложение", exact=True) is not None:
+            d.tap("Закрыть приложение", exact=True)
     d.stop()
     d.launch()
+    d.wait("Новый движок не запустился", timeout=60, exact=True)
+    d.wait(f"Gecko {v3} трижды")
+    d.tap("Понятно", exact=True)
     open_updates(d)
+    d.wait(f"gecko {v2}")
     d.tap("Проверить сейчас", exact=True)
     d.wait("обновлений нет", timeout=30)
+    open_page(d, server)
     server.close()
     print("OK")
 

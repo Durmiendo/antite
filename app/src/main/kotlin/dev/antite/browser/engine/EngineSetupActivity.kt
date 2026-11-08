@@ -3,6 +3,7 @@ package dev.antite.browser.engine
 import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -22,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.antite.browser.BuildConfig
+import dev.antite.browser.FormField
+import dev.antite.browser.ui.FormDialog
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.LocalPalette
 import kotlin.concurrent.thread
@@ -35,12 +38,16 @@ class EngineSetupActivity : ComponentActivity() {
     }
 
     private var state by mutableStateOf<State>(State.Checking)
+    private var adding by mutableStateOf(false)
 
-    private val indexUrl: String
-        get() {
-            val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-            return intent.getStringExtra("indexUrl")?.takeIf { debuggable } ?: BuildConfig.ENGINE_INDEX_URL
+    // Debug builds take a test source from the intent, signed with the built-in key.
+    private fun useTestSource() {
+        val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        val url = intent.getStringExtra("indexUrl")?.takeIf { debuggable } ?: return
+        if (Sources.list(this).none { it.url == url && it.enabled }) {
+            Sources.add(this, "Тестовый", url, BuildConfig.PUBLISHER_KEY, onlyThis = true)
         }
+    }
 
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
@@ -59,8 +66,9 @@ class EngineSetupActivity : ComponentActivity() {
                         }
                         is State.Ready -> {
                             Info("Для работы браузеру нужен движок. Он скачивается один раз и потом обновляется отдельно.")
-                            Info("Gecko ${s.offer.entry.version}, ${mb(s.offer.size)} МБ\nИсточник: ${Uri.parse(indexUrl).host}")
+                            Info("Gecko ${s.offer.entry.version}, ${mb(s.offer.size)} МБ\nИсточник: ${s.offer.source.name} (${Uri.parse(s.offer.source.url).host})")
                             TextButton(onClick = { download(s) }) { Text("Скачать", color = p.accent, fontSize = 16.sp) }
+                            TextButton(onClick = { adding = true }) { Text("Другой источник", color = p.accent, fontSize = 16.sp) }
                         }
                         is State.Downloading -> {
                             Info("Скачиваем и проверяем…")
@@ -69,8 +77,25 @@ class EngineSetupActivity : ComponentActivity() {
                         is State.Failed -> {
                             Info(s.message)
                             TextButton(onClick = ::check) { Text("Повторить", color = p.accent, fontSize = 16.sp) }
+                            TextButton(onClick = { adding = true }) { Text("Другой источник", color = p.accent, fontSize = 16.sp) }
                         }
                     }
+                }
+                if (adding) {
+                    FormDialog("Другой источник", "Источник сможет устанавливать код, который выполняется в браузере. " +
+                        "Добавляйте только тот, чьему издателю доверяете", listOf(
+                        FormField("Адрес индекса (https://…/engines.json)", kind = FormField.Kind.URL),
+                        FormField("Открытый ключ издателя", kind = FormField.Kind.URL),
+                    ), "Добавить", { v ->
+                        try {
+                            Sources.add(this, "", v[0].trim(), v[1], onlyThis = true)
+                            check()
+                            true
+                        } catch (e: SourceException) {
+                            Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
+                            false
+                        }
+                    }, { adding = false })
                 }
             }
         }
@@ -88,13 +113,16 @@ class EngineSetupActivity : ComponentActivity() {
         state = State.Checking
         thread(name = "engine-index") {
             state = try {
-                val offer = EngineUpdates.fetchOffer(this, indexUrl)
-                if (offer == null) State.Failed("В источнике нет движка для этого устройства и этой версии браузера.")
-                else State.Ready(offer)
-            } catch (e: IndexException) {
-                State.Failed("Источник обновлений не прошёл проверку подписи: ${e.message}")
+                useTestSource()
+                val found = EngineUpdates.best(this)
+                when {
+                    found.offer != null -> State.Ready(found.offer)
+                    found.errors.isNotEmpty() ->
+                        State.Failed("Не удалось получить список движков. Проверьте подключение к интернету.\n" + found.errors.joinToString("\n"))
+                    else -> State.Failed("В источнике нет движка для этого устройства и этой версии браузера.")
+                }
             } catch (e: Exception) {
-                State.Failed("Не удалось получить список движков. Проверьте подключение к интернету.\n${e.message}")
+                State.Failed("Не удалось получить список движков: ${e.message}")
             }
         }
     }
@@ -111,7 +139,6 @@ class EngineSetupActivity : ComponentActivity() {
                         state = State.Downloading(done.toFloat() / total)
                     }
                 }
-                EngineUpdates.setSource(this, indexUrl)
                 Engines.restart(this)
             } catch (e: Exception) {
                 state = State.Failed("Не удалось скачать движок: ${e.message}")
