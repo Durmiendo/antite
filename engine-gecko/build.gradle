@@ -34,11 +34,11 @@ tasks.register('adapterPackage') {
     dependsOn 'assembleRelease'
     def aar = layout.buildDirectory.file('outputs/aar/engine-gecko-release.aar')
     def work = layout.buildDirectory.dir('tmp/adapterPackage')
-    def out = layout.buildDirectory.file("outputs/engine/gecko-$geckoviewVersion-adapter.zip")
+    def version = adapterRevision == '0' ? geckoviewVersion : "$geckoviewVersion.$adapterRevision"
+    def out = layout.buildDirectory.file("outputs/engine/gecko-$version-adapter.zip")
     def geckoAar = configurations.geckoAar
     def sdkDir = androidComponents.sdkComponents.sdkDirectory
     def api = engineApi
-    def version = geckoviewVersion
     inputs.file(aar)
     inputs.files(geckoAar)
     outputs.file(out)

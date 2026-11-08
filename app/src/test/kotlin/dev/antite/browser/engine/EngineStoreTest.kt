@@ -117,6 +117,8 @@ class EngineStoreTest {
         assertTrue(EngineUpdates.newer("160.0.20261201000000", "159.0.20261102144711"))
         assertTrue(EngineUpdates.newer("159.0.20261102144712", "159.0.20261102144711"))
         assertTrue(EngineUpdates.newer("159.10", "159.9"))
+        assertTrue("adapter revision", EngineUpdates.newer("159.0.20261102144711.1", "159.0.20261102144711"))
+        assertFalse(EngineUpdates.newer("159.0.20261102144711", "159.0.20261102144711.1"))
         assertFalse(EngineUpdates.newer("159.0.20261102144711", "159.0.20261102144711"))
         assertFalse(EngineUpdates.newer("158.9", "159.0"))
     }

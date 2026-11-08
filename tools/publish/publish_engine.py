@@ -96,17 +96,30 @@ def main():
     a = ap.parse_args()
 
     gecko = a.gecko or prop("geckoviewVersion")
+    revision = int(prop("adapterRevision"))
+    version = gecko if revision == 0 else f"{gecko}.{revision}"
     api = int(prop("engineApi"))
-    tag = f"engine-{gecko}"
+    tag = f"engine-{version}"
     base = a.adapter_base or f"{prop('engineReleaseBase')}/{tag}"
     os.makedirs(CACHE, exist_ok=True)
+    index_path = os.path.join(a.out, "engines.json")
+    old = json.load(open(index_path)) if os.path.exists(index_path) else {"serial": 0, "engines": []}
+    previous = next((e for e in old["engines"] if e["id"] == "gecko-release"), None)
 
-    print(f"1. adapter for GeckoView {gecko}")
-    subprocess.run(["./gradlew", "-q", ":engine-gecko:adapterPackage", f"-PgeckoviewVersion={gecko}"], check=True)
-    adapter = f"engine-gecko/build/outputs/engine/gecko-{gecko}-adapter.zip"
-    manifest = json.loads(zipfile.ZipFile(adapter).read("engine.json"))
-    if manifest["version"] != gecko or manifest["api"] != api:
-        sys.exit(f"adapter manifest does not match: {manifest}")
+    # A published engine version is never rebuilt: its files are pinned by hash. Adapter changes need a new
+    # adapterRevision, which phones see as a newer engine.
+    adapter = None
+    if previous and previous["version"] == version and previous["api"] == api:
+        print(f"1. engine {version} is already published, its adapter is kept")
+        adapter_entry = previous["adapter"]
+    else:
+        print(f"1. adapter for engine {version}")
+        subprocess.run(["./gradlew", "-q", ":engine-gecko:adapterPackage", f"-PgeckoviewVersion={gecko}"], check=True)
+        adapter = f"engine-gecko/build/outputs/engine/gecko-{version}-adapter.zip"
+        manifest = json.loads(zipfile.ZipFile(adapter).read("engine.json"))
+        if manifest["version"] != version or manifest["api"] != api:
+            sys.exit(f"adapter manifest does not match: {manifest}")
+        adapter_entry = artifact([f"{base}/{os.path.basename(adapter)}"], adapter)
 
     print("2. Mozilla's AARs")
     upstream = {}
@@ -119,12 +132,8 @@ def main():
             sys.exit(f"{url} has no libxul.so or omni.ja for {abi}")
         upstream[abi] = artifact([url], aars[abi])
 
-    index_path = os.path.join(a.out, "engines.json")
-    old = json.load(open(index_path)) if os.path.exists(index_path) else {"serial": 0, "engines": []}
-
     print("3. manifest against the shell")
     # Shells that already run this engine API keep getting engines; only new Android components raise the bar.
-    previous = next((e for e in old["engines"] if e["id"] == "gecko-release"), None)
     min_shell = previous["minShell"] if previous and previous["api"] == api else shell_version_code()
     declared = components(shell_aar())
     for abi in ABIS:
@@ -138,9 +147,9 @@ def main():
 
     print("4. index")
     entry = {
-        "id": "gecko-release", "type": "gecko", "api": api, "channel": "release", "version": gecko,
+        "id": "gecko-release", "type": "gecko", "api": api, "channel": "release", "version": version,
         "minShell": min_shell,
-        "adapter": artifact([f"{base}/{os.path.basename(adapter)}"], adapter),
+        "adapter": adapter_entry,
         "upstream": upstream,
     }
     shell = old.get("shell")
@@ -176,7 +185,8 @@ def main():
     print(f"   {index_path} serial {index['serial']}, signature verified with keys/publisher.pub.pem")
 
     print("\nUpload:")
-    print(f"  {adapter} -> release {tag} ({entry['adapter']['url'][0]})")
+    if adapter:
+        print(f"  {adapter} -> release {tag} ({entry['adapter']['url'][0]})")
     if a.shell:
         print(f"  {SHELL_APK} -> {shell['apk'][ABIS[0]]['url'][0]}")
     print(f"  {index_path} and {index_path}.sig -> repository root ({prop('engineIndexUrl')})")
