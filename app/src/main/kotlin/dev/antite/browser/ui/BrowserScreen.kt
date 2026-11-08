@@ -36,6 +36,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -102,9 +103,10 @@ fun BrowserScreen(b: Browser) {
                         translationY = if (b.fullscreen) 0f else toolbarPx - b.hidden
                     },
             )
-            SideEffect {
-                view.setToolbarMaxHeight(toolbarPx.toInt())
-                view.setVerticalClipping(if (b.fullscreen) 0 else -b.hidden.toInt())
+            SideEffect { view.setToolbarMaxHeight(toolbarPx.toInt()) }
+            // The toolbar offset is read only in deferred lambdas, so it must be pushed to Gecko on every change.
+            LaunchedEffect(view) {
+                snapshotFlow { if (b.fullscreen) 0 else -b.hidden.toInt() }.collect { view.setVerticalClipping(it) }
             }
         }
         if (t != null && Urls.isBlank(t.url) && b.overlay == Overlay.NONE) {
@@ -117,6 +119,10 @@ fun BrowserScreen(b: Browser) {
             }
             if (b.urlFocused) Suggestions(b, Modifier.padding(top = 56.dp).fillMaxSize().background(bar))
             if (b.findVisible) FindBar(b)
+        }
+        // Like Firefox, the system navigation bar stays and is opaque; the page must not show through it.
+        if (!b.fullscreen && imeInset == 0 && navInset > 0) {
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(with(density) { navInset.toDp() }).background(bar))
         }
         b.translateOffer?.let { TranslateBar(b, it, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() })) }
         if (b.overlay != Overlay.NONE) {
@@ -135,9 +141,6 @@ fun BrowserScreen(b: Browser) {
         DialogHost(b)
         Messages(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() } + 12.dp))
     }
-
-    val hideNav = !b.fullscreen && b.hidden >= toolbarPx && b.overlay == Overlay.NONE && !b.urlFocused
-    LaunchedEffect(hideNav) { b.activity.setNavigationBarHidden(hideNav) }
 }
 
 @Composable
