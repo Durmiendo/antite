@@ -1,22 +1,22 @@
 {
   "format": 1,
-  "serial": 1794174481,
-  "published": "2026-11-08T21:48:01Z",
-  "expires": 1796766481,
+  "serial": 1794175885,
+  "published": "2026-11-08T22:11:25Z",
+  "expires": 1796767885,
   "engines": [
     {
       "id": "gecko-release",
       "type": "gecko",
-      "api": 2,
+      "api": 3,
       "channel": "release",
-      "version": "159.0.20261102144711.2",
-      "minShell": 7,
+      "version": "159.0.20261102144711.3",
+      "minShell": 8,
       "adapter": {
         "url": [
-          "https://github.com/Durmiendo/antite/releases/download/engine-159.0.20261102144711.2/gecko-159.0.20261102144711.2-adapter.zip"
+          "https://github.com/Durmiendo/antite/releases/download/engine-159.0.20261102144711.3/gecko-159.0.20261102144711.3-adapter.zip"
         ],
-        "size": 626884,
-        "sha256": "d2900c6ab0521cdea9a3c3517d26acf79db336ee66b0371b0bba0ce127507a8c"
+        "size": 628222,
+        "sha256": "03ea2ad2451becc9a3590a8320ae94e4005b803051dcc00b6e78a578686c0cff"
       },
       "upstream": {
         "arm64-v8a": {
@@ -44,28 +44,28 @@
     }
   ],
   "shell": {
-    "version": 7,
+    "version": 8,
     "apk": {
       "arm64-v8a": {
         "url": [
-          "https://github.com/Durmiendo/antite/releases/download/shell-7/antite-7.apk"
+          "https://github.com/Durmiendo/antite/releases/download/shell-8/antite-8.apk"
         ],
-        "size": 12676351,
-        "sha256": "be9b26336a76ff183381a146cf79c9d61ee4f5855e0afabfebef5399331ac043"
+        "size": 12676347,
+        "sha256": "aa8b793fe6180d6a9fcda41578e2c2d6b967de1644aba5b957e9e893ee457cb7"
       },
       "armeabi-v7a": {
         "url": [
-          "https://github.com/Durmiendo/antite/releases/download/shell-7/antite-7.apk"
+          "https://github.com/Durmiendo/antite/releases/download/shell-8/antite-8.apk"
         ],
-        "size": 12676351,
-        "sha256": "be9b26336a76ff183381a146cf79c9d61ee4f5855e0afabfebef5399331ac043"
+        "size": 12676347,
+        "sha256": "aa8b793fe6180d6a9fcda41578e2c2d6b967de1644aba5b957e9e893ee457cb7"
       },
       "x86_64": {
         "url": [
-          "https://github.com/Durmiendo/antite/releases/download/shell-7/antite-7.apk"
+          "https://github.com/Durmiendo/antite/releases/download/shell-8/antite-8.apk"
         ],
-        "size": 12676351,
-        "sha256": "be9b26336a76ff183381a146cf79c9d61ee4f5855e0afabfebef5399331ac043"
+        "size": 12676347,
+        "sha256": "aa8b793fe6180d6a9fcda41578e2c2d6b967de1644aba5b957e9e893ee457cb7"
       }
     }
   }
