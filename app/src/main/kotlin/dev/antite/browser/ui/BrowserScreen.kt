@@ -117,14 +117,6 @@ fun BrowserScreen(b: Browser) {
         val view = b.engineView
         if (view != null) {
             val bottomGap = if (b.fullscreen) 0 else imeSettled
-            AndroidView(
-                factory = { view.view },
-                modifier = Modifier.fillMaxSize()
-                    .padding(bottom = with(density) { bottomGap.toDp() })
-                    .graphicsLayer {
-                        translationY = if (b.fullscreen) 0f else toolbarPx - b.hidden
-                    },
-            )
             // Under the keyboard the navigation bar is already outside the page, so it counts as gone.
             val navBars = WindowInsets.navigationBars
             val keyboardUp by rememberUpdatedState(imeSettled > 0)
@@ -133,6 +125,16 @@ fun BrowserScreen(b: Browser) {
                 if (b.fullscreen) 0
                 else -(b.hidden.toInt() + if (keyboardUp) navMax else navMax - navBars.getBottom(density))
             }
+            AndroidView(
+                factory = { view.view },
+                modifier = Modifier.fillMaxSize()
+                    .padding(bottom = with(density) { bottomGap.toDp() })
+                    .graphicsLayer {
+                        translationY = if (b.fullscreen) 0f else toolbarPx - b.hidden
+                        // Sent from the frame that moves the page, so fixed bottom elements are not a frame behind.
+                        view.setVerticalClipping(clipping())
+                    },
+            )
             // Full screen and PiP have no bars, else Gecko keeps an empty strip for them at the bottom. Gecko resets the
             // clipping to 0 whenever the max height is set, so it is set only when it changes and the clipping is resent.
             val maxHeight = if (b.pip || b.fullscreen) 0 else toolbarPx.toInt() + navFull
@@ -143,10 +145,6 @@ fun BrowserScreen(b: Browser) {
                     view.setToolbarMaxHeight(maxHeight)
                     view.setVerticalClipping(clipping())
                 }
-            }
-            // The toolbar offset is read only in deferred lambdas, so it must be pushed to Gecko on every change.
-            LaunchedEffect(view) {
-                snapshotFlow { clipping() }.collect { view.setVerticalClipping(it) }
             }
             // Gecko drops the clipping when the view is resized (the keyboard), so it is sent again.
             DisposableEffect(view) {
