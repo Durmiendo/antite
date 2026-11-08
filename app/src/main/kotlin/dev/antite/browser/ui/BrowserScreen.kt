@@ -45,6 +45,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -94,10 +95,10 @@ fun BrowserScreen(b: Browser) {
     val navHidden by remember {
         derivedStateOf { !b.fullscreen && b.barsHidden && b.overlay == Overlay.NONE && !b.urlFocused }
     }
-    // The page is resized once per transition, not on every animation frame: each resize makes Gecko lay the page
-    // out again and the page jerks. The keyboard counts from where its animation ends when showing, from where it
-    // starts when hiding. The navigation bar counts as gone only once it has left the screen: resized while the bar is
-    // still there, Gecko lays fixed bottom elements out a toolbar height too high (tools/e2e/fixed_bottom.py).
+    // The page is resized once per keyboard transition, not on every animation frame: each resize makes Gecko lay the
+    // page out again and the page jerks. The keyboard counts from where its animation ends when showing, from where it
+    // starts when hiding. The navigation bar never resizes the page: Gecko treats it as part of the dynamic toolbar and
+    // moves fixed bottom elements with it frame by frame (tools/e2e/fixed_bottom_frames.py).
     val imeTarget = WindowInsets.imeAnimationTarget.getBottom(density)
     val imeSettled = if (imeInset == imeTarget) imeInset else minOf(WindowInsets.imeAnimationSource.getBottom(density), imeTarget)
     val navFull = WindowInsets.navigationBarsIgnoringVisibility.getBottom(density)
@@ -115,7 +116,7 @@ fun BrowserScreen(b: Browser) {
     ) {
         val view = b.engineView
         if (view != null) {
-            val bottomGap = if (b.fullscreen) 0 else maxOf(if (navHidden && navInset == 0) 0 else navFull, imeSettled)
+            val bottomGap = if (b.fullscreen) 0 else imeSettled
             AndroidView(
                 factory = { view.view },
                 modifier = Modifier.fillMaxSize()
@@ -124,16 +125,33 @@ fun BrowserScreen(b: Browser) {
                         translationY = if (b.fullscreen) 0f else toolbarPx - b.hidden
                     },
             )
-            // Gecko keeps room for the toolbar at the bottom of the page; in the small PiP window that is half of it.
-            SideEffect { view.setToolbarMaxHeight(if (b.pip) 0 else toolbarPx.toInt()) }
+            // Under the keyboard the navigation bar is already outside the page, so it counts as gone.
+            val navBars = WindowInsets.navigationBars
+            val keyboardUp by rememberUpdatedState(imeSettled > 0)
+            val navMax by rememberUpdatedState(navFull)
+            val clipping = {
+                if (b.fullscreen) 0
+                else -(b.hidden.toInt() + if (keyboardUp) navMax else navMax - navBars.getBottom(density))
+            }
+            // Full screen and PiP have no bars, else Gecko keeps an empty strip for them at the bottom. Gecko resets the
+            // clipping to 0 whenever the max height is set, so it is set only when it changes and the clipping is resent.
+            val maxHeight = if (b.pip || b.fullscreen) 0 else toolbarPx.toInt() + navFull
+            val sentMax = remember(view) { intArrayOf(-1) }
+            SideEffect {
+                if (sentMax[0] != maxHeight) {
+                    sentMax[0] = maxHeight
+                    view.setToolbarMaxHeight(maxHeight)
+                    view.setVerticalClipping(clipping())
+                }
+            }
             // The toolbar offset is read only in deferred lambdas, so it must be pushed to Gecko on every change.
             LaunchedEffect(view) {
-                snapshotFlow { if (b.fullscreen) 0 else -b.hidden.toInt() }.collect { view.setVerticalClipping(it) }
+                snapshotFlow { clipping() }.collect { view.setVerticalClipping(it) }
             }
-            // Gecko drops the clipping when the view is resized (the navigation bar hiding), so it is sent again.
+            // Gecko drops the clipping when the view is resized (the keyboard), so it is sent again.
             DisposableEffect(view) {
                 val listener = android.view.View.OnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
-                    if (bottom - top != oldBottom - oldTop) view.setVerticalClipping(if (b.fullscreen) 0 else -b.hidden.toInt())
+                    if (bottom - top != oldBottom - oldTop) view.setVerticalClipping(clipping())
                 }
                 view.view.addOnLayoutChangeListener(listener)
                 onDispose { view.view.removeOnLayoutChangeListener(listener) }

@@ -86,8 +86,10 @@ def start(d, server, button):
     while server.report(timeout=0.1):
         pass
     d.shell(f"input tap 540 {BUTTONS[button]}")
-    if server.report(timeout=10) != "full":
-        d.fail(f"{button}: page did not enter full screen")
+    end = time.time() + 10
+    while (s := server.report(timeout=max(0.1, end - time.time()))) != "full":
+        if s is None:
+            d.fail(f"{button}: page did not enter full screen")
     time.sleep(1.5)
 
 
