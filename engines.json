@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "serial": 1794142721,
-  "published": "2026-11-08T12:58:41Z",
+  "serial": 1794144742,
+  "published": "2026-11-08T13:32:22Z",
   "engines": [
     {
       "id": "gecko-release",
@@ -25,6 +25,13 @@
           "size": 91498586,
           "sha256": "003eff5dba9e53fe5a23ae454a5f9ce50ab631c4ea8aed33824957d8c756e745"
         },
+        "armeabi-v7a": {
+          "url": [
+            "https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview-armeabi-v7a/159.0.20261102144711/geckoview-armeabi-v7a-159.0.20261102144711.aar"
+          ],
+          "size": 88751103,
+          "sha256": "3d96c27f83420bc0c98cd7ab05a78b79dc0d9f70f3cb8ea940ee0bd50236d3d9"
+        },
         "x86_64": {
           "url": [
             "https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview-x86_64/159.0.20261102144711/geckoview-x86_64-159.0.20261102144711.aar"
@@ -36,21 +43,28 @@
     }
   ],
   "shell": {
-    "version": 1,
+    "version": 2,
     "apk": {
       "arm64-v8a": {
         "url": [
-          "https://github.com/Durmiendo/antite/releases/download/shell-1/app-arm64-v8a-release.apk"
+          "https://github.com/Durmiendo/antite/releases/download/shell-2/antite-2.apk"
         ],
-        "size": 12609932,
-        "sha256": "1212b9b87d0e7fe8980d8e19f6482ded2cd96cb88446d81749fe32f30cbae386"
+        "size": 12643535,
+        "sha256": "5db02269395c5250d068099ead6ea96ca3c77825627f103be1c2275b3e786352"
+      },
+      "armeabi-v7a": {
+        "url": [
+          "https://github.com/Durmiendo/antite/releases/download/shell-2/antite-2.apk"
+        ],
+        "size": 12643535,
+        "sha256": "5db02269395c5250d068099ead6ea96ca3c77825627f103be1c2275b3e786352"
       },
       "x86_64": {
         "url": [
-          "https://github.com/Durmiendo/antite/releases/download/shell-1/app-x86_64-release.apk"
+          "https://github.com/Durmiendo/antite/releases/download/shell-2/antite-2.apk"
         ],
-        "size": 12610593,
-        "sha256": "fb08ab8e0283d5a4bee9e691ba3c99cf2b442a5b32ef7d9fc2c34a6b03c4a1be"
+        "size": 12643535,
+        "sha256": "5db02269395c5250d068099ead6ea96ca3c77825627f103be1c2275b3e786352"
       }
     }
   }
