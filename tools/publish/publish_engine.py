@@ -119,11 +119,16 @@ def main():
             sys.exit(f"{url} has no libxul.so or omni.ja for {abi}")
         upstream[abi] = artifact([url], aars[abi])
 
+    index_path = os.path.join(a.out, "engines.json")
+    old = json.load(open(index_path)) if os.path.exists(index_path) else {"serial": 0, "engines": []}
+
     print("3. manifest against the shell")
-    shell = components(shell_aar())
-    min_shell = shell_version_code()
+    # Shells that already run this engine API keep getting engines; only new Android components raise the bar.
+    previous = next((e for e in old["engines"] if e["id"] == "gecko-release"), None)
+    min_shell = previous["minShell"] if previous and previous["api"] == api else shell_version_code()
+    declared = components(shell_aar())
     for abi in ABIS:
-        extra = components(aars[abi]) - shell
+        extra = components(aars[abi]) - declared
         if extra:
             min_shell = shell_version_code() + 1
             print(f"   {abi} needs a new shell (versionCode {min_shell}), not declared in it:")
@@ -132,8 +137,6 @@ def main():
     print(f"   minShell {min_shell}")
 
     print("4. index")
-    index_path = os.path.join(a.out, "engines.json")
-    old = json.load(open(index_path)) if os.path.exists(index_path) else {"serial": 0, "engines": []}
     entry = {
         "id": "gecko-release", "type": "gecko", "api": api, "channel": "release", "version": gecko,
         "minShell": min_shell,
