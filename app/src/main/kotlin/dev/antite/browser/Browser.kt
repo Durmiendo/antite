@@ -354,7 +354,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     fun onBack(): Boolean {
         val t = current
         when {
-            dialogs.isNotEmpty() -> dialogs.removeAt(dialogs.lastIndex).onDismiss()
+            dialogs.isNotEmpty() -> dialogs.removeAt(0).onDismiss()
             menuOpen -> menuOpen = false
             overlay != Overlay.NONE -> closeOverlay()
             findVisible -> hideFind()
