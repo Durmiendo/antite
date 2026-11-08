@@ -73,7 +73,7 @@ object Sources {
     }
 
     fun add(context: Context, name: String, url: String, key: String, onlyThis: Boolean = false): Source {
-        if (!url.startsWith("https://") && !(BuildConfig.DEBUG && url.startsWith("http://localhost"))) {
+        if (!url.startsWith("https://") && !url.startsWith("http://localhost:") && !url.startsWith("http://127.0.0.1:")) {
             throw SourceException("адрес должен начинаться с https://")
         }
         val current = list(context)

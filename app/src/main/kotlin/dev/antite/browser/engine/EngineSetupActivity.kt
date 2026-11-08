@@ -66,7 +66,8 @@ class EngineSetupActivity : ComponentActivity() {
                         }
                         is State.Ready -> {
                             Info("Для работы браузеру нужен движок. Он скачивается один раз и потом обновляется отдельно.")
-                            Info("Gecko ${s.offer.entry.version}, ${mb(s.offer.size)} МБ\nИсточник: ${s.offer.source.name} (${Uri.parse(s.offer.source.url).host})")
+                            Info("Gecko ${s.offer.entry.version}, ${mb(s.offer.size)} МБ\nИсточник: ${s.offer.source.name} (${Uri.parse(s.offer.source.url).host})" +
+                                if (s.offer.source.builtin) "" else "\nКлюч SHA-256: ${s.offer.source.fingerprint}")
                             TextButton(onClick = { download(s) }) { Text("Скачать", color = p.accent, fontSize = 16.sp) }
                             TextButton(onClick = { adding = true }) { Text("Другой источник", color = p.accent, fontSize = 16.sp) }
                         }
