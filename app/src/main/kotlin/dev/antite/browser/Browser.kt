@@ -101,6 +101,12 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     var engineView: EngineView? = null
     var toolbarHeightPx = 0f
+    var navDeadZonePx = 0f
+
+    // The navigation bar hides with the fully hidden toolbar and comes back only after the toolbar has come out by
+    // navDeadZonePx, so a small scroll up does not pop it up.
+    var barsHidden by mutableStateOf(false)
+        private set
     private var lastScrollY = -1
 
     init {
@@ -404,6 +410,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun setToolbarHidden(h: Float) {
         hidden = h.coerceIn(0f, toolbarHeightPx)
+        if (hidden >= toolbarHeightPx) barsHidden = true
+        else if (hidden <= toolbarHeightPx - navDeadZonePx) barsHidden = false
     }
 
     fun onScroll(t: Tab, y: Int) {

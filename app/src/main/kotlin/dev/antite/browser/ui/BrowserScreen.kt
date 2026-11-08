@@ -86,12 +86,13 @@ fun BrowserScreen(b: Browser) {
     val density = LocalDensity.current
     val toolbarPx = with(density) { 56.dp.toPx() }
     b.toolbarHeightPx = toolbarPx
+    b.navDeadZonePx = with(density) { 32.dp.toPx() }
     val t = b.current
     val bar = if (t?.incognito == true) p.toolbarIncognito else p.toolbar
     val navInset = WindowInsets.navigationBars.getBottom(density)
     val imeInset = WindowInsets.ime.getBottom(density)
-    val navHidden by remember(toolbarPx) {
-        derivedStateOf { !b.fullscreen && b.hidden >= toolbarPx && b.overlay == Overlay.NONE && !b.urlFocused }
+    val navHidden by remember {
+        derivedStateOf { !b.fullscreen && b.barsHidden && b.overlay == Overlay.NONE && !b.urlFocused }
     }
     // The page is resized once per transition, not on every animation frame: each resize makes Gecko lay the page
     // out again and the page jerks. The keyboard counts from where its animation ends when showing, from where it
