@@ -31,6 +31,7 @@ import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.engine.Engines
 import dev.antite.browser.engine.EngineStore
 import dev.antite.browser.engine.SourceException
+import dev.antite.browser.engine.ShellInstaller
 import dev.antite.browser.engine.Sources
 import dev.antite.browser.transfer.BackupCipher
 import dev.antite.browser.transfer.WrongPasswordException
@@ -427,7 +428,75 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
             }
         }
         note("Если новый движок ${EngineStore.MAX_FAILED_STARTS} раза подряд не запустится, браузер сам вернёт предыдущий")
+        section("Отладка")
+        item(key = "debug") { DebugInstall(b) { revision++ } }
     }
+}
+
+@Composable
+private fun DebugInstall(b: Browser, changed: () -> Unit) {
+    val ctx = b.activity
+    // Kept in the browser prefs, so the row follows it even when the unlock prompt recreates this item.
+    val on = b.prefs.bool(EngineUpdates.DEBUG, false)
+    var busy by remember { mutableStateOf<String?>(null) }
+    SwitchRow("Режим отладки", "Установка движка и Antite с любого адреса, в том числе http, без проверки подписи", on) { v ->
+        if (!v) {
+            b.prefs.edit { putBoolean(EngineUpdates.DEBUG, false) }
+        } else {
+            b.confirm("Без проверки подписи поставить можно любой код. Он будет работать внутри браузера с доступом ко " +
+                "всему, включая пароли. Включайте только для своих сборок.", "Включить") {
+                Auth.require(ctx, "Включить режим отладки", { b.prefs.edit { putBoolean(EngineUpdates.DEBUG, true) } }, {})
+            }
+        }
+    }
+    if (!on) return
+    fun install(updates: dev.antite.browser.engine.Updates) {
+        val choices = listOfNotNull(
+            updates.engine?.let { o ->
+                DialogButton("Движок Gecko ${o.entry.version}, ${(o.size + 512 * 1024) / (1024 * 1024)} МБ") {
+                    busy = "Скачиваем движок…"
+                    b.engineNews.install(o, { busy = "Скачиваем движок… $it%" }) {
+                        busy = null
+                        changed()
+                    }
+                }
+            },
+            updates.shell?.let { s ->
+                DialogButton("Antite, сборка ${s.version}") {
+                    busy = "Скачиваем Antite…"
+                    ctx.lifecycleScope.launch {
+                        val r = withContext(Dispatchers.IO) {
+                            runCatching {
+                                ShellInstaller.install(ctx, s) { d, total ->
+                                    ctx.runOnUiThread { busy = "Скачиваем Antite… ${d * 100 / total}%" }
+                                }
+                            }
+                        }
+                        busy = null
+                        r.exceptionOrNull()?.let { b.toast("Не удалось установить Antite: ${it.message}") }
+                    }
+                }
+            },
+        )
+        if (choices.isEmpty()) b.toast("По этому адресу нет ни движка для этой версии, ни сборки Antite")
+        else b.show(UiDialog.Items("Установить", choices))
+    }
+    SettingRow("Установить с адреса", busy ?: "Адрес engines.json, например http://192.168.1.5:8790/engines.json", onClick = {
+        if (busy != null) return@SettingRow
+        b.show(UiDialog.Form("Установить с адреса", null, listOf(
+            FormField("Адрес engines.json", b.prefs.string("debugUrl", ""), kind = FormField.Kind.URL),
+        ), "Проверить", { v ->
+            val url = v[0].trim()
+            b.prefs.edit { putString("debugUrl", url) }
+            busy = "Проверяем…"
+            ctx.lifecycleScope.launch {
+                val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.fromAddress(ctx, url) } }
+                busy = null
+                r.onSuccess(::install).onFailure { b.toast("Не удалось: ${it.message ?: it.javaClass.simpleName}") }
+            }
+            true
+        }))
+    })
 }
 
 private fun updatesSummary(b: Browser): String =

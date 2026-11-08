@@ -64,6 +64,9 @@ class EngineIndex(val serial: Long, val engines: List<EngineEntry>, val shell: S
             return index
         }
 
+        // Debug mode only: no signature, serial or expiry check.
+        fun unsigned(json: ByteArray): EngineIndex = parse(JSONObject(String(json, Charsets.UTF_8)))
+
         private fun artifact(o: JSONObject): Artifact {
             val urls = o.getJSONArray("url")
             return Artifact(List(urls.length()) { urls.getString(it) }, o.getLong("size"), o.getString("sha256").lowercase())

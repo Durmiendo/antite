@@ -36,6 +36,7 @@ object EngineUpdates {
     const val INSTALL = "updatesInstall"
     const val WIFI_ONLY = "updatesWifiOnly"
     const val INTERVAL = "updatesInterval"
+    const val DEBUG = "debugInstall"
 
     // Minutes; JobScheduler runs periodic jobs at most every 15 minutes, so shorter ones run while the browser is open.
     val INTERVALS = listOf(1, 15, 60, 360, 1440)
@@ -93,6 +94,19 @@ object EngineUpdates {
         val offer = fetched.engine?.takeIf { it.dirName !in rejected }
         val shell = fetched.shell?.takeIf { it.version > BuildConfig.VERSION_CODE }
         return Found(offer, shell, emptyList())
+    }
+
+    fun debugEnabled(context: Context) = settings(context).getBoolean(DEBUG, false)
+
+    // Debug mode: what an index at any address offers, without checking its signature; nothing is remembered.
+    fun fromAddress(context: Context, url: String): Updates {
+        if (!debugEnabled(context)) throw IOException("режим отладки выключен")
+        val index = EngineIndex.unsigned(fetcher.open(url).use(InputStream::readBytes))
+        val abi = Abi.current ?: throw IOException("неизвестная архитектура процессора ${System.getProperty("os.arch")}")
+        val source = Source("debug", "Отладка", url, "", enabled = false)
+        val engine = index.choose(abi, dev.antite.engine.BuildConfig.ENGINE_API, BuildConfig.VERSION_CODE)?.let { Offer(it, abi, source) }
+        val shell = index.shell?.let { s -> s.apk[abi]?.let { ShellOffer(s.version, it, source) } }
+        return Updates(engine, shell)
     }
 
     fun newer(a: String, b: String): Boolean {
