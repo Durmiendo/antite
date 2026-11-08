@@ -150,8 +150,12 @@ fun BrowserScreen(b: Browser) {
                 if (b.findVisible) FindBar(b)
             }
             // The navigation bar is transparent with edge-to-edge; while it is shown the page must not show through it.
-            if (!b.fullscreen && imeInset == 0 && navInset > 0) {
-                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(with(density) { navInset.toDp() }).background(bar))
+            // It stays at the screen bottom under the keyboard: hidden while the keyboard inset was not zero, the page
+            // flashed through the bar on the frames where the keyboard window had already gone.
+            if (!b.fullscreen && navInset > 0) {
+                val ime = WindowInsets.ime
+                Box(Modifier.align(Alignment.BottomCenter).offset { IntOffset(0, ime.getBottom(this)) }.fillMaxWidth()
+                    .height(with(density) { navInset.toDp() }).background(bar))
             }
             b.translateOffer?.let { TranslateBar(b, it, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() })) }
             b.loginOffer?.let { if (imeInset > 0 && !b.urlFocused && b.overlay == Overlay.NONE) LoginBar(b, it, Modifier.align(Alignment.BottomCenter)) }
