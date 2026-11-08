@@ -16,4 +16,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = 'Antite'
-include ':app', ':engine-api', ':engine-gecko', ':proto-loader'
+include ':app', ':engine-api', ':engine-gecko'
