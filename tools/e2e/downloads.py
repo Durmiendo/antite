@@ -1,7 +1,7 @@
 """Downloads: progress notification, keeps going in the background, "done" notification, cancel from the notification.
 
 Usage: ./gradlew :engine-gecko:adapterPackage :app:assembleDebug
-       python3 -I tools/e2e/downloads.py --serial SERIAL --apk app/build/outputs/apk/debug/app-x86_64-debug.apk
+       python3 -I tools/e2e/downloads.py --serial SERIAL --apk app/build/outputs/apk/debug/app-debug.apk
 
 A local server sends files slowly so progress can be seen. Reinstalls the browser, so its data is lost.
 """

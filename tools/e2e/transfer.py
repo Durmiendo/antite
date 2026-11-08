@@ -2,7 +2,7 @@
 
 Needs ./gradlew :engine-gecko:adapterPackage first: each fresh install downloads the engine from a local source.
 
-Usage: python3 -I tools/e2e/transfer.py --serial HOST:PORT --apk app-x86_64-debug.apk [--pin 1234]
+Usage: python3 -I tools/e2e/transfer.py --serial HOST:PORT --apk app/build/outputs/apk/debug/app-debug.apk [--pin 1234]
 
 WARNING: reinstalls the browser, so all of its data on the device is replaced.
 """

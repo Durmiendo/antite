@@ -20,7 +20,8 @@ import time
 import urllib.request
 import zipfile
 
-ABIS = ("arm64-v8a", "x86_64")
+ABIS = ("arm64-v8a", "armeabi-v7a", "x86_64")
+SHELL_APK = "app/build/outputs/apk/release/app-release.apk"
 MAVEN = "https://maven.mozilla.org/maven2/org/mozilla/geckoview"
 KEYS = os.path.expanduser("~/.antite-keys")
 CACHE = "build/publish"
@@ -147,10 +148,9 @@ def main():
         print(f"   release shell, versionCode {code}")
         subprocess.run(["./gradlew", "-q", ":app:assembleRelease"], check=True)
         shell_base = a.shell_base or f"{prop('engineReleaseBase')}/shell-{code}"
-        shell = {"version": code, "apk": {}}
-        for abi in ABIS:
-            apk = f"app/build/outputs/apk/release/app-{abi}-release.apk"
-            shell["apk"][abi] = artifact([f"{shell_base}/{os.path.basename(apk)}"], apk)
+        # One universal APK; the index keeps a per-ABI map so every shell finds its entry.
+        apk = artifact([f"{shell_base}/antite-{code}.apk"], SHELL_APK)
+        shell = {"version": code, "apk": {abi: apk for abi in ABIS}}
     index = {
         "format": 1,
         "serial": max(old["serial"] + 1, int(time.time())),
@@ -175,8 +175,7 @@ def main():
     print("\nUpload:")
     print(f"  {adapter} -> release {tag} ({entry['adapter']['url'][0]})")
     if a.shell:
-        for abi in ABIS:
-            print(f"  app/build/outputs/apk/release/app-{abi}-release.apk -> {shell['apk'][abi]['url'][0]}")
+        print(f"  {SHELL_APK} -> {shell['apk'][ABIS[0]]['url'][0]}")
     print(f"  {index_path} and {index_path}.sig -> repository root ({prop('engineIndexUrl')})")
 
 

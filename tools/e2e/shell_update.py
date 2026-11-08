@@ -1,7 +1,7 @@
 """Shell self-update: the index offers a newer shell, the browser asks, the system installer updates it, data stays.
 
 Usage: ./gradlew :engine-gecko:adapterPackage :app:assembleDebug
-       python3 -I tools/e2e/shell_update.py --serial SERIAL --apk app/build/outputs/apk/debug/app-x86_64-debug.apk
+       python3 -I tools/e2e/shell_update.py --serial SERIAL --apk app/build/outputs/apk/debug/app-debug.apk
 
 Builds the same debug shell with versionCode 2 as the update, then rebuilds versionCode 1.
 Goes through the real "install unknown apps" permission screen. Reinstalls the browser, so its data is lost.

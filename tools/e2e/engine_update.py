@@ -2,7 +2,7 @@
 and an engine that keeps crashing at start is rolled back.
 
 Usage: ./gradlew :engine-gecko:adapterPackage :app:assembleDebug
-       python3 -I tools/e2e/engine_update.py --serial SERIAL --apk app/build/outputs/apk/debug/app-x86_64-debug.apk
+       python3 -I tools/e2e/engine_update.py --serial SERIAL --apk app/build/outputs/apk/debug/app-debug.apk
 
 Newer engines are the same GeckoView with a bumped version in the adapter's engine.json;
 the broken one names a factory class that is not an engine.

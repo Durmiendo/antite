@@ -107,10 +107,11 @@ class Device:
         print(f"FAIL: {message}\n  top: {self.top_activity()}\n  screenshot: {path}", file=sys.stderr)
         sys.exit(1)
 
-    def install(self, apk):
+    def install(self, apk, abi=None):
         self.adb("push", apk, "/data/local/tmp/e2e.apk")
+        force = f"--abi {abi} " if abi else ""
         self.shell("rm -f /data/local/tmp/e2e-install.log; "
-                   "nohup pm install -r -t /data/local/tmp/e2e.apk >/data/local/tmp/e2e-install.log 2>&1 &")
+                   f"nohup pm install -r -t {force}/data/local/tmp/e2e.apk >/data/local/tmp/e2e-install.log 2>&1 &")
         for _ in range(240):
             log = self.shell("cat /data/local/tmp/e2e-install.log", check=False).strip()
             if log:

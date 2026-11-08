@@ -1,7 +1,7 @@
 """The R8-shrunk release shell still loads the engine and its screens work.
 
 Usage: ./gradlew :engine-gecko:adapterPackage :app:assembleRelease
-       python3 -I tools/e2e/release_check.py --serial SERIAL --apk app/build/outputs/apk/release/app-x86_64-release.apk
+       python3 -I tools/e2e/release_check.py --serial SERIAL --apk app/build/outputs/apk/release/app-release.apk
 
 Release builds take no test source from an intent, so the local source is added on the first-start screen.
 Reinstalls the browser, so its data is lost.

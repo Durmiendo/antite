@@ -1,7 +1,7 @@
 """An index made by tools/publish/publish_engine.py installs: real per-ABI AAR from maven.mozilla.org.
 
 Usage: ./gradlew :app:assembleDebug
-       python3 -I tools/e2e/published_index.py --serial SERIAL --apk app/build/outputs/apk/debug/app-x86_64-debug.apk
+       python3 -I tools/e2e/published_index.py --serial SERIAL --apk app/build/outputs/apk/debug/app-debug.apk
 
 Only the adapter is served locally; the engine (about 95 MB) is downloaded from Mozilla.
 Reinstalls the browser, so its data is lost.

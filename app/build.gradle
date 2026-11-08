@@ -14,6 +14,8 @@ android {
         versionCode shellVersionCode as int
         versionName '0.1'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        // One APK for every ABI Mozilla builds GeckoView for; the shell's own native code is tiny.
+        ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }
         def publisherKey = rootProject.file('keys/publisher.pub.pem').readLines().findAll { !it.startsWith('-----') }.join('')
         buildConfigField 'String', 'PUBLISHER_KEY', "\"$publisherKey\""
         buildConfigField 'String', 'ENGINE_INDEX_URL', "\"$engineIndexUrl\""
@@ -50,15 +52,6 @@ android {
     buildFeatures {
         compose true
         buildConfig true
-    }
-
-    splits {
-        abi {
-            enable true
-            reset()
-            include 'arm64-v8a', 'x86_64'
-            universalApk false
-        }
     }
 }
 

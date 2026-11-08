@@ -19,7 +19,7 @@ trusting the download mirrors.
 - Engine updates from signed sources, with automatic rollback if a new engine fails to start
 - Encrypted export and import of all browser data
 
-Requires Android 11 (API 30) or newer, arm64-v8a or x86_64.
+Requires Android 11 (API 30) or newer on arm64-v8a, armeabi-v7a or x86_64. One APK fits all three.
 
 ## Engine index
 
@@ -46,7 +46,7 @@ You need JDK 17 and the Android SDK with the `android-37.2` platform. Put the SD
 (`sdk.dir=...`).
 
 ```
-./gradlew :app:assembleDebug               # shell APKs, app/build/outputs/apk/debug/
+./gradlew :app:assembleDebug               # shell APK, app/build/outputs/apk/debug/
 ./gradlew :engine-gecko:adapterPackage     # engine adapter, engine-gecko/build/outputs/engine/
 ./gradlew :app:testDebugUnitTest           # JVM tests
 ```
