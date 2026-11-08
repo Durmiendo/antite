@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
@@ -103,7 +104,8 @@ fun BrowserScreen(b: Browser) {
         if (t != null && Urls.isBlank(t.url) && b.overlay == Overlay.NONE) {
             NewTabPage(b, Modifier.padding(top = 56.dp).fillMaxSize().background(p.background))
         }
-        if (!b.fullscreen) {
+        // Full-screen pages cover the toolbar, so it must not stay focusable or tappable under them.
+        if (!b.fullscreen && b.overlay == Overlay.NONE) {
             Box(Modifier.fillMaxWidth().clipToBounds()) {
                 Toolbar(b, Modifier.offset { IntOffset(0, -b.hidden.toInt()) })
             }
@@ -111,11 +113,16 @@ fun BrowserScreen(b: Browser) {
             if (b.findVisible) FindBar(b)
         }
         b.translateOffer?.let { TranslateBar(b, it, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() })) }
-        when (b.overlay) {
-            Overlay.SWITCHER -> TabSwitcher(b)
-            Overlay.SETTINGS -> SettingsScreen(b)
-            Overlay.LIBRARY -> LibraryScreen(b)
-            Overlay.NONE -> {}
+        if (b.overlay != Overlay.NONE) {
+            // Being hit is enough to keep touches from the page below; consuming them would break scrolling.
+            Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }) {
+                when (b.overlay) {
+                    Overlay.SWITCHER -> TabSwitcher(b)
+                    Overlay.SETTINGS -> SettingsScreen(b)
+                    Overlay.LIBRARY -> LibraryScreen(b)
+                    Overlay.NONE -> {}
+                }
+            }
         }
         if (b.menuOpen) BrowserMenu(b)
         b.extensionPopup?.let { ExtensionPopup(b, it) }
