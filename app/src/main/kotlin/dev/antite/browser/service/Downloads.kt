@@ -1,10 +1,10 @@
 package dev.antite.browser.service
 
-import android.content.ContentValues
+import android.Manifest
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.net.Uri
-import android.provider.MediaStore
-import android.util.Log
+import android.os.Build
 import android.webkit.URLUtil
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.lifecycleScope
@@ -13,64 +13,56 @@ import dev.antite.browser.Urls
 import dev.antite.browser.data.Entry
 import dev.antite.browser.data.Tab
 import dev.antite.engine.DownloadRequest
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.InputStream
 
 class Downloads(private val b: Browser) {
     val revision = mutableIntStateOf(0)
+    private var askedNotifications = false
+
+    init {
+        DownloadService.onFinished = { revision.intValue++ }
+        b.activity.lifecycleScope.launch {
+            b.db.io { failStaleDownloads(DownloadService.activeIds()) }
+            revision.intValue++
+        }
+    }
 
     fun start(r: DownloadRequest, askTarget: Boolean) {
         val name = URLUtil.guessFileName(r.url, r.contentDisposition, r.contentType)
         val mime = r.contentType?.substringBefore(';')?.trim()?.ifEmpty { null } ?: "application/octet-stream"
-        if (!askTarget) return save(r.body, name, mime, null)
+        if (!askTarget) return save(r.body, name, mime, null, r.contentLength)
         b.activity.createDocument(name, mime) { uri ->
-            if (uri == null) runCatching { r.body.close() } else save(r.body, name, mime, uri)
+            if (uri == null) runCatching { r.body.close() } else save(r.body, name, mime, uri, r.contentLength)
         }
     }
 
     fun savePdf(t: Tab) {
         val base = (t.title.ifEmpty { Urls.host(t.url) }).replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80)
         b.ensureSession(t).saveAsPdf { input ->
-            if (input != null) save(input, "$base.pdf", "application/pdf", null) else b.toast("Не удалось сохранить PDF")
+            if (input != null) save(input, "$base.pdf", "application/pdf", null, -1) else b.toast("Не удалось сохранить PDF")
         }
     }
 
-    private fun save(body: InputStream, name: String, mime: String, chosen: Uri?) {
-        b.toast("Загрузка: $name")
-        val cr = b.activity.applicationContext.contentResolver
-        b.activity.lifecycleScope.launch {
-            val id = b.db.io { addDownload(name, mime) }
-            revision.intValue++
-            val (ok, target) = withContext(Dispatchers.IO) {
-                val target = chosen ?: cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, name)
-                    put(MediaStore.Downloads.MIME_TYPE, mime)
-                    put(MediaStore.Downloads.IS_PENDING, 1)
-                })
-                if (target == null) {
-                    runCatching { body.close() }
-                    return@withContext false to null
-                }
-                val ok = try {
-                    body.use { input -> cr.openOutputStream(target)!!.use { input.copyTo(it, 64 * 1024) } }
-                    true
-                } catch (e: Exception) {
-                    Log.w("Antite", "download failed: $name", e)
-                    false
-                }
-                if (chosen == null) {
-                    if (ok) cr.update(target, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
-                    else cr.delete(target, null, null)
-                }
-                ok to target
-            }
-            b.db.io { finishDownload(id, if (ok) target.toString() else null, ok) }
-            revision.intValue++
-            b.toast(if (ok) "Скачано: $name" else "Ошибка загрузки: $name")
+    private fun askNotifications() {
+        if (askedNotifications || Build.VERSION.SDK_INT < 33) return
+        askedNotifications = true
+        if (b.activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            b.activity.requestPermissions(listOf(Manifest.permission.POST_NOTIFICATIONS)) {}
         }
     }
+
+    private fun save(body: InputStream, name: String, mime: String, chosen: Uri?, total: Long) {
+        b.toast("Загрузка: $name")
+        askNotifications()
+        b.activity.lifecycleScope.launch {
+            val id = b.db.io { addDownload(name, mime) }
+            DownloadService.enqueue(b.activity, DownloadService.Task(id, name, mime, total, chosen, body))
+            revision.intValue++
+        }
+    }
+
+    fun cancel(e: Entry) = DownloadService.cancel(e.id)
 
     fun open(e: Entry) {
         val url = e.url ?: return b.toast("Файл ещё не готов")
@@ -92,10 +84,16 @@ class Downloads(private val b: Browser) {
 
     companion object {
         fun status(e: Entry): String = when (e.extra?.split('|')?.firstOrNull()) {
-            "done" -> "Скачано"
-            "failed" -> "Ошибка"
-            else -> "Загружается"
+            DownloadService.DONE -> "Скачано"
+            DownloadService.FAILED -> "Ошибка"
+            DownloadService.CANCELLED -> "Отменено"
+            else -> when (val p = DownloadService.progress[e.id]) {
+                null, -1f -> "Загружается"
+                else -> "Загружается ${(p * 100).toInt()}%"
+            }
         }
+
+        fun loading(e: Entry) = DownloadService.isActive(e.id)
 
         private fun mime(e: Entry): String = e.extra?.split('|')?.getOrNull(1)?.ifEmpty { null } ?: "*/*"
     }

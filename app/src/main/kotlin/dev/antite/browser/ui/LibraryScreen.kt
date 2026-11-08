@@ -126,7 +126,9 @@ fun LibraryScreen(b: Browser) {
                 DialogButton("Копировать ссылку") { b.activity.copy(e.url ?: "") },
                 DialogButton("Удалить из списка") { change { deleteClosed(e.id) } },
             )
-            LibraryKind.DOWNLOADS -> listOf(
+            LibraryKind.DOWNLOADS -> if (Downloads.loading(e)) listOf(
+                DialogButton("Отменить загрузку") { b.downloads.cancel(e) },
+            ) else listOf(
                 DialogButton("Открыть") { b.downloads.open(e) },
                 DialogButton("Поделиться") { b.downloads.share(e) },
                 DialogButton("Убрать из списка") { change { deleteDownload(e.id) } },

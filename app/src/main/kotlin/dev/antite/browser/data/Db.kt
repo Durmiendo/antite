@@ -202,11 +202,17 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "anti
         put("status", "loading")
     })
 
-    fun finishDownload(id: Long, uri: String?, ok: Boolean) {
+    fun finishDownload(id: Long, uri: String?, status: String) {
         writableDatabase.update("downloads", ContentValues().apply {
             put("uri", uri)
-            put("status", if (ok) "done" else "failed")
+            put("status", status)
         }, "id=?", arrayOf(id.toString()))
+    }
+
+    // Downloads cut off by a killed process stay "loading" forever otherwise.
+    fun failStaleDownloads(active: Set<Long>) {
+        val keep = if (active.isEmpty()) "" else " AND id NOT IN (${active.joinToString(",")})"
+        writableDatabase.execSQL("UPDATE downloads SET status='failed' WHERE status='loading'$keep")
     }
 
     fun downloads(filter: String?): List<Entry> = query(

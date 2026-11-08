@@ -272,7 +272,8 @@ internal class GeckoTab(
                 val body = response.body ?: return
                 callbacks.onDownload(
                     DownloadRequest(response.uri, header(response, "content-disposition"),
-                        header(response, "content-type"), body),
+                        header(response, "content-type"), body,
+                        header(response, "content-length")?.trim()?.toLongOrNull() ?: -1),
                 )
             }
 

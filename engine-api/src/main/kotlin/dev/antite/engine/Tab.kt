@@ -58,6 +58,7 @@ class DownloadRequest(
     val contentDisposition: String?,
     val contentType: String?,
     val body: InputStream,
+    val contentLength: Long = -1,
 )
 
 data class TranslationState(
