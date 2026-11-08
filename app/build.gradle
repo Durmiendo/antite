@@ -11,7 +11,7 @@ android {
         applicationId 'dev.antite.browser'
         minSdk 30
         targetSdk 36
-        versionCode 1
+        versionCode shellVersionCode as int
         versionName '0.1'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         def publisherKey = rootProject.file('keys/publisher.pub.pem').readLines().findAll { !it.startsWith('-----') }.join('')

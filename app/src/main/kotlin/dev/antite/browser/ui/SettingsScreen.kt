@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.Auth
 import dev.antite.browser.Browser
+import dev.antite.browser.BuildConfig
 import dev.antite.browser.DialogButton
 import dev.antite.browser.FormField
 import dev.antite.browser.Overlay
@@ -297,7 +298,7 @@ private class UpdateInfo(
     val active: String?, val activeFrom: String?,
     val pending: String?, val pendingFrom: String?,
     val previous: String?, val previousFrom: String?,
-    val lastCheck: Long, val lastError: String?, val available: String?,
+    val lastCheck: Long, val lastError: String?, val available: String?, val shell: Int,
 )
 
 private fun from(origin: String?) = if (origin == null) "" else ", источник «$origin»"
@@ -319,6 +320,7 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
                 p?.let(store::version), p?.let { EngineUpdates.origin(ctx, it) },
                 prev?.let(store::version), prev?.let { EngineUpdates.origin(ctx, it) },
                 st.getLong("lastCheck", 0), st.getString("lastError", null), st.getString("available", null),
+                st.getInt("shellAvailable", 0),
             )
         }
     }
@@ -327,10 +329,10 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
         val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx) } }
         busy = null
         revision++
-        val offer = r.getOrNull()
+        val offer = r.getOrNull()?.engine
         when {
             r.isFailure -> b.toast("Не удалось проверить обновления")
-            offer == null -> b.toast("Обновлений нет")
+            offer == null -> if (r.getOrNull()?.shell == null) b.toast("Обновлений нет")
             else -> b.confirm("Доступен Gecko ${offer.entry.version} из источника «${offer.source.name}», " +
                 "${(offer.size + 512 * 1024) / (1024 * 1024)} МБ. Скачать?", "Скачать") {
                 busy = "Скачиваем…"
@@ -360,12 +362,24 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
                     onClick = b.engineNews::restart)
             }
         }
+        if (i.shell > BuildConfig.VERSION_CODE) {
+            item(key = "shell") {
+                SettingRow("Обновить Antite", busy ?: "Доступна сборка ${i.shell}. Система попросит подтвердить установку",
+                    onClick = {
+                        if (busy == null) {
+                            busy = "Скачиваем…"
+                            b.engineNews.updateShell({ busy = "Скачиваем… $it%" }) { busy = null }
+                        }
+                    })
+            }
+        }
         item(key = "check") {
             val last = when {
                 i.lastCheck == 0L -> "Ещё не проверялось"
                 else -> "Последняя проверка: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,
                     java.text.DateFormat.SHORT).format(java.util.Date(i.lastCheck)) + when {
                     i.available != null -> ", доступен Gecko ${i.available}"
+                    i.shell > BuildConfig.VERSION_CODE -> ", доступна новая версия Antite"
                     i.lastError != null -> ", ошибка: ${i.lastError}"
                     else -> ", обновлений нет"
                 }
@@ -384,7 +398,8 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
             toggle(b, "Скачивать только по Wi-Fi", "Около 95 МБ за обновление", EngineUpdates.WIFI_ONLY, true, false)
         }
         nav(nav, "Источники", Sources.enabled(ctx).joinToString(", ") { it.name }) { SourcesPage(b, it) }
-        section("Установленные движки")
+        section("Установлено")
+        item(key = "shellVersion") { SettingRow("Antite ${BuildConfig.VERSION_NAME}", "Сборка ${BuildConfig.VERSION_CODE}") }
         item(key = "active") { SettingRow("${b.engine.info.type} ${i.active ?: b.engine.info.version}", "Работает" + from(i.activeFrom)) }
         if (i.pending != null) item(key = "pending") { SettingRow("gecko ${i.pending}", "После перезапуска" + from(i.pendingFrom)) }
         if (i.previous != null) {

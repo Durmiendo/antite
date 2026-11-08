@@ -17,11 +17,12 @@ class EngineStoreTest {
         mkdirs()
         File(this, EngineStore.READY).createNewFile()
         File(this, "engine.json").writeText("""{"version":"$version"}""")
+        File(this, EngineStore.ABI).writeText(store.abi!!)
     }
 
     @Test
     fun pendingBecomesActiveAndOldOneIsKept() {
-        val store = EngineStore(tmp.root)
+        val store = EngineStore(tmp.root, "x86_64")
         val a = engine(store, "gecko-1", "1")
         val b = engine(store, "gecko-2", "2")
         store.activate(a)
@@ -38,10 +39,10 @@ class EngineStoreTest {
 
     @Test
     fun pendingWithoutReadyMarkIsIgnored() {
-        val store = EngineStore(tmp.root)
+        val store = EngineStore(tmp.root, "x86_64")
         val a = engine(store, "gecko-1", "1")
         store.activate(a)
-        val half = File(store.dir, "gecko-2").apply { mkdirs() }
+        val half = File(store.dir, "gecko-2").apply { mkdirs(); File(this, EngineStore.ABI).writeText("x86_64") }
         store.setPending(half)
         assertFalse(store.applyPending())
         assertEquals(a, store.active())
@@ -49,7 +50,7 @@ class EngineStoreTest {
 
     @Test
     fun removeUnusedKeepsActivePendingPreviousAndInstalls() {
-        val store = EngineStore(tmp.root)
+        val store = EngineStore(tmp.root, "x86_64")
         val old = engine(store, "gecko-0", "0")
         val prev = engine(store, "gecko-1", "1")
         val cur = engine(store, "gecko-2", "2")
@@ -67,7 +68,7 @@ class EngineStoreTest {
 
     @Test
     fun threeFailedStartsRollBack() {
-        val store = EngineStore(tmp.root)
+        val store = EngineStore(tmp.root, "x86_64")
         val a = engine(store, "gecko-1", "1")
         val b = engine(store, "gecko-2", "2")
         store.activate(a)
@@ -88,7 +89,7 @@ class EngineStoreTest {
 
     @Test
     fun successfulStartResetsTheCount() {
-        val store = EngineStore(tmp.root)
+        val store = EngineStore(tmp.root, "x86_64")
         val a = engine(store, "gecko-1", "1")
         val b = engine(store, "gecko-2", "2")
         store.activate(a)

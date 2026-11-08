@@ -4,7 +4,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 
-class EngineStore(filesDir: File) {
+class EngineStore(filesDir: File, val abi: String? = Abi.current) {
     companion object {
         const val READY = "ready"
         const val RESOURCES = "gecko.zip"
@@ -15,6 +15,9 @@ class EngineStore(filesDir: File) {
         private const val REJECTED = "rejected"
         private const val NOTICE = "notice"
         const val MAX_FAILED_STARTS = 3
+        const val ABI = "abi"
+
+        fun abiOf(engine: File): String? = runCatching { File(engine, ABI).readText().trim() }.getOrNull()
     }
 
     val dir = File(filesDir, "engines")
@@ -22,7 +25,7 @@ class EngineStore(filesDir: File) {
     private fun read(name: String): File? {
         val value = runCatching { File(dir, name).readText().trim() }.getOrNull() ?: return null
         if (value.isEmpty() || '/' in value) return null
-        return File(dir, value).takeIf { File(it, READY).exists() }
+        return File(dir, value).takeIf { File(it, READY).exists() && abiOf(it) == abi }
     }
 
     private fun write(name: String, engine: File) {

@@ -17,9 +17,9 @@ fun interface Fetcher {
 class EngineInstaller(private val enginesDir: File, private val fetcher: Fetcher) {
     fun install(entry: EngineEntry, abi: String, progress: (done: Long, total: Long) -> Unit): File {
         val upstream = entry.upstream[abi] ?: throw IOException("no engine for $abi")
-        val target = File(enginesDir, entry.dirName)
-        if (File(target, EngineStore.READY).exists()) return target
-        val tmp = File(enginesDir, entry.dirName + ".tmp")
+        val target = File(enginesDir, entry.dirName(abi))
+        if (File(target, EngineStore.READY).exists() && EngineStore.abiOf(target) == abi) return target
+        val tmp = File(enginesDir, entry.dirName(abi) + ".tmp")
         tmp.deleteRecursively()
         if (!tmp.mkdirs()) throw IOException("cannot create $tmp")
         try {
@@ -40,36 +40,7 @@ class EngineInstaller(private val enginesDir: File, private val fetcher: Fetcher
         }
     }
 
-    private fun download(a: Artifact, to: File, progress: (Long) -> Unit): File {
-        var last: Exception? = null
-        for (url in a.urls) {
-            try {
-                val digest = MessageDigest.getInstance("SHA-256")
-                var count = 0L
-                fetcher.open(url).use { input ->
-                    to.outputStream().use { out ->
-                        val buf = ByteArray(64 * 1024)
-                        while (true) {
-                            val n = input.read(buf)
-                            if (n < 0) break
-                            count += n
-                            if (count > a.size) throw IOException("$url is larger than expected")
-                            digest.update(buf, 0, n)
-                            out.write(buf, 0, n)
-                            progress(count)
-                        }
-                    }
-                }
-                val hash = digest.digest().joinToString("") { "%02x".format(it) }
-                if (count != a.size || hash != a.sha256) throw IOException("$url does not match the index")
-                return to
-            } catch (e: Exception) {
-                last = e
-                to.delete()
-            }
-        }
-        throw last ?: IOException("no download address")
-    }
+    private fun download(a: Artifact, to: File, progress: (Long) -> Unit) = downloadVerified(fetcher, a, to, progress)
 
     private fun assemble(entry: EngineEntry, adapter: File, aar: File, abi: String, dir: File) {
         val assets = mutableListOf<Pair<String, ByteArray>>()
@@ -98,7 +69,10 @@ class EngineInstaller(private val enginesDir: File, private val fetcher: Fetcher
                 if (e.isDirectory) continue
                 val name = safeName(e.name)
                 if (name.startsWith("jni/$abi/") && name.endsWith(".so")) {
-                    File(lib, name.substringAfterLast('/')).outputStream().use { z.getInputStream(e).copyTo(it) }
+                    val so = File(lib, name.substringAfterLast('/'))
+                    so.outputStream().use { z.getInputStream(e).copyTo(it) }
+                    val header = so.inputStream().use { it.readNBytes(20) }
+                    if (!Abi.elfMatches(header, abi)) throw IOException("${so.name} is not a library for $abi")
                     libs++
                 } else if (name == "assets/omni.ja") {
                     omni.outputStream().use { z.getInputStream(e).copyTo(it) }
@@ -112,6 +86,7 @@ class EngineInstaller(private val enginesDir: File, private val fetcher: Fetcher
             for ((name, bytes) in assets) stored(zip, name, bytes)
         }
         omni.delete()
+        File(dir, EngineStore.ABI).writeText(abi)
     }
 
     private fun safeName(name: String): String {
@@ -149,4 +124,35 @@ class EngineInstaller(private val enginesDir: File, private val fetcher: Fetcher
         zip.write(bytes)
         zip.closeEntry()
     }
+}
+
+fun downloadVerified(fetcher: Fetcher, a: Artifact, to: File, progress: (Long) -> Unit): File {
+    var last: Exception? = null
+    for (url in a.urls) {
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            var count = 0L
+            fetcher.open(url).use { input ->
+                to.outputStream().use { out ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        count += n
+                        if (count > a.size) throw IOException("$url is larger than expected")
+                        digest.update(buf, 0, n)
+                        out.write(buf, 0, n)
+                        progress(count)
+                    }
+                }
+            }
+            val hash = digest.digest().joinToString("") { "%02x".format(it) }
+            if (count != a.size || hash != a.sha256) throw IOException("$url does not match the index")
+            return to
+        } catch (e: Exception) {
+            last = e
+            to.delete()
+        }
+    }
+    throw last ?: IOException("no download address")
 }

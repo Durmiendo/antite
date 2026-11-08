@@ -50,11 +50,17 @@ class EngineInstallerTest {
         "assets/extensions/icons/manifest.json" to "{}".toByteArray(),
     )
 
-    private fun aar(abi: String = "x86_64") = zip(
+    private fun elf(abi: String): ByteArray {
+        val (cls, machine) = mapOf("x86_64" to (2 to 62), "arm64-v8a" to (2 to 183), "x86" to (1 to 3))[abi] ?: (1 to 40)
+        return byteArrayOf(0x7f, 'E'.code.toByte(), 'L'.code.toByte(), 'F'.code.toByte(), cls.toByte(), 1) +
+            ByteArray(12) + byteArrayOf(machine.toByte(), 0) + ByteArray(44)
+    }
+
+    private fun aar(abi: String = "x86_64", libAbi: String = abi) = zip(
         "classes.jar" to byteArrayOf(9),
-        "jni/$abi/libxul.so" to byteArrayOf(7, 7),
-        "jni/$abi/libmozglue.so" to byteArrayOf(8),
-        "jni/arm64-v8a/libother.so" to byteArrayOf(5),
+        "jni/$abi/libxul.so" to elf(libAbi),
+        "jni/$abi/libmozglue.so" to elf(libAbi),
+        "jni/arm64-v8a/libother.so" to elf("arm64-v8a"),
         "assets/omni.ja" to omni,
     )
 
@@ -75,7 +81,18 @@ class EngineInstallerTest {
     fun validIndexIsAccepted() {
         val entry = parse(index()).choose("x86_64", api = 1, shellVersion = 1)
         assertNotNull(entry)
-        assertEquals("gecko-release-1.0", entry!!.dirName)
+        assertEquals("gecko-release-1.0-x86_64", entry!!.dirName("x86_64"))
+    }
+
+    @Test
+    fun shellEntryIsParsed() {
+        assertNull(parse(index()).shell)
+        val apk = artifact("antite.apk", byteArrayOf(1, 2, 3))
+        val json = String(index()).replace("\"engines\":", "\"shell\":{\"version\":7,\"apk\":{\"x86_64\":$apk}},\"engines\":")
+        val shell = parse(json.toByteArray()).shell!!
+        assertEquals(7, shell.version)
+        assertEquals(3L, shell.apk.getValue("x86_64").size)
+        assertNull(shell.apk["arm64-v8a"])
     }
 
     @Test
@@ -112,7 +129,8 @@ class EngineInstallerTest {
         var last = 0L
         val dir = EngineInstaller(tmp.root, fetcher).install(entry, "x86_64") { done, total -> last = done; assertTrue(done <= total) }
 
-        assertEquals(entry.dirName, dir.name)
+        assertEquals(entry.dirName("x86_64"), dir.name)
+        assertEquals("x86_64", EngineStore.abiOf(dir))
         assertTrue(java.io.File(dir, "classes.dex").exists())
         assertTrue(java.io.File(dir, "engine.json").exists())
         assertEquals(setOf("libxul.so", "libmozglue.so"), java.io.File(dir, "lib").list()!!.toSet())
@@ -126,7 +144,7 @@ class EngineInstallerTest {
             assertNotNull(z.getEntry("assets/extensions/icons/manifest.json"))
         }
         assertTrue(last > 0)
-        assertEquals(listOf(entry.dirName), tmp.root.list()!!.toList())
+        assertEquals(listOf(entry.dirName("x86_64")), tmp.root.list()!!.toList())
     }
 
     @Test
@@ -147,6 +165,36 @@ class EngineInstallerTest {
     }
 
     @Test
+    fun librariesForAnotherArchitectureAreRejected() {
+        val json = index(aarJson = artifact("e.aar", aar("x86_64", libAbi = "arm64-v8a")))
+        val entry = parse(json).choose("x86_64", 1, 1)!!
+        assertThrows(IOException::class.java) { EngineInstaller(tmp.root, fetcher).install(entry, "x86_64") { _, _ -> } }
+        assertEquals(emptyList<String>(), tmp.root.list()!!.toList())
+    }
+
+    @Test
+    fun engineOfAnotherArchitectureIsNotActive() {
+        val files = tmp.newFolder("files")
+        val dir = EngineInstaller(EngineStore(files, "x86_64").dir, fetcher)
+            .install(parse(index()).choose("x86_64", 1, 1)!!, "x86_64") { _, _ -> }
+        EngineStore(files, "x86_64").activate(dir)
+        assertEquals(dir, EngineStore(files, "x86_64").active())
+        assertNull(EngineStore(files, "arm64-v8a").active())
+    }
+
+    @Test
+    fun processArchitectureMapsToAbi() {
+        assertEquals("arm64-v8a", Abi.ofArch("aarch64"))
+        assertEquals("x86_64", Abi.ofArch("amd64"))
+        assertEquals("armeabi-v7a", Abi.ofArch("armv8l"))
+        assertNull(Abi.ofArch("mips"))
+        assertTrue(Abi.elfMatches(elf("arm64-v8a"), "arm64-v8a"))
+        assertFalse(Abi.elfMatches(elf("arm64-v8a"), "x86_64"))
+        assertFalse(Abi.elfMatches(elf("x86"), "x86_64"))
+        assertFalse(Abi.elfMatches(byteArrayOf(7, 7), "x86_64"))
+    }
+
+    @Test
     fun adapterForAnotherVersionIsRejected() {
         val json = index(adapterJson = artifact("a.zip", adapter(version = "2.0")))
         val entry = parse(json).choose("x86_64", 1, 1)!!
@@ -163,7 +211,7 @@ class EngineInstallerTest {
 
     @Test
     fun activationPointsAtTheInstalledEngine() {
-        val store = EngineStore(tmp.newFolder("files"))
+        val store = EngineStore(tmp.newFolder("files"), "x86_64")
         assertNull(store.active())
         val dir = EngineInstaller(store.dir, fetcher).install(parse(index()).choose("x86_64", 1, 1)!!, "x86_64") { _, _ -> }
         assertNull("installing does not activate", store.active())

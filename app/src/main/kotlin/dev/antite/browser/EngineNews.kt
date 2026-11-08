@@ -4,6 +4,7 @@ import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.engine.Engines
 import dev.antite.browser.engine.Offer
+import dev.antite.browser.engine.ShellInstaller
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -30,6 +31,17 @@ class EngineNews(private val b: Browser) {
         } else if (seen != null && active != null && active != seen) {
             b.toast("Движок обновлён: Gecko $active")
         }
+        val shell = st.getInt("shellAvailable", 0)
+        if (!asked && shell > BuildConfig.VERSION_CODE && System.currentTimeMillis() >= st.getLong("postponed.shell$shell", 0)) {
+            asked = true
+            b.show(UiDialog.Message("Доступна новая версия Antite",
+                "Сборка $shell. Скачать и установить? Система попросит подтвердить установку.",
+                buttons = listOf(
+                    DialogButton("Позже") { st.edit().putLong("postponed.shell$shell", System.currentTimeMillis() + POSTPONE_MS).apply() },
+                    DialogButton("Обновить") { updateShell() },
+                )))
+            return@launch
+        }
         val available = st.getString("available", null) ?: return@launch
         if (asked || b.prefs.int(EngineUpdates.INSTALL, EngineUpdates.INSTALL_ASK) != EngineUpdates.INSTALL_ASK) return@launch
         if (System.currentTimeMillis() < st.getLong("postponed.$available", 0)) return@launch
@@ -44,9 +56,28 @@ class EngineNews(private val b: Browser) {
 
     private fun update() = ctx.lifecycleScope.launch {
         b.toast("Скачиваем движок…")
-        val offer = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx) }.getOrNull() }
+        val offer = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx).engine }.getOrNull() }
         if (offer == null) return@launch b.toast("Не удалось получить обновление")
         install(offer)
+    }
+
+    fun updateShell(progress: (Int) -> Unit = {}, done: () -> Unit = {}) = ctx.lifecycleScope.launch {
+        b.toast("Скачиваем новую версию Antite…")
+        val r = withContext(Dispatchers.IO) {
+            runCatching {
+                val offer = EngineUpdates.check(ctx).shell ?: throw java.io.IOException("обновления больше нет в источнике")
+                var last = -1L
+                ShellInstaller.install(ctx, offer) { d, total ->
+                    val pct = d * 100 / total
+                    if (pct != last) {
+                        last = pct
+                        ctx.runOnUiThread { progress(pct.toInt()) }
+                    }
+                }
+            }
+        }
+        done()
+        r.exceptionOrNull()?.let { b.toast("Не удалось обновить Antite: ${it.message}") }
     }
 
     fun install(offer: Offer, progress: (Int) -> Unit = {}, done: () -> Unit = {}) = ctx.lifecycleScope.launch {

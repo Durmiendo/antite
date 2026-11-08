@@ -120,7 +120,7 @@ class EngineSetupActivity : ComponentActivity() {
                     found.offer != null -> State.Ready(found.offer)
                     found.errors.isNotEmpty() ->
                         State.Failed("Не удалось получить список движков. Проверьте подключение к интернету.\n" + found.errors.joinToString("\n"))
-                    else -> State.Failed("В источнике нет движка для этого устройства и этой версии браузера.")
+                    else -> State.Failed("В источнике нет движка для архитектуры ${Abi.current} и этой версии браузера.")
                 }
             } catch (e: Exception) {
                 State.Failed("Не удалось получить список движков: ${e.message}")

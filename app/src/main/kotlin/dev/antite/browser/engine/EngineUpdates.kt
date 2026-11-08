@@ -10,7 +10,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
-import android.os.Build
 import android.util.Log
 import dev.antite.browser.BuildConfig
 import dev.antite.browser.MainActivity
@@ -23,7 +22,12 @@ import java.net.URL
 
 class Offer(val entry: EngineEntry, val abi: String, val source: Source) {
     val size: Long get() = entry.adapter.size + entry.upstream.getValue(abi).size
+    val dirName: String get() = entry.dirName(abi)
 }
+
+class ShellOffer(val version: Int, val apk: Artifact, val source: Source)
+
+class Updates(val engine: Offer?, val shell: ShellOffer?)
 
 object EngineUpdates {
     const val JOB_CHECK = 1
@@ -49,28 +53,30 @@ object EngineUpdates {
 
     private fun settings(context: Context) = context.getSharedPreferences("antite", Context.MODE_PRIVATE)
 
-    fun fetchOffer(context: Context, source: Source): Offer? {
+    private class Fetched(val engine: Offer?, val shell: ShellOffer?)
+
+    private fun fetch(context: Context, source: Source): Fetched {
         val json = fetcher.open(source.url).use(InputStream::readBytes)
         val sig = fetcher.open("${source.url}.sig").use(InputStream::readBytes)
         val st = state(context)
         val key = "serial.${source.id}"
         val index = EngineIndex.verify(json, sig, EngineIndex.publicKey(source.key), st.getLong(key, 0))
         st.edit().putLong(key, index.serial).commit()
-        val api = dev.antite.engine.BuildConfig.ENGINE_API
-        return Build.SUPPORTED_ABIS.firstNotNullOfOrNull { abi ->
-            index.choose(abi, api, BuildConfig.VERSION_CODE)?.let { Offer(it, abi, source) }
-        }
+        val abi = Abi.current ?: throw IOException("неизвестная архитектура процессора ${System.getProperty("os.arch")}")
+        val engine = index.choose(abi, dev.antite.engine.BuildConfig.ENGINE_API, BuildConfig.VERSION_CODE)?.let { Offer(it, abi, source) }
+        val shell = index.shell?.let { s -> s.apk[abi]?.let { ShellOffer(s.version, it, source) } }
+        return Fetched(engine, shell)
     }
 
-    class Found(val offer: Offer?, val errors: List<String>)
+    class Found(val offer: Offer?, val shell: ShellOffer?, val errors: List<String>)
 
     // The newest engine across enabled sources, skipping engines that already failed here.
     fun best(context: Context): Found {
         val rejected = Engines.store(context).rejected()
         val errors = mutableListOf<String>()
-        val offers = Sources.enabled(context).mapNotNull { s ->
+        val fetched = Sources.enabled(context).mapNotNull { s ->
             try {
-                fetchOffer(context, s)
+                fetch(context, s)
             } catch (e: IndexException) {
                 errors += "${s.name}: подпись не прошла проверку"
                 null
@@ -78,9 +84,11 @@ object EngineUpdates {
                 errors += "${s.name}: ${e.message ?: e.javaClass.simpleName}"
                 null
             }
-        }.filter { it.entry.dirName !in rejected }
+        }
+        val offers = fetched.mapNotNull { it.engine }.filter { it.dirName !in rejected }
         val best = offers.fold(null as Offer?) { acc, o -> if (acc == null || newer(o.entry.version, acc.entry.version)) o else acc }
-        return Found(best, errors)
+        val shell = fetched.mapNotNull { it.shell }.filter { it.version > BuildConfig.VERSION_CODE }.maxByOrNull { it.version }
+        return Found(best, shell, errors)
     }
 
     fun newer(a: String, b: String): Boolean {
@@ -93,17 +101,18 @@ object EngineUpdates {
         return false
     }
 
-    // An offer newer than both the running and the already downloaded engine, or null.
-    fun check(context: Context): Offer? {
+    // An engine newer than both the running and the already downloaded one, and a newer shell.
+    fun check(context: Context): Updates {
         val store = Engines.store(context)
         val found = best(context)
         val installed = listOfNotNull(store.active(), store.pending()).mapNotNull(store::version)
         val result = found.offer?.takeIf { o -> installed.none { !newer(o.entry.version, it) } }
         state(context).edit().putLong("lastCheck", System.currentTimeMillis())
             .putString("lastError", found.errors.joinToString("\n").ifEmpty { null })
-            .putString("available", result?.entry?.version).commit()
-        if (result == null && found.offer == null && found.errors.isNotEmpty()) throw IOException(found.errors.joinToString("; "))
-        return result
+            .putString("available", result?.entry?.version)
+            .putInt("shellAvailable", found.shell?.version ?: 0).commit()
+        if (found.offer == null && found.shell == null && found.errors.isNotEmpty()) throw IOException(found.errors.joinToString("; "))
+        return Updates(result, found.shell)
     }
 
     @Synchronized
@@ -113,7 +122,7 @@ object EngineUpdates {
         val dir = EngineInstaller(store.dir, fetcher).install(offer.entry, offer.abi, progress)
         if (store.active() == null) store.activate(dir) else store.setPending(dir)
         state(context).edit().remove("available").putString("origin.${dir.name}", offer.source.name).commit()
-        context.getSystemService(NotificationManager::class.java).cancel(CHANNEL, 0)
+        cancelNotification(context, NOTIFY_ENGINE)
         return dir
     }
 
@@ -145,36 +154,47 @@ object EngineUpdates {
         )
     }
 
-    private fun notifyAvailable(context: Context, offer: Offer) {
+    const val NOTIFY_ENGINE = 0
+    const val NOTIFY_SHELL = 1
+
+    fun notify(context: Context, id: Int, title: String, text: String) {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Обновления браузера", NotificationManager.IMPORTANCE_LOW))
         val open = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val n = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_public)
-            .setContentTitle("Доступен новый движок")
-            .setContentText("Gecko ${offer.entry.version}. Откройте браузер, чтобы обновить")
+            .setContentTitle(title)
+            .setContentText(text)
             .setAutoCancel(true)
-            .setContentIntent(PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE))
+            .setContentIntent(PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE))
             .build()
         try {
-            nm.notify(CHANNEL, 0, n)
+            nm.notify(CHANNEL, id, n)
         } catch (e: SecurityException) {
             Log.w("Antite", "no permission to notify", e)
         }
     }
 
+    fun cancelNotification(context: Context, id: Int) =
+        context.getSystemService(NotificationManager::class.java).cancel(CHANNEL, id)
+
     fun runInBackground(context: Context) {
         val store = Engines.store(context)
         if (store.active() == null) return
         store.removeUnused()
-        val offer = try {
+        val updates = try {
             check(context)
         } catch (e: Exception) {
             Log.w("Antite", "engine update check failed", e)
             return
-        } ?: return
+        }
+        // A shell is installed by the system installer, which always asks the user.
+        updates.shell?.let {
+            notify(context, NOTIFY_SHELL, "Доступна новая версия Antite", "Сборка ${it.version}. Откройте браузер, чтобы обновить")
+        }
+        val offer = updates.engine ?: return
         if (settings(context).getInt(INSTALL, INSTALL_ASK) != INSTALL_AUTO) {
-            notifyAvailable(context, offer)
+            notify(context, NOTIFY_ENGINE, "Доступен новый движок", "Gecko ${offer.entry.version}. Откройте браузер, чтобы обновить")
             return
         }
         val metered = context.getSystemService(ConnectivityManager::class.java).isActiveNetworkMetered

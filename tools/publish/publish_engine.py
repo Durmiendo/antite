@@ -1,11 +1,12 @@
 """Prepare an engine release: adapter package, signed engines.json with Mozilla's per-ABI AARs pinned by sha256.
 
-Usage: python3 -I tools/publish/publish_engine.py [--gecko VERSION] [--out DIR] [--adapter-base URL]
+Usage: python3 -I tools/publish/publish_engine.py [--gecko VERSION] [--out DIR] [--adapter-base URL] [--shell]
 
 Run from the repository root. Builds :engine-gecko:adapterPackage for the GeckoView version, downloads the
 per-ABI AARs from maven.mozilla.org (cached in build/publish), compares their manifest with the one the shell
 was built with, writes engines.json and engines.json.sig to --out (default: repository root) and prints what to
-upload. Nothing is uploaded or pushed.
+upload. With --shell it also builds the signed release shell (versionCode from shellVersionCode) and offers it in
+the index; without it the shell entry of the existing index is kept. Nothing is uploaded or pushed.
 """
 import argparse
 import glob
@@ -33,8 +34,7 @@ def prop(name, path="gradle.properties"):
 
 
 def shell_version_code():
-    m = re.search(r"versionCode\s+(\d+)", open("app/build.gradle").read())
-    return int(m.group(1))
+    return int(prop("shellVersionCode"))
 
 
 def sha256(path):
@@ -90,6 +90,8 @@ def main():
     ap.add_argument("--gecko", default=None, help="GeckoView version, default: geckoviewVersion")
     ap.add_argument("--out", default=".")
     ap.add_argument("--adapter-base", default=None, help="base URL of the adapter download, default: GitHub release")
+    ap.add_argument("--shell", action="store_true", help="also publish the release shell")
+    ap.add_argument("--shell-base", default=None, help="base URL of the shell download, default: GitHub release")
     a = ap.parse_args()
 
     gecko = a.gecko or prop("geckoviewVersion")
@@ -137,12 +139,26 @@ def main():
         "adapter": artifact([f"{base}/{os.path.basename(adapter)}"], adapter),
         "upstream": upstream,
     }
+    shell = old.get("shell")
+    if a.shell:
+        code = shell_version_code()
+        if code <= (old.get("shell") or {}).get("version", 0):
+            sys.exit("shellVersionCode must grow")
+        print(f"   release shell, versionCode {code}")
+        subprocess.run(["./gradlew", "-q", ":app:assembleRelease"], check=True)
+        shell_base = a.shell_base or f"{prop('engineReleaseBase')}/shell-{code}"
+        shell = {"version": code, "apk": {}}
+        for abi in ABIS:
+            apk = f"app/build/outputs/apk/release/app-{abi}-release.apk"
+            shell["apk"][abi] = artifact([f"{shell_base}/{os.path.basename(apk)}"], apk)
     index = {
         "format": 1,
         "serial": max(old["serial"] + 1, int(time.time())),
         "published": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "engines": [entry] + [e for e in old["engines"] if e["id"] != entry["id"]],
     }
+    if shell:
+        index["shell"] = shell
     body = (json.dumps(index, indent=2, ensure_ascii=True) + "\n").encode()
     os.makedirs(a.out, exist_ok=True)
     open(index_path, "wb").write(body)
@@ -158,6 +174,9 @@ def main():
 
     print("\nUpload:")
     print(f"  {adapter} -> release {tag} ({entry['adapter']['url'][0]})")
+    if a.shell:
+        for abi in ABIS:
+            print(f"  app/build/outputs/apk/release/app-{abi}-release.apk -> {shell['apk'][abi]['url'][0]}")
     print(f"  {index_path} and {index_path}.sig -> repository root ({prop('engineIndexUrl')})")
 
 

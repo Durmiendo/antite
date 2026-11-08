@@ -22,10 +22,12 @@ class EngineEntry(
     val adapter: Artifact,
     val upstream: Map<String, Artifact>,
 ) {
-    val dirName: String get() = "$id-$version"
+    fun dirName(abi: String) = "$id-$version-$abi"
 }
 
-class EngineIndex(val serial: Long, val engines: List<EngineEntry>) {
+class ShellEntry(val version: Int, val apk: Map<String, Artifact>)
+
+class EngineIndex(val serial: Long, val engines: List<EngineEntry>, val shell: ShellEntry? = null) {
     companion object {
         const val FORMAT = 1
 
@@ -71,7 +73,11 @@ class EngineIndex(val serial: Long, val engines: List<EngineEntry>) {
                     upstream = up.keys().asSequence().associateWith { artifact(up.getJSONObject(it)) },
                 )
             }
-            return EngineIndex(root.getLong("serial"), engines)
+            val shell = root.optJSONObject("shell")?.let { s ->
+                val apk = s.getJSONObject("apk")
+                ShellEntry(s.getInt("version"), apk.keys().asSequence().associateWith { artifact(apk.getJSONObject(it)) })
+            }
+            return EngineIndex(root.getLong("serial"), engines, shell)
         }
     }
 
