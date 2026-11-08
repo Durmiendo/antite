@@ -3,7 +3,7 @@
 Usage: ./gradlew :engine-gecko:adapterPackage :app:assembleDebug
        python3 -I tools/e2e/shell_update.py --serial SERIAL --apk app/build/outputs/apk/debug/app-debug.apk
 
-Builds the same debug shell with versionCode 2 as the update, then rebuilds versionCode 1.
+Builds the same debug shell with the next versionCode as the update, then rebuilds the current one.
 Goes through the real "install unknown apps" permission screen. Reinstalls the browser, so its data is lost.
 """
 import argparse
@@ -17,7 +17,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from engine_setup import KEYS, download_engine, engine_pages  # noqa: E402
+from engine_setup import KEYS, download_engine, engine_pages, prop  # noqa: E402
 from server import ReportServer  # noqa: E402
 
 PORT = 8774
@@ -45,31 +45,34 @@ def main():
     v1 = os.path.join(a.out, "antite-v1.apk")
     v2 = os.path.join(a.out, "antite-v2.apk")
     shutil.copy(a.apk, v1)
-    print("0. build the update (versionCode 2)")
-    subprocess.run(["./gradlew", "-q", ":app:assembleDebug", "-PshellVersionCode=2"], check=True)
+    cur = int(prop("shellVersionCode"))
+    new = cur + 1
+    print(f"0. build the update (versionCode {new})")
+    subprocess.run(["./gradlew", "-q", ":app:assembleDebug", f"-PshellVersionCode={new}"], check=True)
     shutil.copy(a.apk, v2)
     subprocess.run(["./gradlew", "-q", ":app:assembleDebug"], check=True)
 
     pages = engine_pages(PORT)
     pages["/page"] = b"<!doctype html><body><script>fetch('/report?' + navigator.userAgent)</script>"
-    server = ReportServer(PORT, pages)
+    # The update APK is sent slowly so its download progress can be checked.
+    server = ReportServer(PORT, pages, rates={"/antite-v2.apk": 4 * 1024 * 1024})
     server.attach(d)
 
-    print("1. clean install of versionCode 1 with an engine")
+    print(f"1. clean install of versionCode {cur} with an engine")
     d.adb("uninstall", PACKAGE, check=False)
     d.install(v1)
     download_engine(d, PORT)
     d.launch(f"http://localhost:{PORT}/page")
     if not server.report(timeout=60):
         d.fail("page did not run")
-    if version_code(d) != 1:
-        d.fail(f"expected versionCode 1, got {version_code(d)}")
+    if version_code(d) != cur:
+        d.fail(f"expected versionCode {cur}, got {version_code(d)}")
 
-    print("2. the index offers shell 2")
+    print("2. the index offers the next shell")
     apk = open(v2, "rb").read()
     index = json.loads(pages["/engines.json"])
     index["serial"] += 1
-    index["shell"] = {"version": 2, "apk": {"x86_64": {
+    index["shell"] = {"version": new, "apk": {"x86_64": {
         "url": [f"http://localhost:{PORT}/antite-v2.apk"], "size": len(apk), "sha256": hashlib.sha256(apk).hexdigest()}}}
     body = json.dumps(index).encode()
     pages.update({"/engines.json": body, "/engines.json.sig": sign(body), "/antite-v2.apk": apk})
@@ -82,12 +85,26 @@ def main():
         d.shell("input keyevent HOME")
         d.launch()
         time.sleep(2)
-    d.tap("Обновить", exact=True)
+    d.tap("Позже", exact=True)
+
+    print("   start it from Settings > Updates: progress only in that row")
+    d.tap("Меню", exact=True)
+    d.scroll_to("Настройки")
+    d.tap("Настройки", exact=True)
+    d.scroll_to("Обновления")
+    d.tap("Обновления", exact=True)
+    d.tap("Обновить Antite", exact=True)
+    rows = [n for n in d.nodes() if "Скачиваем" in (n.get("text") or "")]
+    end = time.time() + 10
+    while not rows and time.time() < end:
+        rows = [n for n in d.nodes() if "Скачиваем" in (n.get("text") or "")]
+    if len(rows) != 1:
+        d.fail(f"download progress shown in {len(rows)} rows")
 
     print("3. the system installer: allow this source once, confirm the update")
     end = time.time() + 120
     allowed = False
-    while version_code(d) != 2:
+    while version_code(d) != new:
         if time.time() > end:
             d.fail("the shell was not updated")
         if not allowed and "ExternalSources" in d.top_activity():
@@ -101,7 +118,7 @@ def main():
         elif d.find("Обновить", exact=True) is not None:
             d.tap("Обновить", exact=True)
         time.sleep(2)
-    print("   versionCode 2 installed")
+    print(f"   versionCode {new} installed")
 
     print("4. the updated browser keeps its engine and data")
     d.stop()
@@ -116,7 +133,7 @@ def main():
     d.tap("Настройки", exact=True)
     d.scroll_to("Обновления")
     d.tap("Обновления", exact=True)
-    d.wait("Сборка 2", exact=True)
+    d.wait(f"Сборка {new}", exact=True)
     if d.find("Обновить Antite", exact=True) is not None:
         d.fail("the update is still offered")
     server.close()

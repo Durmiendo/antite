@@ -724,7 +724,18 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     // ---------------------------------------------------------------- engine callbacks
 
     private inner class TabSession(val t: Tab) : TabCallbacks {
+        // A new session first loads about:blank, also when it restores a page; like Firefox, that load is ignored.
+        private var initialBlank = !Urls.isBlank(t.url)
+
+        private fun skipInitialBlank(url: String): Boolean {
+            if (!initialBlank) return false
+            if (Urls.isBlank(url)) return true
+            initialBlank = false
+            return false
+        }
+
         override fun onLocationChange(url: String) {
+            if (skipInitialBlank(url)) return
             t.url = url
             refreshBookmarked(t)
         }
@@ -742,12 +753,14 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }
 
         override fun onPageStart(url: String) {
+            if (skipInitialBlank(url)) return
             t.loading = true
             t.progress = 0
             if (t === current) setToolbarHidden(0f)
         }
 
         override fun onPageStop(success: Boolean) {
+            if (initialBlank) return
             t.loading = false
             captureSoon(t, 1000, true)
         }

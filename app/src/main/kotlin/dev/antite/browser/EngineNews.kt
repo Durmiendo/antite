@@ -61,8 +61,9 @@ class EngineNews(private val b: Browser) {
         install(offer)
     }
 
-    fun updateShell(progress: (Int) -> Unit = {}, done: () -> Unit = {}) = ctx.lifecycleScope.launch {
-        b.toast("Скачиваем новую версию Antite…")
+    // Without a progress callback nothing on screen shows the download, so a message does.
+    fun updateShell(progress: ((Int) -> Unit)? = null, done: () -> Unit = {}) = ctx.lifecycleScope.launch {
+        if (progress == null) b.toast("Скачиваем новую версию Antite…")
         val r = withContext(Dispatchers.IO) {
             runCatching {
                 val offer = EngineUpdates.check(ctx).shell ?: throw java.io.IOException("обновления больше нет в источнике")
@@ -71,7 +72,7 @@ class EngineNews(private val b: Browser) {
                     val pct = d * 100 / total
                     if (pct != last) {
                         last = pct
-                        ctx.runOnUiThread { progress(pct.toInt()) }
+                        ctx.runOnUiThread { progress?.invoke(pct.toInt()) }
                     }
                 }
             }

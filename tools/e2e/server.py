@@ -1,4 +1,5 @@
 import queue
+import time
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote
@@ -7,7 +8,9 @@ from urllib.parse import unquote
 class ReportServer:
     """Serves fixed pages and collects what they send to /report?..."""
 
-    def __init__(self, port, pages):
+    def __init__(self, port, pages, rates=None):
+        """rates: path -> bytes per second, to send that page slowly."""
+        rates = rates if rates is not None else {}
         self.port = port
         self.reports = queue.Queue()
         reports = self.reports
@@ -23,7 +26,17 @@ class ReportServer:
                 self.send_header("Content-Type", "text/html")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
-                self.wfile.write(body)
+                rate = rates.get(self.path.split("?")[0])
+                if not rate:
+                    self.wfile.write(body)
+                    return
+                step = 64 * 1024
+                try:
+                    for i in range(0, len(body), step):
+                        self.wfile.write(body[i:i + step])
+                        time.sleep(step / rate)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
 
             def log_message(self, *args):
                 pass

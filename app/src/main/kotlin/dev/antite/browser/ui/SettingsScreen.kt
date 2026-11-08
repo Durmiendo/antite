@@ -308,6 +308,7 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
     val ctx = b.activity
     var revision by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf<String?>(null) }
+    var shellBusy by remember { mutableStateOf<String?>(null) }
     val info by produceState<UpdateInfo?>(null, revision) {
         value = withContext(Dispatchers.IO) {
             val store = Engines.store(ctx)
@@ -364,11 +365,11 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
         }
         if (i.shell > BuildConfig.VERSION_CODE) {
             item(key = "shell") {
-                SettingRow("Обновить Antite", busy ?: "Доступна сборка ${i.shell}. Система попросит подтвердить установку",
+                SettingRow("Обновить Antite", shellBusy ?: "Доступна сборка ${i.shell}. Система попросит подтвердить установку",
                     onClick = {
-                        if (busy == null) {
-                            busy = "Скачиваем…"
-                            b.engineNews.updateShell({ busy = "Скачиваем… $it%" }) { busy = null }
+                        if (shellBusy == null) {
+                            shellBusy = "Скачиваем…"
+                            b.engineNews.updateShell({ shellBusy = "Скачиваем… $it%" }) { shellBusy = null }
                         }
                     })
             }
