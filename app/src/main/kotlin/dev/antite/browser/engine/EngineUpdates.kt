@@ -76,6 +76,9 @@ object EngineUpdates {
     fun fromSource(context: Context, s: Source): Found {
         val fetched = try {
             fetch(context, s)
+        } catch (e: IndexExpiredException) {
+            val date = java.text.DateFormat.getDateInstance().format(java.util.Date(e.expires * 1000))
+            return Found(null, null, listOf("${s.name}: список движков устарел ($date). Проверьте дату на телефоне"))
         } catch (e: IndexException) {
             return Found(null, null, listOf("${s.name}: подпись не прошла проверку"))
         } catch (e: Exception) {

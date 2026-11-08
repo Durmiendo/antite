@@ -69,13 +69,18 @@ class EngineInstallerTest {
         return """{"url":[${urls.joinToString(",") { "\"$it\"" }}],"size":${bytes.size},"sha256":"${sha(bytes)}"}"""
     }
 
-    private fun index(serial: Long = 5, adapterJson: String = artifact("a.zip", adapter()), aarJson: String = artifact("e.aar", aar())) =
-        """{"format":1,"serial":$serial,"engines":[{"id":"gecko-release","type":"gecko","api":1,"channel":"release",
+    private val now = 1_800_000_000L
+
+    private fun index(
+        serial: Long = 5, adapterJson: String = artifact("a.zip", adapter()), aarJson: String = artifact("e.aar", aar()),
+        expires: Long = now + 30 * 86400,
+    ) = """{"format":1,"serial":$serial,"expires":$expires,"engines":[{"id":"gecko-release","type":"gecko","api":1,"channel":"release",
            "version":"1.0","minShell":1,"adapter":$adapterJson,"upstream":{"x86_64":$aarJson}}]}""".toByteArray()
 
     private fun sign(b: ByteArray) = Signature.getInstance("SHA256withECDSA").run { initSign(keys.private); update(b); sign() }
 
-    private fun parse(json: ByteArray, lastSerial: Long = 0) = EngineIndex.verify(json, sign(json), keys.public, lastSerial)
+    private fun parse(json: ByteArray, lastSerial: Long = 0, at: Long = now) =
+        EngineIndex.verify(json, sign(json), keys.public, lastSerial, at)
 
     @Test
     fun validIndexIsAccepted() {
@@ -113,6 +118,22 @@ class EngineInstallerTest {
     @Test
     fun olderIndexIsRejected() {
         assertThrows(IndexException::class.java) { parse(index(serial = 4), lastSerial = 5) }
+    }
+
+    @Test
+    fun expiredIndexIsRejected() {
+        assertThrows(IndexExpiredException::class.java) { parse(index(expires = now - 2 * 86400)) }
+    }
+
+    @Test
+    fun indexWithinClockSlackIsAccepted() {
+        assertNotNull(parse(index(expires = now - 3600)))
+    }
+
+    @Test
+    fun indexWithoutExpiryIsRejected() {
+        val json = String(index()).replace(Regex("\"expires\":\\d+,"), "").toByteArray()
+        assertThrows(IndexException::class.java) { parse(json) }
     }
 
     @Test

@@ -35,6 +35,7 @@ def foreign_source(out_dir):
     index = json.dumps({
         "format": 1,
         "serial": int(time.time()),
+        "expires": int(time.time()) + 30 * 86400,
         "engines": [{
             "id": "gecko", "type": "gecko", "api": int(prop("engineApi")), "channel": "release",
             "version": "9999.0", "minShell": 1, "adapter": fake, "upstream": {a: fake for a in abis},

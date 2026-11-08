@@ -46,6 +46,7 @@ def engine_pages(port):
     index = json.dumps({
         "format": 1,
         "serial": int(time.time()),
+        "expires": int(time.time()) + 30 * 86400,
         "engines": [{
             "id": "gecko-release", "type": "gecko", "api": int(prop("engineApi")), "channel": "release",
             "version": version, "minShell": 1,

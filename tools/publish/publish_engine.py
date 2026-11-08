@@ -1,12 +1,16 @@
 """Prepare an engine release: adapter package, signed engines.json with Mozilla's per-ABI AARs pinned by sha256.
 
 Usage: python3 -I tools/publish/publish_engine.py [--gecko VERSION] [--out DIR] [--adapter-base URL] [--shell]
+       python3 -I tools/publish/publish_engine.py --resign
 
 Run from the repository root. Builds :engine-gecko:adapterPackage for the GeckoView version, downloads the
 per-ABI AARs from maven.mozilla.org (cached in build/publish), compares their manifest with the one the shell
 was built with, writes engines.json and engines.json.sig to --out (default: repository root) and prints what to
 upload. With --shell it also builds the signed release shell (versionCode from shellVersionCode) and offers it in
 the index; without it the shell entry of the existing index is kept. Nothing is uploaded or pushed.
+
+The index expires EXPIRES_DAYS after signing and phones refuse it afterwards, so it must be published again
+before that; --resign only re-signs the existing index with a new serial and expiry, without building anything.
 """
 import argparse
 import glob
@@ -25,6 +29,7 @@ SHELL_APK = "app/build/outputs/apk/release/app-release.apk"
 MAVEN = "https://maven.mozilla.org/maven2/org/mozilla/geckoview"
 KEYS = os.path.expanduser("~/.antite-keys")
 CACHE = "build/publish"
+EXPIRES_DAYS = 30
 
 
 def prop(name, path="gradle.properties"):
@@ -86,6 +91,32 @@ def artifact(urls, path):
     return {"url": urls, "size": os.path.getsize(path), "sha256": sha256(path)}
 
 
+def stamp(index, old_serial):
+    now = int(time.time())
+    return {
+        "format": index["format"],
+        "serial": max(old_serial + 1, now),
+        "published": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+        "expires": now + EXPIRES_DAYS * 86400,
+        **{k: v for k, v in index.items() if k != "format"},
+    }
+
+
+def write_index(index_path, index):
+    body = (json.dumps(index, indent=2, ensure_ascii=True) + "\n").encode()
+    open(index_path, "wb").write(body)
+    sig = subprocess.run(
+        ["openssl", "dgst", "-sha256", "-sign", f"{KEYS}/publisher.key.pem", "-passin", f"file:{KEYS}/password"],
+        input=body, capture_output=True, check=True).stdout
+    open(index_path + ".sig", "wb").write(sig)
+    check = subprocess.run(["openssl", "dgst", "-sha256", "-verify", "keys/publisher.pub.pem", "-signature",
+                            index_path + ".sig", index_path], capture_output=True, text=True)
+    if "Verified OK" not in check.stdout:
+        sys.exit("signature check failed: " + check.stdout + check.stderr)
+    expires = time.strftime("%Y-%m-%d", time.gmtime(index["expires"]))
+    print(f"   {index_path} serial {index['serial']}, expires {expires}, signature verified with keys/publisher.pub.pem")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gecko", default=None, help="GeckoView version, default: geckoviewVersion")
@@ -93,7 +124,15 @@ def main():
     ap.add_argument("--adapter-base", default=None, help="base URL of the adapter download, default: GitHub release")
     ap.add_argument("--shell", action="store_true", help="also publish the release shell")
     ap.add_argument("--shell-base", default=None, help="base URL of the shell download, default: GitHub release")
+    ap.add_argument("--resign", action="store_true", help="only re-sign the existing index with a new expiry")
     a = ap.parse_args()
+    if a.resign:
+        index_path = os.path.join(a.out, "engines.json")
+        old = json.load(open(index_path))
+        index = {k: v for k, v in old.items() if k not in ("serial", "published", "expires")}
+        write_index(index_path, stamp(index, old["serial"]))
+        print(f"\nUpload: {index_path} and {index_path}.sig -> repository root ({prop('engineIndexUrl')})")
+        return
 
     gecko = a.gecko or prop("geckoviewVersion")
     revision = int(prop("adapterRevision"))
@@ -165,24 +204,12 @@ def main():
         shell = {"version": code, "apk": {abi: apk for abi in ABIS}}
     index = {
         "format": 1,
-        "serial": max(old["serial"] + 1, int(time.time())),
-        "published": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "engines": [entry] + [e for e in old["engines"] if e["id"] != entry["id"]],
     }
     if shell:
         index["shell"] = shell
-    body = (json.dumps(index, indent=2, ensure_ascii=True) + "\n").encode()
     os.makedirs(a.out, exist_ok=True)
-    open(index_path, "wb").write(body)
-    sig = subprocess.run(
-        ["openssl", "dgst", "-sha256", "-sign", f"{KEYS}/publisher.key.pem", "-passin", f"file:{KEYS}/password"],
-        input=body, capture_output=True, check=True).stdout
-    open(index_path + ".sig", "wb").write(sig)
-    check = subprocess.run(["openssl", "dgst", "-sha256", "-verify", "keys/publisher.pub.pem", "-signature",
-                            index_path + ".sig", index_path], capture_output=True, text=True)
-    if "Verified OK" not in check.stdout:
-        sys.exit("signature check failed: " + check.stdout + check.stderr)
-    print(f"   {index_path} serial {index['serial']}, signature verified with keys/publisher.pub.pem")
+    write_index(index_path, stamp(index, old["serial"]))
 
     print("\nUpload:")
     if adapter:

@@ -8,7 +8,9 @@ import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 
-class IndexException(message: String) : IOException(message)
+open class IndexException(message: String) : IOException(message)
+
+class IndexExpiredException(val expires: Long) : IndexException("index expired at $expires")
 
 class Artifact(val urls: List<String>, val size: Long, val sha256: String)
 
@@ -31,10 +33,18 @@ class EngineIndex(val serial: Long, val engines: List<EngineEntry>, val shell: S
     companion object {
         const val FORMAT = 1
 
+        // A phone whose clock is a little ahead must not lose updates over it.
+        const val CLOCK_SLACK_S = 24L * 3600
+
         fun publicKey(base64Der: String): PublicKey =
             KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(Base64.getDecoder().decode(base64Der)))
 
-        fun verify(json: ByteArray, signature: ByteArray, key: PublicKey, lastSerial: Long): EngineIndex {
+        // The signed expiry keeps an old, once valid index from being served forever (a freeze attack): the
+        // serial only stops indexes older than the one already seen.
+        fun verify(
+            json: ByteArray, signature: ByteArray, key: PublicKey, lastSerial: Long,
+            now: Long = System.currentTimeMillis() / 1000,
+        ): EngineIndex {
             val ok = try {
                 Signature.getInstance("SHA256withECDSA").run {
                     initVerify(key)
@@ -45,8 +55,12 @@ class EngineIndex(val serial: Long, val engines: List<EngineEntry>, val shell: S
                 false
             }
             if (!ok) throw IndexException("index signature is not valid")
-            val index = parse(String(json, Charsets.UTF_8))
+            val root = JSONObject(String(json, Charsets.UTF_8))
+            val index = parse(root)
             if (index.serial < lastSerial) throw IndexException("index is older than the one already seen")
+            val expires = root.optLong("expires", 0)
+            if (expires <= 0) throw IndexException("index has no expiry")
+            if (now > expires + CLOCK_SLACK_S) throw IndexExpiredException(expires)
             return index
         }
 
@@ -55,8 +69,7 @@ class EngineIndex(val serial: Long, val engines: List<EngineEntry>, val shell: S
             return Artifact(List(urls.length()) { urls.getString(it) }, o.getLong("size"), o.getString("sha256").lowercase())
         }
 
-        private fun parse(text: String): EngineIndex {
-            val root = JSONObject(text)
+        private fun parse(root: JSONObject): EngineIndex {
             if (root.getInt("format") != FORMAT) throw IndexException("unsupported index format")
             val list = root.getJSONArray("engines")
             val engines = List(list.length()) { i ->
