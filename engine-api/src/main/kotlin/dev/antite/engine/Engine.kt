@@ -36,6 +36,9 @@ interface Engine {
     fun createView(context: Context): EngineView
 
     fun fetch(url: String, maxBytes: Int, done: (ByteArray?) -> Unit)
+
+    // Done with null when the server does not answer 2xx.
+    fun download(url: String, referrer: String?, privateMode: Boolean, done: (DownloadRequest?) -> Unit)
 }
 
 fun interface EngineFactory {

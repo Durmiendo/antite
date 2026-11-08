@@ -13,6 +13,7 @@ import dev.antite.engine.ColorScheme
 import dev.antite.engine.CookiePolicy
 import dev.antite.engine.DataKind
 import dev.antite.engine.DnsOverHttpsMode
+import dev.antite.engine.DownloadRequest
 import dev.antite.engine.Engine
 import dev.antite.engine.EngineFactory
 import dev.antite.engine.EngineInfo
@@ -213,6 +214,28 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
                 }
                 main.post { done(bytes) }
             }
+        }, { main.post { done(null) } })
+    }
+
+    override fun download(url: String, referrer: String?, privateMode: Boolean, done: (DownloadRequest?) -> Unit) {
+        val result = try {
+            val request = WebRequest.Builder(url).apply { if (referrer != null) referrer(referrer) }.build()
+            web.fetch(request, if (privateMode) GeckoWebExecutor.FETCH_FLAGS_PRIVATE else GeckoWebExecutor.FETCH_FLAGS_NONE)
+        } catch (e: Exception) {
+            done(null)
+            return
+        }
+        result.accept({ resp ->
+            val body = resp?.body
+            if (resp == null || resp.statusCode !in 200..299 || body == null) {
+                runCatching { body?.close() }
+                main.post { done(null) }
+                return@accept
+            }
+            fun header(name: String) = resp.headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+            val r = DownloadRequest(resp.uri, header("content-disposition"), header("content-type"), body,
+                header("content-length")?.trim()?.toLongOrNull() ?: -1)
+            main.post { done(r) }
         }, { main.post { done(null) } })
     }
 

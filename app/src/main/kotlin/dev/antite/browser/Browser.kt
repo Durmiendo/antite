@@ -668,7 +668,11 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }
         if (src != null && info.isImage) {
             items += DialogButton("Открыть изображение в новой вкладке") { openTab(src, t.incognito, t, false) }
-            items += DialogButton("Скачать изображение") { ensureSession(t).load(src) }
+            items += DialogButton("Скачать изображение") {
+                engine.download(src, t.url, t.incognito) { r ->
+                    if (r != null) downloads.start(r, prefs.bool("dlAsk", false)) else toast("Не удалось скачать изображение")
+                }
+            }
             items += DialogButton("Копировать адрес изображения") { activity.copy(src) }
         }
         if (items.isNotEmpty()) show(UiDialog.Items(link ?: src, items))
