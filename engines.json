@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "serial": 1794142721,
+  "published": "2026-11-08T12:58:41Z",
+  "engines": [
+    {
+      "id": "gecko-release",
+      "type": "gecko",
+      "api": 1,
+      "channel": "release",
+      "version": "159.0.20261102144711",
+      "minShell": 1,
+      "adapter": {
+        "url": [
+          "https://github.com/Durmiendo/antite/releases/download/engine-159.0.20261102144711/gecko-159.0.20261102144711-adapter.zip"
+        ],
+        "size": 626731,
+        "sha256": "e91a9f2c567be4ad07cc5a77bfa0eeab2ad5ab8e2fb7bf06c5f9bf1f98b0f78d"
+      },
+      "upstream": {
+        "arm64-v8a": {
+          "url": [
+            "https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview-arm64-v8a/159.0.20261102144711/geckoview-arm64-v8a-159.0.20261102144711.aar"
+          ],
+          "size": 91498586,
+          "sha256": "003eff5dba9e53fe5a23ae454a5f9ce50ab631c4ea8aed33824957d8c756e745"
+        },
+        "x86_64": {
+          "url": [
+            "https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview-x86_64/159.0.20261102144711/geckoview-x86_64-159.0.20261102144711.aar"
+          ],
+          "size": 96496464,
+          "sha256": "aa0b43a0d88efa13d08342d5a0b414795631da2f62ca76ed1d79ff798e03eb25"
+        }
+      }
+    }
+  ],
+  "shell": {
+    "version": 1,
+    "apk": {
+      "arm64-v8a": {
+        "url": [
+          "https://github.com/Durmiendo/antite/releases/download/shell-1/app-arm64-v8a-release.apk"
+        ],
+        "size": 12609932,
+        "sha256": "1212b9b87d0e7fe8980d8e19f6482ded2cd96cb88446d81749fe32f30cbae386"
+      },
+      "x86_64": {
+        "url": [
+          "https://github.com/Durmiendo/antite/releases/download/shell-1/app-x86_64-release.apk"
+        ],
+        "size": 12610593,
+        "sha256": "fb08ab8e0283d5a4bee9e691ba3c99cf2b442a5b32ef7d9fc2c34a6b03c4a1be"
+      }
+    }
+  }
+}
