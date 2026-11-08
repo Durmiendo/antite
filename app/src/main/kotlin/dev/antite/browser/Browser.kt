@@ -333,6 +333,12 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             if (!needTab) return
         }
         val data = intent?.data
+        // An explicit intent passes any scheme past the filter; javascript: would run in the open page.
+        if (data != null && data.scheme?.lowercase() !in setOf("http", "https")) {
+            toast("Ссылка не открыта: ${data.scheme}: не поддерживается")
+            if (needTab) newTabAndFocus(false)
+            return
+        }
         when {
             data != null && intent.action == Intent.ACTION_VIEW -> {
                 overlay = Overlay.NONE
