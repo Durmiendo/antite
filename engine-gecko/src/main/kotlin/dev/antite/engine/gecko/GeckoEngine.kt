@@ -66,7 +66,10 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
         private const val ICONS_EXTENSION_ID = "icons@antite.dev"
         private const val ICONS_EXTENSION_URL = "resource://android/assets/extensions/icons/"
         private const val CONFIG = "gecko-config.yaml"
-        private const val BASE_CONFIG = "prefs:\n  media.hardwaremediakeys.enabled: true\n"
+        // use-surfacecontrol: Gecko draws into a child SurfaceControl of its own size, so a resized view crops the
+        // old frame instead of Android stretching it until the next one (off by default in Firefox, read at startup).
+        private const val BASE_CONFIG =
+            "prefs:\n  media.hardwaremediakeys.enabled: true\n  widget.android.use-surfacecontrol: true\n"
         private const val CONNECTIVITY = "connectivity"
         private const val REMOTE_SETTINGS = "remote-settings"
         private const val ADDON_UPDATES = "addon-updates"
