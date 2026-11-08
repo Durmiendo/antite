@@ -12,10 +12,12 @@ import kotlinx.coroutines.withContext
 class EngineNews(private val b: Browser) {
     companion object {
         private const val POSTPONE_MS = 3L * 24 * 3600 * 1000
+
+        // Per process, not per activity: a recreated activity must not ask again.
+        private var asked = false
     }
 
     private val ctx = b.activity
-    private var asked = false
 
     fun onResume() = ctx.lifecycleScope.launch {
         val st = EngineUpdates.state(ctx)
@@ -43,7 +45,9 @@ class EngineNews(private val b: Browser) {
             return@launch
         }
         val available = st.getString("available", null) ?: return@launch
-        if (asked || b.prefs.int(EngineUpdates.INSTALL, EngineUpdates.INSTALL_ASK) != EngineUpdates.INSTALL_ASK) return@launch
+        if (asked || EngineUpdates.installing != null ||
+            b.prefs.int(EngineUpdates.INSTALL, EngineUpdates.INSTALL_ASK) != EngineUpdates.INSTALL_ASK
+        ) return@launch
         if (System.currentTimeMillis() < st.getLong("postponed.$available", 0)) return@launch
         asked = true
         b.show(UiDialog.Message("Доступен новый движок",

@@ -116,11 +116,21 @@ object EngineUpdates {
         return Updates(result, found.shell)
     }
 
+    // The version being downloaded in this process, so it is not offered again meanwhile.
+    @Volatile
+    var installing: String? = null
+        private set
+
     @Synchronized
     fun install(context: Context, offer: Offer, progress: (done: Long, total: Long) -> Unit = { _, _ -> }): File {
         val store = Engines.store(context)
         store.dir.mkdirs()
-        val dir = EngineInstaller(store.dir, fetcher).install(offer.entry, offer.abi, progress)
+        installing = offer.entry.version
+        val dir = try {
+            EngineInstaller(store.dir, fetcher).install(offer.entry, offer.abi, progress)
+        } finally {
+            installing = null
+        }
         if (store.active() == null) store.activate(dir) else store.setPending(dir)
         state(context).edit().remove("available").putString("origin.${dir.name}", offer.source.name).commit()
         cancelNotification(context, NOTIFY_ENGINE)
