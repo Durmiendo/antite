@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "serial": 1794144742,
-  "published": "2026-11-08T13:32:22Z",
+  "serial": 1794148037,
+  "published": "2026-11-08T14:27:17Z",
   "engines": [
     {
       "id": "gecko-release",
@@ -43,28 +43,28 @@
     }
   ],
   "shell": {
-    "version": 2,
+    "version": 3,
     "apk": {
       "arm64-v8a": {
         "url": [
-          "https://github.com/Durmiendo/antite/releases/download/shell-2/antite-2.apk"
+          "https://github.com/Durmiendo/antite/releases/download/shell-3/antite-3.apk"
         ],
-        "size": 12643535,
-        "sha256": "5db02269395c5250d068099ead6ea96ca3c77825627f103be1c2275b3e786352"
+        "size": 12643539,
+        "sha256": "f3a3c7e4a239648e812f7106eee1cceac44c05d4b190005373e6999c3b2fc191"
       },
       "armeabi-v7a": {
         "url": [
-          "https://github.com/Durmiendo/antite/releases/download/shell-2/antite-2.apk"
+          "https://github.com/Durmiendo/antite/releases/download/shell-3/antite-3.apk"
         ],
-        "size": 12643535,
-        "sha256": "5db02269395c5250d068099ead6ea96ca3c77825627f103be1c2275b3e786352"
+        "size": 12643539,
+        "sha256": "f3a3c7e4a239648e812f7106eee1cceac44c05d4b190005373e6999c3b2fc191"
       },
       "x86_64": {
         "url": [
-          "https://github.com/Durmiendo/antite/releases/download/shell-2/antite-2.apk"
+          "https://github.com/Durmiendo/antite/releases/download/shell-3/antite-3.apk"
         ],
-        "size": 12643535,
-        "sha256": "5db02269395c5250d068099ead6ea96ca3c77825627f103be1c2275b3e786352"
+        "size": 12643539,
+        "sha256": "f3a3c7e4a239648e812f7106eee1cceac44c05d4b190005373e6999c3b2fc191"
       }
     }
   }
