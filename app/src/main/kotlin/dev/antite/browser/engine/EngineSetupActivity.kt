@@ -1,9 +1,7 @@
 package dev.antite.browser.engine
 
-import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,15 +24,12 @@ import androidx.compose.ui.unit.sp
 import dev.antite.browser.BuildConfig
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.LocalPalette
-import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlin.concurrent.thread
 
 class EngineSetupActivity : ComponentActivity() {
     private sealed interface State {
         data object Checking : State
-        class Ready(val entry: EngineEntry, val abi: String, val serial: Long) : State
+        class Ready(val offer: Offer) : State
         class Downloading(val fraction: Float) : State
         class Failed(val message: String) : State
     }
@@ -46,14 +41,6 @@ class EngineSetupActivity : ComponentActivity() {
             val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
             return intent.getStringExtra("indexUrl")?.takeIf { debuggable } ?: BuildConfig.ENGINE_INDEX_URL
         }
-
-    private val fetcher = Fetcher { url ->
-        val c = URL(url).openConnection() as HttpURLConnection
-        c.connectTimeout = 15_000
-        c.readTimeout = 30_000
-        if (c.responseCode != 200) throw java.io.IOException("$url: HTTP ${c.responseCode}")
-        c.inputStream
-    }
 
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
@@ -72,7 +59,7 @@ class EngineSetupActivity : ComponentActivity() {
                         }
                         is State.Ready -> {
                             Info("Для работы браузеру нужен движок. Он скачивается один раз и потом обновляется отдельно.")
-                            Info("Gecko ${s.entry.version}, ${mb(s.entry.adapter.size + s.entry.upstream.getValue(s.abi).size)} МБ\nИсточник: ${Uri.parse(indexUrl).host}")
+                            Info("Gecko ${s.offer.entry.version}, ${mb(s.offer.size)} МБ\nИсточник: ${Uri.parse(indexUrl).host}")
                             TextButton(onClick = { download(s) }) { Text("Скачать", color = p.accent, fontSize = 16.sp) }
                         }
                         is State.Downloading -> {
@@ -97,21 +84,13 @@ class EngineSetupActivity : ComponentActivity() {
 
     private fun mb(bytes: Long) = (bytes + 512 * 1024) / (1024 * 1024)
 
-    private fun prefs() = getSharedPreferences("engines", Context.MODE_PRIVATE)
-
     private fun check() {
         state = State.Checking
         thread(name = "engine-index") {
             state = try {
-                val json = fetcher.open(indexUrl).use(InputStream::readBytes)
-                val sig = fetcher.open("$indexUrl.sig").use(InputStream::readBytes)
-                val index = EngineIndex.verify(json, sig, EngineIndex.publicKey(BuildConfig.PUBLISHER_KEY), prefs().getLong("serial", 0))
-                val api = dev.antite.engine.BuildConfig.ENGINE_API
-                val pick = Build.SUPPORTED_ABIS.firstNotNullOfOrNull { abi ->
-                    index.choose(abi, api, BuildConfig.VERSION_CODE)?.let { it to abi }
-                }
-                if (pick == null) State.Failed("В источнике нет движка для этого устройства и этой версии браузера.")
-                else State.Ready(pick.first, pick.second, index.serial)
+                val offer = EngineUpdates.fetchOffer(this, indexUrl)
+                if (offer == null) State.Failed("В источнике нет движка для этого устройства и этой версии браузера.")
+                else State.Ready(offer)
             } catch (e: IndexException) {
                 State.Failed("Источник обновлений не прошёл проверку подписи: ${e.message}")
             } catch (e: Exception) {
@@ -124,18 +103,15 @@ class EngineSetupActivity : ComponentActivity() {
         state = State.Downloading(0f)
         thread(name = "engine-download") {
             try {
-                val store = Engines.store(this)
-                store.dir.mkdirs()
                 var last = 0L
-                val dir = EngineInstaller(store.dir, fetcher).install(ready.entry, ready.abi) { done, total ->
+                EngineUpdates.install(this, ready.offer) { done, total ->
                     val now = System.currentTimeMillis()
                     if (now - last > 100) {
                         last = now
                         state = State.Downloading(done.toFloat() / total)
                     }
                 }
-                store.activate(dir)
-                prefs().edit().putLong("serial", ready.serial).commit()
+                EngineUpdates.setSource(this, indexUrl)
                 Engines.restart(this)
             } catch (e: Exception) {
                 state = State.Failed("Не удалось скачать движок: ${e.message}")

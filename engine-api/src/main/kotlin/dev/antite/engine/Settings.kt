@@ -22,7 +22,6 @@ data class EngineSettings(
     val globalPrivacyControl: Boolean = true,
     val doNotTrack: Boolean = false,
     val httpsOnly: Boolean = false,
-    val safeBrowsing: Boolean = false,
     val tracking: TrackingProtection = TrackingProtection.STANDARD,
     val cookies: CookiePolicy = CookiePolicy.ISOLATE_THIRD_PARTY,
     val stripTrackingParams: Boolean = true,
@@ -39,4 +38,5 @@ data class EngineSettings(
     val autofillPasswords: Boolean = true,
     val autofillAddresses: Boolean = true,
     val autofillCards: Boolean = true,
+    val disabledServices: Set<String> = emptySet(),
 )

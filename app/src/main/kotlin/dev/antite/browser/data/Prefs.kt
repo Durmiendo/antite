@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import androidx.compose.runtime.mutableIntStateOf
+import dev.antite.engine.BackgroundService
 import dev.antite.engine.ColorScheme
 import dev.antite.engine.CookiePolicy
 import dev.antite.engine.DnsOverHttpsMode
@@ -96,6 +97,10 @@ class Prefs(context: Context) {
                 putInt("cat_autoplay", sp.getInt("autoplay", 1))
                 remove("autoplay")
             }
+            if (sp.contains("safeBrowsing")) {
+                putBoolean(serviceKey(BackgroundService.SAFE_BROWSING), sp.getBoolean("safeBrowsing", false))
+                remove("safeBrowsing")
+            }
             if (sp.contains("dark") && !sp.contains("theme")) {
                 putInt("theme", if (sp.getBoolean("dark", true)) 2 else 1)
                 remove("dark")
@@ -149,7 +154,11 @@ class Prefs(context: Context) {
 
     val suggestUrl: String get() = Options.suggestUrls[index("engine", Options.engines, 0).coerceAtMost(Options.suggestUrls.lastIndex)]
 
-    fun engineSettings(perms: SitePerms): EngineSettings {
+    fun serviceKey(id: String) = "bg.$id"
+
+    fun serviceEnabled(s: BackgroundService) = bool(serviceKey(s.id), s.defaultEnabled)
+
+    fun engineSettings(perms: SitePerms, services: List<BackgroundService>): EngineSettings {
         val doh = index("doh", Options.doh, 0)
         return EngineSettings(
             colorScheme = theme,
@@ -159,7 +168,6 @@ class Prefs(context: Context) {
             globalPrivacyControl = bool("gpc", true),
             doNotTrack = bool("dnt", false),
             httpsOnly = bool("httpsOnly", false),
-            safeBrowsing = bool("safeBrowsing", false),
             tracking = Options.tracking[index("tracking", Options.tracking, 0)].value,
             cookies = Options.cookies[index("cookies", Options.cookies, 0)].value,
             stripTrackingParams = bool("strip", true),
@@ -176,6 +184,7 @@ class Prefs(context: Context) {
             autofillPasswords = bool("passwordsAutofill", true),
             autofillAddresses = bool("addressesEnabled", true),
             autofillCards = bool("cardsEnabled", true),
+            disabledServices = services.filterNot(::serviceEnabled).map { it.id }.toSet(),
         )
     }
 }

@@ -23,6 +23,7 @@ interface Engine {
     val storage: StorageCleaner
     val extensions: Extensions?
     val translation: Translation?
+    val backgroundServices: List<BackgroundService>
 
     fun applySettings(settings: EngineSettings)
 

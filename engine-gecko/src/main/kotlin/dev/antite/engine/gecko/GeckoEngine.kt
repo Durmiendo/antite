@@ -7,6 +7,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.View
 import dev.antite.engine.AutofillStore
+import dev.antite.engine.BackgroundService
 import dev.antite.engine.Capability
 import dev.antite.engine.ColorScheme
 import dev.antite.engine.CookiePolicy
@@ -60,6 +61,15 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
     companion object {
         private const val ICONS_EXTENSION_ID = "icons@antite.dev"
         private const val ICONS_EXTENSION_URL = "resource://android/assets/extensions/icons/"
+        private const val CONFIG = "gecko-config.yaml"
+        private const val BASE_CONFIG = "prefs:\n  media.hardwaremediakeys.enabled: true\n"
+        private const val CONNECTIVITY = "connectivity"
+        private const val REMOTE_SETTINGS = "remote-settings"
+        private const val ADDON_UPDATES = "addon-updates"
+        private const val OCSP = "ocsp"
+        private val SAFE_BROWSING_HOSTS = listOf("safebrowsing.googleapis.com")
+        private val REMOTE_SETTINGS_HOSTS =
+            listOf("firefox.settings.services.mozilla.com", "firefox-settings-attachments.cdn.mozilla.net")
 
         @Volatile
         private var instance: GeckoEngine? = null
@@ -73,6 +83,8 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
     internal val main = Handler(Looper.getMainLooper())
     internal var iconsExtension: WebExtension? = null
     private val liveTabs = mutableSetOf<GeckoTab>()
+    private val startupPrefs = linkedMapOf<String, Any>()
+    private val disk = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     override val info = EngineInfo("gecko", org.mozilla.geckoview.BuildConfig.MOZILLA_VERSION)
 
@@ -97,10 +109,62 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
         }, { err -> Log.w("Antite", "icons extension failed", err) })
     }
 
+    override val backgroundServices = listOf(
+        BackgroundService(
+            BackgroundService.SAFE_BROWSING, "Безопасный просмотр Google",
+            "Списки опасных сайтов и загрузок, обновляются несколько раз в час",
+            SAFE_BROWSING_HOSTS, defaultEnabled = false,
+        ),
+        BackgroundService(
+            CONNECTIVITY, "Проверка подключения",
+            "При запуске и смене сети: запрос success.txt по IPv4 и IPv6 и DNS-запрос example.org",
+            listOf("firefox-portal-detection.com", "example.org"), defaultEnabled = true,
+            offEffect = "Браузер не заметит страницу входа в сеть Wi-Fi (кафе, транспорт) и хуже определит, есть ли IPv6",
+        ),
+        BackgroundService(
+            REMOTE_SETTINGS, "Списки Mozilla",
+            "Раз в сутки: отозванные сертификаты (CRLite), промежуточные сертификаты, списки трекеров, " +
+                "запрещённые расширения. По запросу: модели перевода",
+            REMOTE_SETTINGS_HOSTS, defaultEnabled = true,
+            offEffect = "Перестанут обновляться списки трекеров и отозванных сертификатов, не будет работать перевод страниц",
+        ),
+        BackgroundService(
+            ADDON_UPDATES, "Обновления расширений",
+            "Раз в сутки: версии установленных расширений, новая версия скачивается",
+            listOf("versioncheck.addons.mozilla.org", "addons.mozilla.org"), defaultEnabled = true,
+            offEffect = "uBlock Origin и другие расширения не будут обновляться. Списки фильтров uBlock обновляются отдельно",
+        ),
+        BackgroundService(
+            OCSP, "Проверка сертификатов (OCSP)",
+            "Для сайтов с EV-сертификатом: вопрос центру сертификации, не отозван ли сертификат. Центр видит, какой сайт открыт",
+            listOf("OCSP-сервер центра сертификации сайта"), defaultEnabled = true,
+            offEffect = "Отзыв EV-сертификатов проверяется только по спискам CRLite",
+        ),
+    )
+
     private fun writeConfig(context: Context): String {
-        val f = File(context.filesDir, "gecko-config.yaml")
-        f.writeText("prefs:\n  media.hardwaremediakeys.enabled: true\n")
+        val f = File(context.filesDir, CONFIG)
+        if (!f.exists()) f.writeText(BASE_CONFIG)
         return f.path
+    }
+
+    // Prefs also go to the config file: Gecko reads it at startup, before the first request.
+    private fun saveStartupPrefs() {
+        val text = buildString {
+            append(BASE_CONFIG)
+            for ((name, value) in startupPrefs) {
+                append("  ").append(name).append(": ")
+                if (value is String) append('"').append(value.replace("\\", "\\\\").replace("\"", "\\\"")).append('"')
+                else append(value)
+                append('\n')
+            }
+        }
+        val f = File(context.filesDir, CONFIG)
+        disk.execute {
+            val tmp = File(f.path + ".tmp")
+            tmp.writeText(text)
+            tmp.renameTo(f)
+        }
     }
 
     internal fun register(tab: GeckoTab) {
@@ -209,9 +273,19 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
         cb.setCookieBehaviorPrivateMode(cookies)
         cb.setQueryParameterStrippingEnabled(settings.stripTrackingParams)
         cb.setQueryParameterStrippingPrivateBrowsingEnabled(settings.stripTrackingParams)
-        cb.setSafeBrowsing(
-            if (settings.safeBrowsing) ContentBlocking.SafeBrowsing.DEFAULT else ContentBlocking.SafeBrowsing.NONE,
-        )
+        val off = settings.disabledServices
+        val safeBrowsing = BackgroundService.SAFE_BROWSING !in off
+        cb.setSafeBrowsing(if (safeBrowsing) ContentBlocking.SafeBrowsing.DEFAULT else ContentBlocking.SafeBrowsing.NONE)
+        pref("browser.safebrowsing.malware.enabled", safeBrowsing)
+        pref("browser.safebrowsing.phishing.enabled", safeBrowsing)
+        pref("browser.safebrowsing.downloads.remote.enabled", safeBrowsing)
+        pref("network.connectivity-service.enabled", CONNECTIVITY !in off)
+        pref("extensions.update.enabled", ADDON_UPDATES !in off)
+        pref("security.OCSP.enabled", if (OCSP in off) 0 else 2)
+        // Remote settings ignore a custom server in release builds, so disabled hosts resolve to localhost.
+        val sinkholed = (if (safeBrowsing) emptyList() else SAFE_BROWSING_HOSTS) +
+            (if (REMOTE_SETTINGS in off) REMOTE_SETTINGS_HOSTS else emptyList())
+        pref("network.dns.localDomains", sinkholed.joinToString(","))
 
         s.setFingerprintingProtection(settings.fingerprinting != FingerprintProtection.PRIVATE_ONLY)
         s.setFingerprintingProtectionPrivateBrowsing(true)
@@ -252,17 +326,21 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
         pref("extensions.formautofill.addresses.enabled", settings.autofillAddresses)
         pref("extensions.formautofill.addresses.capture.enabled", settings.autofillAddresses)
         pref("extensions.formautofill.creditCards.enabled", settings.autofillCards)
+        saveStartupPrefs()
     }
 
     private fun pref(name: String, value: Boolean) {
+        startupPrefs[name] = value
         GeckoPreferenceController.setGeckoPref(name, value, GeckoPreferenceController.PREF_BRANCH_USER)
     }
 
     private fun pref(name: String, value: Int) {
+        startupPrefs[name] = value
         GeckoPreferenceController.setGeckoPref(name, value, GeckoPreferenceController.PREF_BRANCH_USER)
     }
 
     private fun pref(name: String, value: String) {
+        startupPrefs[name] = value
         GeckoPreferenceController.setGeckoPref(name, value, GeckoPreferenceController.PREF_BRANCH_USER)
     }
 

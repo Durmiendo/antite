@@ -1,6 +1,7 @@
 package dev.antite.browser.engine
 
 import android.app.AppComponentFactory
+import android.app.Application
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.pm.ApplicationInfo
@@ -13,6 +14,10 @@ import java.io.File
 class ShellFactory : AppComponentFactory() {
     override fun instantiateClassLoader(cl: ClassLoader, ai: ApplicationInfo): ClassLoader {
         val store = EngineStore(File(ai.dataDir, "files"))
+        // Child processes of a running browser must keep its engine, so only a fresh main process switches.
+        if (Application.getProcessName() == ai.packageName) {
+            runCatching { store.applyPending() }.onFailure { Log.w("Antite", "cannot switch engine", it) }
+        }
         val engine = store.active() ?: return cl
         val dex = store.dexFiles(engine).joinToString(File.pathSeparator) { it.path }
         val libs = listOf(store.libDir(engine).path, ai.nativeLibraryDir).joinToString(File.pathSeparator)

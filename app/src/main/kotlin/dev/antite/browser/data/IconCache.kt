@@ -15,7 +15,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
-class IconCache(context: Context, private val engine: Engine) {
+class IconCache(context: Context, private val engine: Engine, private val download: () -> Boolean) {
     companion object {
         private const val SIZE = 96
         private const val MAX_BYTES = 512 * 1024
@@ -97,7 +97,7 @@ class IconCache(context: Context, private val engine: Engine) {
     }
 
     fun onPageIcon(host: String, iconUrl: String?, origin: String) {
-        if (host.isEmpty() || iconUrl == null) return
+        if (host.isEmpty() || iconUrl == null || !download()) return
         scope.launch {
             val f = file(host)
             if (f.exists() && System.currentTimeMillis() - f.lastModified() < REFRESH_MS) return@launch

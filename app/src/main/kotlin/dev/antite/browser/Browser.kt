@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.data.Db
+import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.data.IconCache
 import dev.antite.browser.data.Prefs
 import dev.antite.browser.data.SitePerms
@@ -62,7 +63,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     val db = Db.get(activity)
     val vault = Vault.get(activity)
     val perms = SitePerms(activity, prefs, engine)
-    val icons = IconCache(activity, engine)
+    val icons = IconCache(activity, engine) { prefs.bool("siteIcons", true) }
     private val store = TabStore(activity)
     val downloads = Downloads(this)
     private val media = MediaPlayback(activity)
@@ -102,6 +103,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         Auth.onUnavailable = ::toast
         perms.wipeLegacyOnce()
         applyEngineSettings()
+        EngineUpdates.schedule(activity)
         engine.setAutofillStore(AutofillBridge(vault, activity.lifecycleScope))
         engine.setNotificationHandler(WebNotifications(activity))
         engine.extensions?.let { ext ->
@@ -115,7 +117,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }
     }
 
-    fun applyEngineSettings() = engine.applySettings(prefs.engineSettings(perms))
+    fun applyEngineSettings() = engine.applySettings(prefs.engineSettings(perms, engine.backgroundServices))
 
     fun toast(text: String) {
         messages += text

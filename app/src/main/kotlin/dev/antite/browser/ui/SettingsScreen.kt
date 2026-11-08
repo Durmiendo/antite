@@ -1,6 +1,7 @@
 package dev.antite.browser.ui
 
 import android.content.Intent
+import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.LazyListScope
@@ -25,9 +26,13 @@ import dev.antite.browser.data.Option
 import dev.antite.browser.data.Options
 import dev.antite.browser.data.SavedLogin
 import dev.antite.browser.data.SitePerms
+import dev.antite.browser.engine.EngineUpdates
+import dev.antite.browser.engine.Engines
+import dev.antite.browser.engine.Offer
 import dev.antite.browser.transfer.BackupCipher
 import dev.antite.browser.transfer.WrongPasswordException
 import dev.antite.engine.Address
+import dev.antite.engine.BackgroundService
 import dev.antite.engine.Card
 import dev.antite.engine.Language
 import dev.antite.engine.LanguageModel
@@ -138,6 +143,7 @@ private fun MainPage(b: Browser, nav: Nav) {
         item { SettingRow("uBlock Origin", "Панель управления, списки фильтров", onClick = b::openUboDashboard) }
         nav(nav, "Перенос данных", "Экспорт и импорт всех данных браузера") { TransferPage(b, it) }
         section("О программе")
+        nav(nav, "Обновления", "Движок браузера, проверка раз в день") { UpdatesPage(b, it) }
         item { SettingRow("Antite 0.1", "Движок ${b.engine.info.type} ${b.engine.info.version}") }
     }
 }
@@ -217,8 +223,11 @@ private fun PrivacyPage(b: Browser, nav: Nav) {
         section("Безопасность")
         toggle(b, "Всегда использовать безопасные подключения",
             "Открывать сайты по HTTPS и предупреждать, если сайт его не поддерживает", "httpsOnly", false, true)
-        toggle(b, "Безопасный просмотр (Google Safe Browsing)",
-            "Предупреждать об опасных сайтах и загрузках. Браузер скачивает списки угроз Google", "safeBrowsing", false, true)
+        b.engine.backgroundServices.firstOrNull { it.id == BackgroundService.SAFE_BROWSING }?.let { sb ->
+            toggle(b, "Безопасный просмотр (Google Safe Browsing)",
+                "Предупреждать об опасных сайтах и загрузках. Браузер скачивает списки угроз Google",
+                b.prefs.serviceKey(sb.id), sb.defaultEnabled, true)
+        }
         nav(nav, "Безопасный DNS", Options.doh[doh].label) { DnsPage(b, it) }
         section("Конфиденциальность")
         choice(b, nav, "Защита от отслеживания", "tracking", Options.tracking, 0, true)
@@ -235,6 +244,131 @@ private fun PrivacyPage(b: Browser, nav: Nav) {
             "preload", false, true)
         toggle(b, "Подсказки поисковой системы", "Набираемый в адресной строке текст отправляется поисковику",
             "searchSuggest", true, false)
+        nav(nav, "Что отправляет браузер", "Фоновые запросы: что и куда, выключатели") { NetworkPage(b, it) }
+    }
+}
+
+private fun serviceSummary(s: BackgroundService, on: Boolean) = buildString {
+    append(s.summary).append("\nКуда: ").append(s.hosts.joinToString(", "))
+    if (!on && s.offEffect != null) append("\nВыключено: ").append(s.offEffect)
+}
+
+@Composable
+private fun NetworkPage(b: Browser, nav: Nav) = Screen(b, nav, "Что отправляет браузер") {
+    note("Запросы, которые браузер делает сам. Открытые вами страницы и их собственные запросы сюда не входят")
+    section("Antite")
+    nav(nav, "Обновления", "Раз в день: список движков\nКуда: ${Uri.parse(EngineUpdates.sourceUrl(b.activity)).host}") {
+        UpdatesPage(b, it)
+    }
+    toggle(b, "Подсказки поисковой системы",
+        "Набираемый в адресной строке текст\nКуда: ${Uri.parse(b.prefs.suggestUrl).host}", "searchSuggest", true, false)
+    toggle(b, "Значки сайтов", "Значок открытого сайта, раз в 7 дней\nКуда: сам сайт", "siteIcons", true, false)
+    item(key = "dns") {
+        val doh = Options.doh[b.prefs.index("doh", Options.doh, 0)].value
+        SettingRow("Безопасный DNS",
+            if (doh == null) "Выключен: адреса сайтов узнаются через системный DNS" else "Все DNS-запросы\nКуда: ${Uri.parse(doh).host}",
+            onClick = { nav.push("Безопасный DNS") { DnsPage(b, it) } })
+    }
+    section("Движок ${b.engine.info.type}")
+    b.engine.backgroundServices.forEach { s ->
+        item(key = "bg:${s.id}") {
+            val on = b.prefs.serviceEnabled(s)
+            SwitchRow(s.title, serviceSummary(s, on), on) { v ->
+                b.prefs.edit { putBoolean(b.prefs.serviceKey(s.id), v) }
+                b.applyEngineSettings()
+            }
+        }
+    }
+    section("Расширения")
+    item {
+        SettingRow("uBlock Origin",
+            "При первом запуске: установка с addons.mozilla.org\nСписки фильтров: адрес каждого списка " +
+                "(ublockorigin.github.io, ublockorigin.pages.dev и другие). Настраивается в панели uBlock",
+            onClick = b::openUboDashboard)
+    }
+    section("Не отправляется")
+    note("Телеметрия, отчёты о сбоях, синхронизация и аккаунты Mozilla: в Antite их нет")
+}
+
+private class UpdateInfo(val active: String?, val pending: String?, val lastCheck: Long, val lastError: String?,
+                         val available: String?, val source: String)
+
+@Composable
+private fun UpdatesPage(b: Browser, nav: Nav) {
+    val ctx = b.activity
+    var revision by remember { mutableIntStateOf(0) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    val info by produceState<UpdateInfo?>(null, revision) {
+        value = withContext(Dispatchers.IO) {
+            val store = Engines.store(ctx)
+            val st = EngineUpdates.state(ctx)
+            UpdateInfo(store.active()?.let(store::version), store.pending()?.let(store::version), st.getLong("lastCheck", 0),
+                st.getString("lastError", null), st.getString("available", null), EngineUpdates.sourceUrl(ctx))
+        }
+    }
+    fun download(offer: Offer) = ctx.lifecycleScope.launch {
+        busy = "Скачиваем…"
+        val ok = withContext(Dispatchers.IO) {
+            runCatching {
+                var last = -1L
+                EngineUpdates.install(ctx, offer) { done, total ->
+                    val pct = done * 100 / total
+                    if (pct != last) {
+                        last = pct
+                        ctx.runOnUiThread { busy = "Скачиваем… $pct%" }
+                    }
+                }
+            }
+        }
+        busy = null
+        revision++
+        b.toast(if (ok.isSuccess) "Движок скачан, перезапустите браузер" else "Не удалось скачать: ${ok.exceptionOrNull()?.message}")
+    }
+    fun checkNow() = ctx.lifecycleScope.launch {
+        busy = "Проверяем…"
+        val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx) } }
+        busy = null
+        revision++
+        val offer = r.getOrNull()
+        when {
+            r.isFailure -> b.toast("Не удалось проверить обновления")
+            offer == null -> b.toast("Обновлений нет")
+            else -> b.confirm("Доступен Gecko ${offer.entry.version}, ${(offer.size + 512 * 1024) / (1024 * 1024)} МБ. Скачать?",
+                "Скачать") { download(offer) }
+        }
+    }
+    Screen(b, nav, "Обновления") {
+        val i = info ?: return@Screen
+        if (i.pending != null) {
+            item(key = "restart") {
+                SettingRow("Перезапустить браузер", "Скачан Gecko ${i.pending}, начнёт работать после перезапуска", onClick = {
+                    b.saveNow()
+                    Engines.restart(ctx)
+                })
+            }
+        }
+        item(key = "engine") { SettingRow("Движок", "${b.engine.info.type} ${i.active ?: b.engine.info.version}") }
+        item(key = "check") {
+            val last = when {
+                i.lastCheck == 0L -> "Ещё не проверялось"
+                else -> "Последняя проверка: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,
+                    java.text.DateFormat.SHORT).format(java.util.Date(i.lastCheck)) + when {
+                    i.lastError != null -> ", ошибка: ${i.lastError}"
+                    i.available != null -> ", доступен Gecko ${i.available}"
+                    else -> ", обновлений нет"
+                }
+            }
+            SettingRow("Проверить сейчас", busy ?: last, onClick = { if (busy == null) checkNow() })
+        }
+        item(key = "auto") {
+            SwitchRow("Проверять раз в день", "Новый движок скачивается в фоне", b.prefs.bool(EngineUpdates.AUTO, true)) { v ->
+                b.prefs.edit { putBoolean(EngineUpdates.AUTO, v) }
+                EngineUpdates.schedule(ctx)
+            }
+        }
+        toggle(b, "Скачивать только по Wi-Fi", "Около 95 МБ за обновление. Проверка списка идёт по любой сети",
+            EngineUpdates.WIFI_ONLY, true, false)
+        item(key = "source") { SettingRow("Источник", i.source) }
     }
 }
 
