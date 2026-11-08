@@ -318,6 +318,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     fun load(url: String, newTab: Boolean) {
         val t = current
         if (newTab || t == null || t.incognito) openTab(url, false, null, true) else ensureSession(t).load(url)
+        urlFocused = false
     }
 
     fun goHome() {

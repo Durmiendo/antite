@@ -79,6 +79,12 @@ fun BrowserScreen(b: Browser) {
     val bar = if (t?.incognito == true) p.toolbarIncognito else p.toolbar
     val navInset = WindowInsets.navigationBars.getBottom(density)
     val imeInset = WindowInsets.ime.getBottom(density)
+    // Back with the keyboard open hides the keyboard; like Firefox, that also ends address editing.
+    var imeWasVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(imeInset > 0) {
+        if (imeWasVisible && imeInset == 0 && b.urlFocused) b.urlFocused = false
+        imeWasVisible = imeInset > 0
+    }
 
     Box(
         Modifier.fillMaxSize().background(bar)
