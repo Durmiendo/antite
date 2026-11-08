@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
         val store = Engines.store(this)
         window.decorView.postDelayed({ Thread { store.markStarted() }.start() }, STARTED_AFTER_MS)
         browser.attachView(browser.engine.createView(this))
+        browser.engineNews.pollWhileOpen()
         browser.restore()
         if (state == null) {
             browser.handleIntent(intent, browser.current == null || browser.prefs.int("startup", 0) == 1)

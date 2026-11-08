@@ -1,11 +1,14 @@
 package dev.antite.browser
 
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.engine.Engines
 import dev.antite.browser.engine.Offer
 import dev.antite.browser.engine.ShellInstaller
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -18,6 +21,21 @@ class EngineNews(private val b: Browser) {
     }
 
     private val ctx = b.activity
+
+    // Intervals shorter than JobScheduler allows are kept while the browser is on screen.
+    fun pollWhileOpen() = ctx.lifecycleScope.launch {
+        ctx.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                val minutes = EngineUpdates.intervalMinutes(ctx)
+                if (!b.prefs.bool(EngineUpdates.AUTO, true) || minutes >= EngineUpdates.JOB_MIN_MINUTES) {
+                    delay(60_000)
+                    continue
+                }
+                delay(minutes * 60_000L)
+                if (withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx) }.isSuccess }) onResume()
+            }
+        }
+    }
 
     fun onResume() = ctx.lifecycleScope.launch {
         val st = EngineUpdates.state(ctx)

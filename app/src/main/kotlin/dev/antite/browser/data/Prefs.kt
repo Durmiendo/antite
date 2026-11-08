@@ -73,6 +73,10 @@ object Options {
         Option("Максимальная (resistFingerprinting)", FingerprintProtection.MAXIMUM),
     )
     val updateInstall = listOf(Option("Спрашивать", 0), Option("Автоматически", 1))
+    val updateInterval = listOf(
+        Option("Раз в минуту, пока браузер открыт", 1), Option("Раз в 15 минут", 15), Option("Раз в час", 60),
+        Option("Раз в 6 часов", 360), Option("Раз в день", 1440),
+    )
     val tabLayouts = listOf(Option("Сетка", 0), Option("Список (как в Яндексе)", 1))
     val homeModes = listOf(Option("Новая вкладка", 0), Option("Свой адрес", 1))
     val languages = listOf(

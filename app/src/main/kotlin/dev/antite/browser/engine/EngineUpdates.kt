@@ -35,9 +35,14 @@ object EngineUpdates {
     const val AUTO = "updatesAuto"
     const val INSTALL = "updatesInstall"
     const val WIFI_ONLY = "updatesWifiOnly"
+    const val INTERVAL = "updatesInterval"
+
+    // Minutes; JobScheduler runs periodic jobs at most every 15 minutes, so shorter ones run while the browser is open.
+    val INTERVALS = listOf(1, 15, 60, 360, 1440)
+    const val INTERVAL_DEFAULT = 4
+    const val JOB_MIN_MINUTES = 15
     const val INSTALL_ASK = 0
     const val INSTALL_AUTO = 1
-    private const val DAY_MS = 24L * 3600 * 1000
     private const val CHANNEL = "updates"
 
     val fetcher = Fetcher { url ->
@@ -142,6 +147,9 @@ object EngineUpdates {
 
     fun origin(context: Context, engine: File): String? = state(context).getString("origin.${engine.name}", null)
 
+    fun intervalMinutes(context: Context): Int =
+        INTERVALS[settings(context).getInt(INTERVAL, INTERVAL_DEFAULT).coerceIn(0, INTERVALS.lastIndex)]
+
     fun schedule(context: Context) {
         val js = context.getSystemService(JobScheduler::class.java)
         if (!settings(context).getBoolean(AUTO, true)) {
@@ -149,10 +157,11 @@ object EngineUpdates {
             js.cancel(JOB_DOWNLOAD)
             return
         }
-        if (js.getPendingJob(JOB_CHECK) != null) return
+        val period = maxOf(intervalMinutes(context), JOB_MIN_MINUTES) * 60_000L
+        if (js.getPendingJob(JOB_CHECK)?.intervalMillis == period) return
         js.schedule(
             JobInfo.Builder(JOB_CHECK, ComponentName(context, UpdateJob::class.java))
-                .setPeriodic(DAY_MS)
+                .setPeriodic(period)
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                 .setPersisted(true)
                 .build(),

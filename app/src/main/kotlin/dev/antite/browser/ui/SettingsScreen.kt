@@ -153,7 +153,7 @@ private fun MainPage(b: Browser, nav: Nav) {
         item { SettingRow("uBlock Origin", "Панель управления, списки фильтров", onClick = b::openUboDashboard) }
         nav(nav, "Перенос данных", "Экспорт и импорт всех данных браузера") { TransferPage(b, it) }
         section("О программе")
-        nav(nav, "Обновления", "Движок браузера, проверка раз в день") { UpdatesPage(b, it) }
+        nav(nav, "Обновления", "Движок браузера и Antite, " + updatesSummary(b)) { UpdatesPage(b, it) }
         item { SettingRow("Antite 0.1", "Движок ${b.engine.info.type} ${b.engine.info.version}") }
     }
 }
@@ -267,8 +267,8 @@ private fun serviceSummary(s: BackgroundService, on: Boolean) = buildString {
 private fun NetworkPage(b: Browser, nav: Nav) = Screen(b, nav, "Что отправляет браузер") {
     note("Запросы, которые браузер делает сам. Открытые вами страницы и их собственные запросы сюда не входят")
     section("Antite")
-    nav(nav, "Обновления", "Раз в день: список движков\nКуда: " +
-        Sources.enabled(b.activity).joinToString(", ") { Uri.parse(it.url).host ?: it.url }) {
+    nav(nav, "Обновления", updatesSummary(b).replaceFirstChar { it.uppercase() } + ": список движков\nКуда: " +
+        Sources.updateSource(b.activity).let { Uri.parse(it.url).host ?: it.url }) {
         UpdatesPage(b, it)
     }
     toggle(b, "Подсказки поисковой системы",
@@ -396,8 +396,13 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
         }
         section("Как обновлять")
         item(key = "auto") {
-            SwitchRow("Проверять раз в день", null, b.prefs.bool(EngineUpdates.AUTO, true)) { v ->
+            SwitchRow("Проверять автоматически", null, b.prefs.bool(EngineUpdates.AUTO, true)) { v ->
                 b.prefs.edit { putBoolean(EngineUpdates.AUTO, v) }
+                EngineUpdates.schedule(ctx)
+            }
+        }
+        if (b.prefs.bool(EngineUpdates.AUTO, true)) {
+            choice(b, nav, "Как часто", EngineUpdates.INTERVAL, Options.updateInterval, EngineUpdates.INTERVAL_DEFAULT, false) {
                 EngineUpdates.schedule(ctx)
             }
         }
@@ -424,6 +429,11 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
         note("Если новый движок ${EngineStore.MAX_FAILED_STARTS} раза подряд не запустится, браузер сам вернёт предыдущий")
     }
 }
+
+private fun updatesSummary(b: Browser): String =
+    if (!b.prefs.bool(EngineUpdates.AUTO, true)) "проверка выключена"
+    else "проверка " + Options.updateInterval[b.prefs.index(EngineUpdates.INTERVAL, Options.updateInterval,
+        EngineUpdates.INTERVAL_DEFAULT)].label.lowercase()
 
 @Composable
 private fun UpdateSourcePage(b: Browser, nav: Nav, changed: () -> Unit) {
