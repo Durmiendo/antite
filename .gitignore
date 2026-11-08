@@ -20,3 +20,13 @@ AGENTS.md
 
 # python
 __pycache__/
+
+# internal notes, kept out of the public repository
+docs/
+
+# signing keys must never be committed; only the public key in keys/ is
+*.p12
+*.jks
+*.keystore
+*.key.pem
+password
