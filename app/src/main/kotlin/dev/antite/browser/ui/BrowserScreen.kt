@@ -55,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -133,6 +134,14 @@ fun BrowserScreen(b: Browser) {
                 factory = { view.view },
                 modifier = Modifier.fillMaxSize()
                     .padding(bottom = with(density) { bottomGap.toDp() })
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val e = awaitPointerEvent(PointerEventPass.Initial)
+                                b.toolbarMotion.onTouch(e.changes.any { it.pressed })
+                            }
+                        }
+                    }
                     .graphicsLayer {
                         translationY = if (b.fullscreen) 0f else toolbarPx - b.hidden
                         // Sent from the frame that moves the page, so fixed bottom elements are not a frame behind.

@@ -109,6 +109,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var barsHidden by mutableStateOf(false)
         private set
     private var lastScrollY = -1
+    val toolbarMotion = ToolbarMotion(this)
 
     init {
         Auth.onUnavailable = ::toast
@@ -410,6 +411,11 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     }
 
     fun setToolbarHidden(h: Float) {
+        toolbarMotion.stop()
+        moveToolbar(h)
+    }
+
+    fun moveToolbar(h: Float) {
         hidden = h.coerceIn(0f, toolbarHeightPx)
         if (hidden >= toolbarHeightPx) barsHidden = true
         else if (hidden <= toolbarHeightPx - navDeadZonePx) barsHidden = false
@@ -423,7 +429,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }
         val dy = y - lastScrollY
         lastScrollY = y
-        setToolbarHidden(if (y <= 0) 0f else hidden + dy)
+        toolbarMotion.onScrolled(dy.toFloat())
+        moveToolbar(if (y <= 0) 0f else hidden + dy)
     }
 
     // Once per start: offer to become the default browser, unless refused for good or postponed.
@@ -821,7 +828,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             if (skipInitialBlank(url)) return
             t.loading = true
             t.progress = 0
-            if (t === current) setToolbarHidden(0f)
+            if (t === current) toolbarMotion.show()
         }
 
         override fun onPageStop(success: Boolean) {
