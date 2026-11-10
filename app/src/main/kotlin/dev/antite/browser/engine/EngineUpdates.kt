@@ -48,9 +48,14 @@ object EngineUpdates {
     const val INSTALL_AUTO = 1
     private const val CHANNEL = "updates"
 
-    val fetcher = Fetcher { url ->
+    val fetcher = httpFetcher(15_000)
+
+    // A computer in the local network answers at once; waiting longer only delays the reason it failed.
+    private val debugFetcher = httpFetcher(5_000)
+
+    private fun httpFetcher(connectMs: Int) = Fetcher { url ->
         val c = URL(url).openConnection() as HttpURLConnection
-        c.connectTimeout = 15_000
+        c.connectTimeout = connectMs
         c.readTimeout = 30_000
         c.setRequestProperty("User-Agent", "Antite")
         if (c.responseCode != 200) throw IOException("$url: HTTP ${c.responseCode}")
@@ -103,7 +108,7 @@ object EngineUpdates {
     // Debug mode: what an index at any address offers, without checking its signature; nothing is remembered.
     fun fromAddress(context: Context, url: String): Updates {
         if (!debugEnabled(context)) throw IOException(T.engineDebugOff)
-        val index = EngineIndex.unsigned(fetcher.open(url).use(InputStream::readBytes))
+        val index = EngineIndex.unsigned(debugFetcher.open(url).use(InputStream::readBytes))
         val abi = Abi.current ?: throw IOException(T.engineUnknownAbi(arch = System.getProperty("os.arch")))
         val source = Source("debug", T.engineDebugSource, url, "", enabled = false)
         val engine = index.choose(abi, dev.antite.engine.BuildConfig.ENGINE_API, BuildConfig.VERSION_CODE)?.let { Offer(it, abi, source) }

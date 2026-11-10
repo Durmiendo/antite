@@ -16,6 +16,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
 from update_source import open_updates  # noqa: E402
+from debug_address import enable_debug  # noqa: E402
 
 PORT = 8791
 PIN = "4826"
@@ -42,21 +43,11 @@ def main():
     d.shell(f"locksettings set-pin {PIN}")
     try:
         print("1. debug mode needs a warning and the device unlock")
-        open_updates(d)
-        d.scroll_to("Режим отладки")
-        d.tap("Режим отладки", exact=True)
-        d.tap("Включить", exact=True)
-        time.sleep(2)
-        d.type(PIN)
-        d.shell("input keyevent 66")
-        d.wait("Установить с адреса", timeout=10, exact=True)
+        enable_debug(d, PIN)
 
         print("2. an engine from a plain http address, without a signature")
-        # The new row appears under the navigation bar; a tap there would press Home.
-        d.shell("input swipe 540 1900 540 1000 300")
-        time.sleep(0.6)
         d.tap("Установить с адреса", exact=True)
-        d.tap("Адрес engines.json", exact=True)
+        d.tap("Адрес компьютера", exact=True)
         d.shell("input keyevent 123 " + " ".join(["67"] * 80))
         d.type(f"http://localhost:{PORT}/engines.json")
         d.tap("Проверить", exact=True)

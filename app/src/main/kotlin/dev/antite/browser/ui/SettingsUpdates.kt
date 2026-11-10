@@ -15,6 +15,7 @@ import dev.antite.browser.DialogButton
 import dev.antite.browser.FormField
 import dev.antite.browser.UiDialog
 import dev.antite.browser.data.Options
+import dev.antite.browser.engine.DebugAddress
 import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.engine.Engines
 import dev.antite.browser.engine.EngineStore
@@ -24,6 +25,11 @@ import dev.antite.browser.l10n.T
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 internal class UpdateInfo(
     val active: String?, val activeFrom: String?,
@@ -189,25 +195,47 @@ internal fun DebugInstall(b: Browser, changed: () -> Unit) {
                 }
             },
         )
-        if (choices.isEmpty()) b.toast(T.updatesDebugNothing)
+        if (choices.isEmpty()) b.show(UiDialog.Message(null, T.updatesDebugNothing, buttons = listOf(DialogButton(T.actionOk))))
         else b.show(UiDialog.Items(T.updatesDebugInstall, choices))
     }
+    fun failed(text: String) = b.show(UiDialog.Message(T.updatesDebugCheckFailed, text, buttons = listOf(DialogButton(T.actionOk))))
     SettingRow(T.updatesDebugFromAddress, busy ?: T.updatesDebugFromAddressSummary, onClick = {
         if (busy != null) return@SettingRow
         b.show(UiDialog.Form(T.updatesDebugFromAddress, null, listOf(
             FormField(T.updatesDebugIndexAddress, b.prefs.string("debugUrl", ""), kind = FormField.Kind.URL),
         ), T.updatesDebugCheck, { v ->
-            val url = v[0].trim()
-            b.prefs.edit { putString("debugUrl", url) }
-            busy = T.updatesChecking
+            val input = v[0].trim()
+            b.prefs.edit { putString("debugUrl", input) }
+            val url = try {
+                DebugAddress.indexUrl(input)
+            } catch (e: IllegalArgumentException) {
+                failed(T.updatesDebugBadAddress(address = input))
+                return@Form true
+            }
+            busy = T.updatesDebugConnecting(address = DebugAddress.hostPort(url))
             ctx.lifecycleScope.launch {
+                val start = System.currentTimeMillis()
                 val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.fromAddress(ctx, url) } }
                 busy = null
-                r.onSuccess(::install).onFailure { b.toast(T.updatesDebugFailed(reason = it.message ?: it.javaClass.simpleName)) }
+                r.onSuccess(::install).onFailure { failed(debugFailure(it, url, System.currentTimeMillis() - start) + "\n\n" + url) }
             }
             true
         }))
     })
+}
+
+private fun debugFailure(e: Throwable, url: String, millis: Long): String {
+    val address = DebugAddress.hostPort(url)
+    val port = DebugAddress.port(url)
+    // Android's HTTP stack reports a refused and an unreachable host as the same ConnectException without the errno;
+    // a refusal comes back at once, an unreachable host only after seconds.
+    return when (e) {
+        is UnknownHostException -> T.updatesDebugUnknownHost(host = java.net.URI(url).host)
+        is ConnectException if millis < 2000 -> T.updatesDebugRefused(address = address, port = port)
+        is SocketTimeoutException, is ConnectException, is NoRouteToHostException -> T.updatesDebugNoAnswer(address = address, port = port)
+        is JSONException -> T.updatesDebugNotIndex
+        else -> T.updatesDebugFailed(reason = e.message ?: e.javaClass.simpleName)
+    }
 }
 
 internal fun updatesSummary(b: Browser): String =
