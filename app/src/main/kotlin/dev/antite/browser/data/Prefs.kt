@@ -80,6 +80,9 @@ object Options {
         Option(T.updateEveryMinute, 1), Option(T.updateEvery15Minutes, 15), Option(T.updateEveryHour, 60),
         Option(T.updateEvery6Hours, 360), Option(T.updateEveryDay, 1440),
     )
+    // Indexes into Motion.speeds.
+    val animationSpeeds get() = listOf(T.animationOff, T.animationSlow, T.animationNormal, T.animationFast, T.animationFaster)
+        .mapIndexed { i, label -> Option(label, i) }
     val tabLayouts get() = listOf(Option(T.tabLayoutGrid, 0), Option(T.tabLayoutList, 1))
     val homeModes get() = listOf(Option(T.tabNew, 0), Option(T.homeOwnAddress, 1))
     val languages = listOf(

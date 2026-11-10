@@ -27,6 +27,7 @@ import dev.antite.browser.service.WebNotifications
 import dev.antite.browser.transfer.TransferActivity
 import dev.antite.browser.ui.DarkPalette
 import dev.antite.browser.ui.LightPalette
+import dev.antite.browser.ui.Motion
 import dev.antite.engine.AndroidPermissionRequest
 import dev.antite.engine.ContentPermissionRequest
 import dev.antite.engine.ContextInfo
@@ -113,6 +114,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     val toolbarMotion = ToolbarMotion(this)
 
     init {
+        Motion.setSpeed(prefs.int(Motion.PREF, Motion.DEFAULT_SPEED))
         Auth.onUnavailable = ::toast
         perms.wipeLegacyOnce()
         applyEngineSettings()

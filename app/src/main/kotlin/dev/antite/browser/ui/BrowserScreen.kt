@@ -1,5 +1,12 @@
 package dev.antite.browser.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -200,14 +207,16 @@ fun BrowserScreen(b: Browser) {
             if (b.defaultBrowserOffer && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
                 DefaultBrowserBar(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() }))
             }
-            if (b.overlay != Overlay.NONE) {
-                // Being hit is enough to keep touches from the page below; consuming them would break scrolling.
-                Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }) {
-                    when (b.overlay) {
-                        Overlay.SWITCHER -> TabSwitcher(b)
-                        Overlay.SETTINGS -> SettingsScreen(b)
-                        Overlay.LIBRARY -> LibraryScreen(b)
-                        Overlay.NONE -> {}
+            AnimatedContent(b.overlay, transitionSpec = { overlayTransition(initialState, targetState) }, label = "overlay") { o ->
+                if (o != Overlay.NONE) {
+                    // Being hit is enough to keep touches from the page below; consuming them would break scrolling.
+                    Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }) {
+                        when (o) {
+                            Overlay.SWITCHER -> TabSwitcher(b)
+                            Overlay.SETTINGS -> SettingsScreen(b)
+                            Overlay.LIBRARY -> LibraryScreen(b)
+                            Overlay.NONE -> {}
+                        }
                     }
                 }
             }
@@ -221,6 +230,17 @@ fun BrowserScreen(b: Browser) {
     LaunchedEffect(Unit) {
         snapshotFlow { navHidden }.collect { b.activity.setNavigationBarHidden(it) }
     }
+}
+
+// Settings and the library open like Chrome's settings activity; the tab switcher fades like Chrome's Hub when it does not
+// shrink the tab into the grid.
+private fun overlayTransition(from: Overlay, to: Overlay): ContentTransform {
+    val pages = setOf(Overlay.SETTINGS, Overlay.LIBRARY)
+    if (to in pages && from == Overlay.NONE) return Motion.sharedAxisX(forward = true)
+    if (from in pages && to == Overlay.NONE) return Motion.sharedAxisX(forward = false)
+    val enter = if (to == Overlay.NONE) EnterTransition.None else fadeIn(Motion.tween(Motion.HUB_FADE, Motion.LinearOutSlowIn))
+    val exit = if (from == Overlay.NONE) ExitTransition.None else fadeOut(Motion.tween(Motion.HUB_FADE, Motion.FastOutLinearIn))
+    return enter togetherWith exit
 }
 
 @Composable

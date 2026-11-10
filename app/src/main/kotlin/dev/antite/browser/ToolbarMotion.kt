@@ -4,13 +4,13 @@ import android.animation.ValueAnimator
 import android.os.Handler
 import android.os.Looper
 import android.view.animation.LinearInterpolator
+import dev.antite.browser.ui.Motion
 import kotlin.math.abs
 
 // Chrome's browser controls (cc/input/browser_controls_offset_manager.cc): the toolbar follows the scroll; when the
 // gesture and its fling are over, a partly shown toolbar finishes showing or hiding, whichever is nearer.
 class ToolbarMotion(private val b: Browser) {
     companion object {
-        private const val MAX_DURATION_MS = 200L
         private const val SHOW_THRESHOLD = 0.5f
         private const val HIDE_THRESHOLD = 0.5f
 
@@ -68,7 +68,7 @@ class ToolbarMotion(private val b: Browser) {
         val from = b.hidden
         if (height <= 0f || from == target) return b.moveToolbar(target)
         animator = ValueAnimator.ofFloat(from, target).apply {
-            duration = (MAX_DURATION_MS * abs(target - from) / height).toLong()
+            duration = (Motion.ms(Motion.TOOLBAR_SETTLE) * abs(target - from) / height).toLong()
             interpolator = LinearInterpolator()
             addUpdateListener { b.moveToolbar(it.animatedValue as Float) }
             start()

@@ -34,6 +34,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import dev.antite.browser.AutofillPrompts
 import dev.antite.browser.Browser
 import dev.antite.browser.DialogButton
@@ -86,6 +89,11 @@ fun DialogHost(b: Browser) {
 fun DialogCard(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     val p = LocalPalette.current
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        // Chrome's app-modal dialogs keep the system dialog animation; only "no animations" turns it off.
+        if (Motion.off) {
+            val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+            SideEffect { window?.setWindowAnimations(0) }
+        }
         Box(
             Modifier.padding(24.dp).widthIn(max = 560.dp).fillMaxWidth()
                 .background(p.menu, RoundedCornerShape(28.dp)).padding(top = 24.dp, bottom = 12.dp),

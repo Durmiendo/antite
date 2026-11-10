@@ -3,6 +3,7 @@ package dev.antite.browser.ui
 import android.content.Intent
 import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
@@ -50,8 +51,10 @@ fun SettingsScreen(b: Browser) {
     }
     val nav = remember(stack) { Nav(stack) }
     BackHandler(enabled = stack.size > 1) { nav.back() }
-    val page = stack.last() as Page
-    page.content(nav)
+    AnimatedContent(stack.size to stack.last() as Page,
+        transitionSpec = { Motion.sharedAxisX(forward = targetState.first > initialState.first) }, label = "settings") { (_, page) ->
+        page.content(nav)
+    }
 }
 
 @Composable
@@ -240,6 +243,9 @@ internal fun TabsPage(b: Browser, nav: Nav) = Screen(b, nav, T.settingsTabs) {
 @Composable
 internal fun AccessibilityPage(b: Browser, nav: Nav) = Screen(b, nav, T.settingsAccessibility) {
     choice(b, nav, T.a11yFont, "font", Options.fonts, 2, true)
+    choice(b, nav, T.a11yAnimationSpeed, Motion.PREF, Options.animationSpeeds, Motion.DEFAULT_SPEED, false) {
+        Motion.setSpeed(b.prefs.int(Motion.PREF, Motion.DEFAULT_SPEED))
+    }
     toggle(b, T.a11yForceZoom, T.a11yForceZoomSummary,
         "forceZoom", false, true)
     toggle(b, T.a11yDoubleTapZoom, null, "doubleTapZoom", true, true)
