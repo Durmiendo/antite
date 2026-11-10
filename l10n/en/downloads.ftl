@@ -1,0 +1,14 @@
+downloads-channel = Downloads
+download-pdf-failed = Could not save the PDF
+download-started = Downloading: { $name }
+download-not-ready = The file is not ready yet
+download-no-app = No app can open this file
+download-status-done = Downloaded
+download-status-failed = Failed
+download-status-cancelled = Cancelled
+download-status-loading = Downloading
+download-status-percent = Downloading { $percent }%
+download-failed = Download failed
+download-size-of = { $done } of { $total }
+download-speed = { $size }/s
+download-time-left = { $time } left

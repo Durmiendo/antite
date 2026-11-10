@@ -60,6 +60,7 @@ import dev.antite.browser.DialogButton
 import dev.antite.browser.FormField
 import dev.antite.browser.R
 import dev.antite.browser.UiDialog
+import dev.antite.browser.l10n.T
 import dev.antite.engine.Prompt
 import java.time.Instant
 import java.time.LocalDate
@@ -183,7 +184,7 @@ private fun ChecksDialog(d: UiDialog.Checks, close: () -> Unit) {
                     Text(label, color = p.text, fontSize = 16.sp)
                 }
             }
-            Buttons(listOf("Отмена" to close, d.confirm to { d.onConfirm(state.toList()); close() }), false)
+            Buttons(listOf(T.actionCancel to close, d.confirm to { d.onConfirm(state.toList()); close() }), false)
         }
     }
 }
@@ -209,7 +210,7 @@ fun FormDialog(
                 }
             }
             Spacer(Modifier.size(8.dp))
-            Buttons(listOf("Отмена" to close, confirm to { if (onConfirm(values.toList())) close() }), false)
+            Buttons(listOf(T.actionCancel to close, confirm to { if (onConfirm(values.toList())) close() }), false)
         }
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -251,24 +252,24 @@ private fun EnginePromptDialog(prompt: Prompt, remove: () -> Unit) {
     fun done(action: () -> Unit): () -> Unit = { remove(); action() }
     val dismiss = done { prompt.dismiss() }
     when (prompt) {
-        is Prompt.Alert -> MessageDialog(prompt.title, prompt.message, 0, listOf(DialogButton("OK")), false, dismiss)
+        is Prompt.Alert -> MessageDialog(prompt.title, prompt.message, 0, listOf(DialogButton(T.actionConfirm)), false, dismiss)
         is Prompt.Confirm -> MessageDialog(prompt.title, prompt.message, 0, listOf(
-            DialogButton("Отмена") { prompt.confirm(false) },
-            DialogButton("OK") { prompt.confirm(true) },
+            DialogButton(T.actionCancel) { prompt.confirm(false) },
+            DialogButton(T.actionConfirm) { prompt.confirm(true) },
         ), false, dismiss)
-        is Prompt.Text -> FormDialog(prompt.title, prompt.message, listOf(FormField("", prompt.defaultValue ?: "")), "OK",
+        is Prompt.Text -> FormDialog(prompt.title, prompt.message, listOf(FormField("", prompt.defaultValue ?: "")), T.actionConfirm,
             { v -> remove(); prompt.confirm(v[0]); false }, dismiss)
         is Prompt.Auth -> FormDialog(
-            prompt.title ?: "Требуется вход", prompt.message,
-            if (prompt.onlyPassword) listOf(FormField("Пароль", "", FormField.Kind.PASSWORD))
-            else listOf(FormField("Имя пользователя", prompt.username ?: ""), FormField("Пароль", "", FormField.Kind.PASSWORD)),
-            "Войти",
+            prompt.title ?: T.promptAuthTitle, prompt.message,
+            if (prompt.onlyPassword) listOf(FormField(T.promptPassword, "", FormField.Kind.PASSWORD))
+            else listOf(FormField(T.promptUsername, prompt.username ?: ""), FormField(T.promptPassword, "", FormField.Kind.PASSWORD)),
+            T.promptSignIn,
             { v -> remove(); if (prompt.onlyPassword) prompt.confirm("", v[0]) else prompt.confirm(v[0], v[1]); false },
             dismiss,
         )
         is Prompt.Choices -> if (prompt.multiple) {
             ChecksDialog(UiDialog.Checks(prompt.title, prompt.choices.map { it.label }, prompt.choices.map { it.selected },
-                "OK", { checked -> remove(); prompt.confirm(prompt.choices.filterIndexed { i, _ -> checked[i] }.map { it.id }) },
+                T.actionConfirm, { checked -> remove(); prompt.confirm(prompt.choices.filterIndexed { i, _ -> checked[i] }.map { it.id }) },
                 { prompt.dismiss() }), dismiss)
         } else {
             ItemsDialog(prompt.title, prompt.choices.filter { it.enabled }.map { c ->
@@ -277,34 +278,34 @@ private fun EnginePromptDialog(prompt: Prompt, remove: () -> Unit) {
         }
         is Prompt.DateTime -> DateTimeDialog(prompt, remove, dismiss)
         is Prompt.Color -> ColorDialog(prompt, remove, dismiss)
-        is Prompt.BeforeUnload -> MessageDialog(null, "Покинуть страницу? Изменения могут не сохраниться.", 0, listOf(
-            DialogButton("Остаться"), DialogButton("Покинуть") { prompt.leave() }), false, dismiss)
-        is Prompt.Repost -> MessageDialog(null, "Отправить данные формы повторно?", 0, listOf(
-            DialogButton("Отмена"), DialogButton("Отправить") { prompt.resend() }), false, dismiss)
-        is Prompt.SelectCard -> ItemsDialog("Выберите карту", prompt.cards.mapIndexed { i, c ->
+        is Prompt.BeforeUnload -> MessageDialog(null, T.promptLeavePage, 0, listOf(
+            DialogButton(T.promptStay), DialogButton(T.promptLeave) { prompt.leave() }), false, dismiss)
+        is Prompt.Repost -> MessageDialog(null, T.promptRepost, 0, listOf(
+            DialogButton(T.actionCancel), DialogButton(T.promptResend) { prompt.resend() }), false, dismiss)
+        is Prompt.SelectCard -> ItemsDialog(T.promptSelectCard, prompt.cards.mapIndexed { i, c ->
             DialogButton("•••• " + c.number.filter { it.isDigit() }.takeLast(4) + if (c.name.isEmpty()) "" else "  ${c.name}") {
                 remove(); prompt.select(i)
             }
         }, dismiss)
-        is Prompt.SelectAddress -> ItemsDialog("Выберите адрес", prompt.addresses.mapIndexed { i, a ->
+        is Prompt.SelectAddress -> ItemsDialog(T.promptSelectAddress, prompt.addresses.mapIndexed { i, a ->
             DialogButton(addressLine(a)) { remove(); prompt.select(i) }
         }, dismiss)
         is Prompt.SaveCard -> {
             val n = prompt.card.number.filter { it.isDigit() }
-            MessageDialog("Сохранить карту?", "•••• ${n.takeLast(4)}" +
-                if (prompt.card.expirationMonth.isEmpty()) "" else "\nДействует до ${prompt.card.expirationMonth}/${prompt.card.expirationYear}",
-                R.drawable.ic_credit_card, listOf(DialogButton("Сохранить") { prompt.save() }, DialogButton("Не сейчас")),
+            MessageDialog(T.promptSaveCard, "•••• ${n.takeLast(4)}" +
+                if (prompt.card.expirationMonth.isEmpty()) "" else "\n" + T.promptCardValidUntil(month = prompt.card.expirationMonth, year = prompt.card.expirationYear),
+                R.drawable.ic_credit_card, listOf(DialogButton(T.actionSave) { prompt.save() }, DialogButton(T.actionNotNow)),
                 true, dismiss)
         }
-        is Prompt.SaveAddress -> MessageDialog("Сохранить адрес?", addressLine(prompt.address), 0,
-            listOf(DialogButton("Сохранить") { prompt.save() }, DialogButton("Не сейчас")), true, dismiss)
+        is Prompt.SaveAddress -> MessageDialog(T.promptSaveAddress, addressLine(prompt.address), 0,
+            listOf(DialogButton(T.actionSave) { prompt.save() }, DialogButton(T.actionNotNow)), true, dismiss)
         is Prompt.SaveLogin, is Prompt.SelectLogin, is Prompt.File, is Prompt.Popup -> LaunchedEffect(prompt) { dismiss() }
     }
 }
 
 fun addressLine(a: dev.antite.engine.Address): String =
     listOf(a.name, a.streetAddress, a.addressLevel2, a.postalCode, a.tel, a.email)
-        .filter { it.isNotEmpty() }.joinToString(", ") { it.replace('\n', ' ') }.ifEmpty { "Пустой адрес" }
+        .filter { it.isNotEmpty() }.joinToString(", ") { it.replace('\n', ' ') }.ifEmpty { T.promptEmptyAddress }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -317,7 +318,7 @@ private fun DateTimeDialog(prompt: Prompt.DateTime, remove: () -> Unit, dismiss:
             DialogCard(dismiss) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     TimePicker(state)
-                    Buttons(listOf("Отмена" to dismiss, "OK" to {
+                    Buttons(listOf(T.actionCancel to dismiss, T.actionConfirm to {
                         remove(); prompt.confirm("%02d:%02d".format(state.hour, state.minute))
                     }), false)
                 }
@@ -341,8 +342,8 @@ private fun DateTimeDialog(prompt: Prompt.DateTime, remove: () -> Unit, dismiss:
                             else -> date.toString()
                         },
                     )
-                }) { Text("OK", color = p.accent) }
-            }, dismissButton = { TextButton(onClick = dismiss) { Text("Отмена", color = p.accent) } }) {
+                }) { Text(T.actionConfirm, color = p.accent) }
+            }, dismissButton = { TextButton(onClick = dismiss) { Text(T.actionCancel, color = p.accent) } }) {
                 DatePicker(state)
             }
         }
@@ -359,7 +360,7 @@ private fun ColorDialog(prompt: Prompt.Color, remove: () -> Unit, dismiss: () ->
     var hex by remember { mutableStateOf(prompt.value ?: "#000000") }
     DialogCard(dismiss) {
         Column {
-            DialogTitle("Цвет")
+            DialogTitle(T.promptColor)
             FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 colors.forEach { c ->
@@ -371,7 +372,7 @@ private fun ColorDialog(prompt: Prompt.Color, remove: () -> Unit, dismiss: () ->
             Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Field(FormField("HEX"), hex, { hex = it }, Modifier)
             }
-            Buttons(listOf("Отмена" to dismiss, "OK" to {
+            Buttons(listOf(T.actionCancel to dismiss, T.actionConfirm to {
                 remove()
                 if (Regex("#[0-9a-fA-F]{6}").matches(hex)) prompt.confirm(hex.lowercase()) else prompt.dismiss()
             }), false)

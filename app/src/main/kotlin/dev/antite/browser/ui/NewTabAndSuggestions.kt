@@ -49,6 +49,7 @@ import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
 import dev.antite.browser.data.Entry
 import dev.antite.browser.data.Site
+import dev.antite.browser.l10n.T
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.lifecycle.lifecycleScope
@@ -93,13 +94,13 @@ fun NewTabPage(b: Browser, modifier: Modifier) {
     }
 
     fun editPin(pin: Entry?) = b.show(UiDialog.Form(
-        if (pin == null) "Новая плитка" else "Изменить плитку", null,
-        listOf(FormField("Название", pin?.title ?: "", FormField.Kind.NAME),
-            FormField("Адрес, например ranobelib.me", pin?.url ?: "", FormField.Kind.URL)),
+        if (pin == null) T.ntpTileNew else T.ntpTileEdit, null,
+        listOf(FormField(T.ntpTileName, pin?.title ?: "", FormField.Kind.NAME),
+            FormField(T.ntpTileAddress, pin?.url ?: "", FormField.Kind.URL)),
         onConfirm = { v ->
             var u = v[1].trim()
             if (u.isEmpty()) {
-                b.toast("Нужен адрес")
+                b.toast(T.ntpTileNeedAddress)
                 return@Form false
             }
             if ("://" !in u) u = "https://$u"
@@ -113,26 +114,26 @@ fun NewTabPage(b: Browser, modifier: Modifier) {
     BoxWithConstraints(modifier) {
         val cols = (maxWidth.value / 88).toInt().coerceIn(4, 8)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 8.dp)) {
-            Header("Закреплённые")
+            Header(T.ntpPinned)
             TileGrid(cols, pins.map { pin ->
                 TileData(pin.title ?: Urls.host(pin.url), pin.url ?: "", { b.load(pin.url ?: return@TileData, false) }, menu = {
                     b.show(UiDialog.Items(pin.title?.ifEmpty { null } ?: Urls.host(pin.url), listOf(
-                        DialogButton("Открыть в новой вкладке") { b.load(pin.url ?: "", true) },
-                        DialogButton("Изменить") { editPin(pin) },
-                        DialogButton("Сдвинуть влево") { change { movePin(pin.id, -1) } },
-                        DialogButton("Сдвинуть вправо") { change { movePin(pin.id, 1) } },
-                        DialogButton("Открепить") { change { deletePin(pin.id) } },
+                        DialogButton(T.openInNewTab) { b.load(pin.url ?: "", true) },
+                        DialogButton(T.actionEdit) { editPin(pin) },
+                        DialogButton(T.ntpMoveLeft) { change { movePin(pin.id, -1) } },
+                        DialogButton(T.ntpMoveRight) { change { movePin(pin.id, 1) } },
+                        DialogButton(T.ntpUnpin) { change { deletePin(pin.id) } },
                     )))
                 })
-            } + TileData("Добавить", "", { editPin(null) }, null, add = true), b)
+            } + TileData(T.actionAdd, "", { editPin(null) }, null, add = true), b)
             if (frequent.isNotEmpty()) {
-                Header("Часто посещаемые")
+                Header(T.ntpFrequent)
                 TileGrid(cols, frequent.map { s ->
                     TileData(s.host, s.url, { b.load(s.url, false) }, menu = {
                         b.show(UiDialog.Items(s.host, listOf(
-                            DialogButton("Открыть в новой вкладке") { b.load(s.url, true) },
-                            DialogButton("Закрепить") { change { addPin(s.url, s.host) } },
-                            DialogButton("Убрать из частых") {
+                            DialogButton(T.openInNewTab) { b.load(s.url, true) },
+                            DialogButton(T.ntpPin) { change { addPin(s.url, s.host) } },
+                            DialogButton(T.ntpRemoveFrequent) {
                                 b.prefs.edit { putStringSet("hiddenHosts", b.prefs.stringSet("hiddenHosts") + s.host) }
                             },
                         )))
@@ -204,7 +205,7 @@ fun Suggestions(b: Browser, modifier: Modifier) {
     LazyColumn(modifier) {
         item {
             SuggestRow(if (looksUrl) R.drawable.ic_public else R.drawable.ic_search, null, text,
-                if (looksUrl) "Перейти" else "Поиск", { b.navigate(text) }, null)
+                if (looksUrl) T.suggestGo else T.suggestSearch, { b.navigate(text) }, null)
         }
         items(local) { e ->
             SuggestRow(if (e.extra == "b") R.drawable.ic_star else R.drawable.ic_history, e.url,

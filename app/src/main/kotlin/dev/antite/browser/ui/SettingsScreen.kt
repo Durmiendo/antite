@@ -33,6 +33,8 @@ import dev.antite.browser.engine.EngineStore
 import dev.antite.browser.engine.SourceException
 import dev.antite.browser.engine.ShellInstaller
 import dev.antite.browser.engine.Sources
+import dev.antite.browser.l10n.L10n
+import dev.antite.browser.l10n.T
 import dev.antite.browser.transfer.BackupCipher
 import dev.antite.browser.transfer.WrongPasswordException
 import dev.antite.engine.Address
@@ -70,7 +72,7 @@ fun SettingsScreen(b: Browser) {
     val stack = remember(b.settingsOpenCount) {
         val site = b.settingsSite
         mutableStateListOf<Any>(
-            if (site != null) Page(site) { SitePage(b, it, site) } else Page("Настройки") { MainPage(b, it) },
+            if (site != null) Page(site) { SitePage(b, it, site) } else Page(T.settingsTitle) { MainPage(b, it) },
         )
     }
     val nav = remember(stack) { Nav(stack) }
@@ -119,55 +121,55 @@ private fun RadioPage(b: Browser, nav: Nav, title: String, options: List<String>
 @Composable
 private fun MainPage(b: Browser, nav: Nav) {
     val p = b.prefs
-    Screen(b, nav, "Настройки") {
-        section("Основные")
-        choice(b, nav, "Поисковая система", "engine", Options.engines, 0, false)
-        nav(nav, "Менеджер паролей", "Сохранённые пароли, импорт и экспорт") { PasswordsPage(b, it) }
-        nav(nav, "Способы оплаты", "Банковские карты") { CardsPage(b, it) }
-        nav(nav, "Адреса и другие данные", "Имя, адрес, телефон, почта") { AddressesPage(b, it) }
-        nav(nav, "Конфиденциальность и безопасность", "HTTPS, DNS, cookie, отслеживание, WebRTC") { PrivacyPage(b, it) }
+    Screen(b, nav, T.settingsTitle) {
+        section(T.settingsBasics)
+        choice(b, nav, T.settingsSearchEngine, "engine", Options.engines, 0, false)
+        nav(nav, T.settingsPasswords, T.settingsPasswordsSummary) { PasswordsPage(b, it) }
+        nav(nav, T.settingsPayment, T.settingsPaymentSummary) { CardsPage(b, it) }
+        nav(nav, T.settingsAddresses, T.settingsAddressesSummary) { AddressesPage(b, it) }
+        nav(nav, T.settingsPrivacy, T.settingsPrivacySummary) { PrivacyPage(b, it) }
         item {
-            SettingRow("Уведомления", "Системные настройки уведомлений браузера", onClick = {
+            SettingRow(T.settingsNotifications, T.settingsNotificationsSummary, onClick = {
                 b.activity.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                     .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, b.activity.packageName))
             })
         }
-        choice(b, nav, "Тема", "theme", Options.themes, 2, true)
+        choice(b, nav, T.settingsTheme, "theme", Options.themes, 2, true)
         item {
             val isDefault = b.activity.isDefaultBrowser()
-            SettingRow("Браузер по умолчанию", if (isDefault) "Antite" else "Другой браузер. Нажмите, чтобы выбрать Antite", onClick = {
+            SettingRow(T.settingsDefaultBrowser, if (isDefault) T.appName else T.settingsDefaultBrowserOther, onClick = {
                 if (isDefault) b.activity.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
                 else b.makeDefaultBrowser()
             })
         }
-        section("Дополнительные")
-        nav(nav, "Главная страница", if (p.bool("homeButton", false)) homeSummary(b) else "Выключено") { HomePage(b, it) }
-        nav(nav, "Вкладки", "Вид списка, запуск, ссылки из приложений, инкогнито") { TabsPage(b, it) }
-        nav(nav, "Специальные возможности", "Размер текста, масштабирование") { AccessibilityPage(b, it) }
-        nav(nav, "Настройки сайтов", "Разрешения, JavaScript, всплывающие окна") { SiteSettingsPage(b, it) }
-        nav(nav, "Языки", "Языки сайтов и перевод") { LanguagesPage(b, it) }
-        nav(nav, "Скачанные файлы", if (p.bool("dlAsk", false)) "Спрашивать, куда сохранять" else "Сохранять в «Загрузки»") {
-            Screen(b, it, "Скачанные файлы") {
-                toggle(b, "Спрашивать, куда сохранять файлы", "Иначе файлы сохраняются в папку «Загрузки»", "dlAsk", false, false)
+        section(T.settingsAdvanced)
+        nav(nav, T.settingsHome, if (p.bool("homeButton", false)) homeSummary(b) else T.settingsOff) { HomePage(b, it) }
+        nav(nav, T.settingsTabs, T.settingsTabsSummary) { TabsPage(b, it) }
+        nav(nav, T.settingsAccessibility, T.settingsAccessibilitySummary) { AccessibilityPage(b, it) }
+        nav(nav, T.settingsSites, T.settingsSitesSummary) { SiteSettingsPage(b, it) }
+        nav(nav, T.settingsLanguages, T.settingsLanguagesSummary) { LanguagesPage(b, it) }
+        nav(nav, T.settingsDownloads, if (p.bool("dlAsk", false)) T.settingsDownloadsAsk else T.settingsDownloadsDefault) {
+            Screen(b, it, T.settingsDownloads) {
+                toggle(b, T.settingsDownloadsAskToggle, T.settingsDownloadsAskSummary, "dlAsk", false, false)
             }
         }
-        item { SettingRow("uBlock Origin", "Панель управления, списки фильтров", onClick = b::openUboDashboard) }
-        nav(nav, "Перенос данных", "Экспорт и импорт всех данных браузера") { TransferPage(b, it) }
-        section("О программе")
-        nav(nav, "Обновления", "Движок браузера и Antite, " + updatesSummary(b)) { UpdatesPage(b, it) }
-        item { SettingRow("Antite 0.1", "Движок ${b.engine.info.type} ${b.engine.info.version}") }
+        item { SettingRow("uBlock Origin", T.settingsUboSummary, onClick = b::openUboDashboard) }
+        nav(nav, T.settingsTransfer, T.settingsTransferSummary) { TransferPage(b, it) }
+        section(T.settingsAbout)
+        nav(nav, T.settingsUpdates, T.settingsUpdatesSummary(state = updatesSummary(b))) { UpdatesPage(b, it) }
+        item { SettingRow("Antite 0.1", T.settingsAboutEngine(type = b.engine.info.type, version = b.engine.info.version)) }
     }
 }
 
 @Composable
-private fun TransferPage(b: Browser, nav: Nav) = Screen(b, nav, "Перенос данных") {
+private fun TransferPage(b: Browser, nav: Nav) = Screen(b, nav, T.settingsTransfer) {
     item {
-        SettingRow("Экспортировать данные", "Вкладки, история, закладки, пароли, входы на сайты, настройки. Файл шифруется паролем", onClick = {
-            Auth.require(b.activity, "Экспорт данных", { exportAll(b) }, {})
+        SettingRow(T.transferExport, T.transferExportSummary, onClick = {
+            Auth.require(b.activity, T.transferExportTitle, { exportAll(b) }, {})
         })
     }
-    item { SettingRow("Импортировать данные", "Все текущие данные браузера будут заменены данными из файла", onClick = { importAll(b) }) }
-    note("Браузер перезапустится. Кэш сайтов не переносится")
+    item { SettingRow(T.transferImport, T.transferImportSummary, onClick = { importAll(b) }) }
+    note(T.transferNote)
 }
 
 private fun exportAll(b: Browser) {
@@ -175,13 +177,13 @@ private fun exportAll(b: Browser) {
     b.activity.createDocument(name, "application/octet-stream") { uri ->
         if (uri == null) return@createDocument
         var started = false
-        b.show(UiDialog.Form("Пароль на файл", "Без него файл не открыть. Восстановить пароль нельзя", listOf(
-            FormField("Пароль", kind = FormField.Kind.PASSWORD),
-            FormField("Повторите пароль", kind = FormField.Kind.PASSWORD),
-        ), "Экспортировать", { v ->
+        b.show(UiDialog.Form(T.transferFilePassword, T.transferFilePasswordNote, listOf(
+            FormField(T.promptPassword, kind = FormField.Kind.PASSWORD),
+            FormField(T.transferRepeatPassword, kind = FormField.Kind.PASSWORD),
+        ), T.transferExportAction, { v ->
             when {
-                v[0].isEmpty() -> b.toast("Введите пароль").let { false }
-                v[0] != v[1] -> b.toast("Пароли не совпадают").let { false }
+                v[0].isEmpty() -> b.toast(T.transferEnterPassword).let { false }
+                v[0] != v[1] -> b.toast(T.transferPasswordsDiffer).let { false }
                 else -> {
                     started = true
                     b.startTransfer(true, uri, v[0].toCharArray())
@@ -196,7 +198,7 @@ private fun exportAll(b: Browser) {
 
 private fun importAll(b: Browser) = b.activity.openDocument(listOf("application/octet-stream")) { uri ->
     if (uri == null) return@openDocument
-    b.show(UiDialog.Form("Пароль от файла", null, listOf(FormField("Пароль", kind = FormField.Kind.PASSWORD)), "Далее", { v ->
+    b.show(UiDialog.Form(T.transferPasswordOfFile, null, listOf(FormField(T.promptPassword, kind = FormField.Kind.PASSWORD)), T.actionNext, { v ->
         val password = v[0].toCharArray()
         b.activity.lifecycleScope.launch {
             val error = withContext(Dispatchers.Default) {
@@ -204,19 +206,19 @@ private fun importAll(b: Browser) = b.activity.openDocument(listOf("application/
                     b.activity.contentResolver.openInputStream(uri)!!.use { BackupCipher.decrypt(it, password).read() }
                     null
                 } catch (e: WrongPasswordException) {
-                    "Неверный пароль"
+                    T.transferWrongPassword
                 } catch (e: Exception) {
-                    "Это не файл переноса данных Antite"
+                    T.transferNotABackup
                 }
             }
             if (error != null) {
                 password.fill(' ')
                 return@launch b.toast(error)
             }
-            b.show(UiDialog.Message("Заменить все данные?",
-                "Вкладки, история, закладки, пароли и входы на сайты будут заменены данными из файла. Браузер перезапустится.",
-                buttons = listOf(DialogButton("Отмена") { password.fill(' ') },
-                    DialogButton("Импортировать") { b.startTransfer(false, uri, password) }),
+            b.show(UiDialog.Message(T.transferReplaceTitle,
+                T.transferReplaceText,
+                buttons = listOf(DialogButton(T.actionCancel) { password.fill(' ') },
+                    DialogButton(T.transferImportAction) { b.startTransfer(false, uri, password) }),
                 onDismiss = { password.fill(' ') }))
         }
         true
@@ -224,64 +226,64 @@ private fun importAll(b: Browser) = b.activity.openDocument(listOf("application/
 }
 
 private fun homeSummary(b: Browser) =
-    if (b.prefs.int("homeMode", 0) == 0) "Новая вкладка" else b.prefs.string("homeUrl", "")
+    if (b.prefs.int("homeMode", 0) == 0) T.tabNew else b.prefs.string("homeUrl", "")
 
 @Composable
 private fun PrivacyPage(b: Browser, nav: Nav) {
     val doh = b.prefs.index("doh", Options.doh, 0)
-    Screen(b, nav, "Конфиденциальность и безопасность") {
-        item { SettingRow("Удалить данные о работе в браузере", "Кэш, cookie, данные сайтов, история", onClick = b::clearDataDialog) }
-        section("Безопасность")
-        toggle(b, "Всегда использовать безопасные подключения",
-            "Открывать сайты по HTTPS и предупреждать, если сайт его не поддерживает", "httpsOnly", false, true)
+    Screen(b, nav, T.settingsPrivacy) {
+        item { SettingRow(T.menuClearData, T.privacyClearSummary, onClick = b::clearDataDialog) }
+        section(T.privacySecurity)
+        toggle(b, T.privacyHttpsOnly,
+            T.privacyHttpsOnlySummary, "httpsOnly", false, true)
         b.engine.backgroundServices.firstOrNull { it.id == BackgroundService.SAFE_BROWSING }?.let { sb ->
-            toggle(b, "Безопасный просмотр (Google Safe Browsing)",
-                "Предупреждать об опасных сайтах и загрузках. Браузер скачивает списки угроз Google",
+            toggle(b, T.privacySafeBrowsing,
+                T.privacySafeBrowsingSummary,
                 b.prefs.serviceKey(sb.id), sb.defaultEnabled, true)
         }
-        nav(nav, "Безопасный DNS", Options.doh[doh].label) { DnsPage(b, it) }
-        section("Конфиденциальность")
-        choice(b, nav, "Защита от отслеживания", "tracking", Options.tracking, 0, true)
-        choice(b, nav, "Сторонние файлы cookie", "cookies", Options.cookies, 0, true)
-        choice(b, nav, "Защита от цифровых отпечатков", "fingerprint", Options.fingerprint, 0, true)
+        nav(nav, T.privacySecureDns, Options.doh[doh].label) { DnsPage(b, it) }
+        section(T.privacyPrivacy)
+        choice(b, nav, T.privacyTracking, "tracking", Options.tracking, 0, true)
+        choice(b, nav, T.privacyCookies, "cookies", Options.cookies, 0, true)
+        choice(b, nav, T.privacyFingerprint, "fingerprint", Options.fingerprint, 0, true)
         if (b.prefs.int("fingerprint", 0) == 2) {
-            note("Максимальная защита подменяет часовой пояс на UTC, язык на английский и тему на светлую, некоторые сайты ломаются")
+            note(T.privacyFingerprintMaximumNote)
         }
         choice(b, nav, "WebRTC", "webrtc", Options.webRtc, 1, true)
-        toggle(b, "Отправлять запрет отслеживания (Do Not Track)", null, "dnt", false, true)
-        toggle(b, "Global Privacy Control", "Просить сайты не продавать и не передавать ваши данные", "gpc", true, true)
-        toggle(b, "Очищать ссылки от меток отслеживания", "Удалять из адресов параметры вроде utm и fbclid", "strip", true, true)
-        toggle(b, "Предзагрузка страниц", "Заранее соединяться с сайтами и загружать ссылки, которые вы можете открыть",
+        toggle(b, T.privacyDnt, null, "dnt", false, true)
+        toggle(b, "Global Privacy Control", T.privacyGpcSummary, "gpc", true, true)
+        toggle(b, T.privacyStrip, T.privacyStripSummary, "strip", true, true)
+        toggle(b, T.privacyPreload, T.privacyPreloadSummary,
             "preload", false, true)
-        toggle(b, "Подсказки поисковой системы", "Набираемый в адресной строке текст отправляется поисковику",
+        toggle(b, T.privacySuggest, T.privacySuggestSummary,
             "searchSuggest", true, false)
-        nav(nav, "Что отправляет браузер", "Фоновые запросы: что и куда, выключатели") { NetworkPage(b, it) }
+        nav(nav, T.privacyNetwork, T.privacyNetworkSummary) { NetworkPage(b, it) }
     }
 }
 
 private fun serviceSummary(s: BackgroundService, on: Boolean) = buildString {
-    append(s.summary).append("\nКуда: ").append(s.hosts.joinToString(", "))
-    if (!on && s.offEffect != null) append("\nВыключено: ").append(s.offEffect)
+    append(s.summary).append("\n").append(T.networkDestination(hosts = s.hosts.joinToString(", ")))
+    if (!on && s.offEffect != null) append("\n").append(T.networkWhenOff(effect = s.offEffect))
 }
 
 @Composable
-private fun NetworkPage(b: Browser, nav: Nav) = Screen(b, nav, "Что отправляет браузер") {
-    note("Запросы, которые браузер делает сам. Открытые вами страницы и их собственные запросы сюда не входят")
+private fun NetworkPage(b: Browser, nav: Nav) = Screen(b, nav, T.privacyNetwork) {
+    note(T.networkNote)
     section("Antite")
-    nav(nav, "Обновления", updatesSummary(b).replaceFirstChar { it.uppercase() } + ": список движков\nКуда: " +
-        Sources.updateSource(b.activity).let { Uri.parse(it.url).host ?: it.url }) {
+    nav(nav, T.settingsUpdates, T.networkUpdates(interval = updatesSummary(b).replaceFirstChar { it.uppercase() }) + "\n" +
+        T.networkDestination(hosts = Sources.updateSource(b.activity).let { Uri.parse(it.url).host ?: it.url })) {
         UpdatesPage(b, it)
     }
-    toggle(b, "Подсказки поисковой системы",
-        "Набираемый в адресной строке текст\nКуда: ${Uri.parse(b.prefs.suggestUrl).host}", "searchSuggest", true, false)
-    toggle(b, "Значки сайтов", "Значок открытого сайта, раз в 7 дней\nКуда: сам сайт", "siteIcons", true, false)
+    toggle(b, T.privacySuggest,
+        T.networkSuggestSummary + "\n" + T.networkDestination(hosts = Uri.parse(b.prefs.suggestUrl).host), "searchSuggest", true, false)
+    toggle(b, T.networkIcons, T.networkIconsSummary + "\n" + T.networkIconsDestination, "siteIcons", true, false)
     item(key = "dns") {
         val doh = Options.doh[b.prefs.index("doh", Options.doh, 0)].value
-        SettingRow("Безопасный DNS",
-            if (doh == null) "Выключен: адреса сайтов узнаются через системный DNS" else "Все DNS-запросы\nКуда: ${Uri.parse(doh).host}",
-            onClick = { nav.push("Безопасный DNS") { DnsPage(b, it) } })
+        SettingRow(T.privacySecureDns,
+            if (doh == null) T.networkDnsOff else T.networkDnsAll + "\n" + T.networkDestination(hosts = Uri.parse(doh).host),
+            onClick = { nav.push(T.privacySecureDns) { DnsPage(b, it) } })
     }
-    section("Движок ${b.engine.info.type}")
+    section(T.networkEngine(type = b.engine.info.type))
     b.engine.backgroundServices.forEach { s ->
         item(key = "bg:${s.id}") {
             val on = b.prefs.serviceEnabled(s)
@@ -291,15 +293,14 @@ private fun NetworkPage(b: Browser, nav: Nav) = Screen(b, nav, "Что отпр�
             }
         }
     }
-    section("Расширения")
+    section(T.networkExtensions)
     item {
         SettingRow("uBlock Origin",
-            "При первом запуске: установка с addons.mozilla.org\nСписки фильтров: адрес каждого списка " +
-                "(ublockorigin.github.io, ublockorigin.pages.dev и другие). Настраивается в панели uBlock",
+            T.networkUboSummary,
             onClick = b::openUboDashboard)
     }
-    section("Не отправляется")
-    note("Телеметрия, отчёты о сбоях, синхронизация и аккаунты Mozilla: в Antite их нет")
+    section(T.networkNotSent)
+    note(T.networkNotSentNote)
 }
 
 private class UpdateInfo(
@@ -309,7 +310,7 @@ private class UpdateInfo(
     val lastCheck: Long, val lastError: String?, val available: String?, val shell: Int,
 )
 
-private fun from(origin: String?) = if (origin == null) "" else ", источник «$origin»"
+private fun from(origin: String?) = if (origin == null) "" else T.updatesOrigin(origin = origin)
 
 @Composable
 private fun UpdatesPage(b: Browser, nav: Nav) {
@@ -334,26 +335,25 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
         }
     }
     fun checkNow() = ctx.lifecycleScope.launch {
-        busy = "Проверяем…"
+        busy = T.updatesChecking
         val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx) } }
         busy = null
         revision++
         val offer = r.getOrNull()?.engine
         when {
-            r.isFailure -> b.toast("Не удалось проверить обновления")
-            offer == null -> if (r.getOrNull()?.shell == null) b.toast("Обновлений нет")
-            else -> b.confirm("Доступен Gecko ${offer.entry.version} из источника «${offer.source.name}», " +
-                "${(offer.size + 512 * 1024) / (1024 * 1024)} МБ. Скачать?", "Скачать") {
-                busy = "Скачиваем…"
-                b.engineNews.install(offer, { busy = "Скачиваем… $it%" }) {
+            r.isFailure -> b.toast(T.updatesCheckFailed)
+            offer == null -> if (r.getOrNull()?.shell == null) b.toast(T.updatesNone)
+            else -> b.confirm(T.updatesEngineConfirm(version = offer.entry.version, source = offer.source.name,
+                size = (offer.size + 512 * 1024) / (1024 * 1024)), T.actionDownload) {
+                busy = T.updatesDownloading
+                b.engineNews.install(offer, { busy = T.updatesDownloadingPercent(percent = it) }) {
                     busy = null
                     revision++
                 }
             }
         }
     }
-    fun rollBack(i: UpdateInfo) = b.confirm("Вернуть Gecko ${i.previous}? Gecko ${i.active} больше не будет предлагаться. " +
-        "Браузер перезапустится.", "Вернуть") {
+    fun rollBack(i: UpdateInfo) = b.confirm(T.updatesRollbackConfirm(previous = i.previous, active = i.active), T.updatesRollbackAction) {
         ctx.lifecycleScope.launch {
             withContext(Dispatchers.IO) {
                 val store = Engines.store(ctx)
@@ -363,72 +363,72 @@ private fun UpdatesPage(b: Browser, nav: Nav) {
             b.engineNews.restart()
         }
     }
-    Screen(b, nav, "Обновления") {
+    Screen(b, nav, T.settingsUpdates) {
         val i = info ?: return@Screen
         if (i.pending != null) {
             item(key = "restart") {
-                SettingRow("Перезапустить браузер", "Скачан Gecko ${i.pending}, начнёт работать после перезапуска",
+                SettingRow(T.updatesRestart, T.updatesRestartSummary(version = i.pending),
                     onClick = b.engineNews::restart)
             }
         }
         if (i.shell > BuildConfig.VERSION_CODE) {
             item(key = "shell") {
-                SettingRow("Обновить Antite", shellBusy ?: "Доступна сборка ${i.shell}. Система попросит подтвердить установку",
+                SettingRow(T.updatesShell, shellBusy ?: T.updatesShellSummary(version = i.shell),
                     onClick = {
                         if (shellBusy == null) {
-                            shellBusy = "Скачиваем…"
-                            b.engineNews.updateShell({ shellBusy = "Скачиваем… $it%" }) { shellBusy = null }
+                            shellBusy = T.updatesDownloading
+                            b.engineNews.updateShell({ shellBusy = T.updatesDownloadingPercent(percent = it) }) { shellBusy = null }
                         }
                     })
             }
         }
         item(key = "check") {
             val last = when {
-                i.lastCheck == 0L -> "Ещё не проверялось"
-                else -> "Последняя проверка: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,
-                    java.text.DateFormat.SHORT).format(java.util.Date(i.lastCheck)) + when {
-                    i.available != null -> ", доступен Gecko ${i.available}"
-                    i.shell > BuildConfig.VERSION_CODE -> ", доступна новая версия Antite"
-                    i.lastError != null -> ", ошибка: ${i.lastError}"
-                    else -> ", обновлений нет"
+                i.lastCheck == 0L -> T.updatesNeverChecked
+                else -> T.updatesLastCheck(time = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,
+                    java.text.DateFormat.SHORT).format(java.util.Date(i.lastCheck))) + when {
+                    i.available != null -> T.updatesLastAvailable(version = i.available)
+                    i.shell > BuildConfig.VERSION_CODE -> T.updatesLastShell
+                    i.lastError != null -> T.updatesLastError(reason = i.lastError)
+                    else -> T.updatesLastNone
                 }
             }
-            SettingRow("Проверить сейчас", busy ?: last, onClick = { if (busy == null) checkNow() })
+            SettingRow(T.updatesCheckNow, busy ?: last, onClick = { if (busy == null) checkNow() })
         }
-        section("Как обновлять")
+        section(T.updatesHow)
         item(key = "auto") {
-            SwitchRow("Проверять автоматически", null, b.prefs.bool(EngineUpdates.AUTO, true)) { v ->
+            SwitchRow(T.updatesAuto, null, b.prefs.bool(EngineUpdates.AUTO, true)) { v ->
                 b.prefs.edit { putBoolean(EngineUpdates.AUTO, v) }
                 EngineUpdates.schedule(ctx)
             }
         }
         if (b.prefs.bool(EngineUpdates.AUTO, true)) {
-            choice(b, nav, "Как часто", EngineUpdates.INTERVAL, Options.updateInterval, EngineUpdates.INTERVAL_DEFAULT, false) {
+            choice(b, nav, T.updatesHowOften, EngineUpdates.INTERVAL, Options.updateInterval, EngineUpdates.INTERVAL_DEFAULT, false) {
                 EngineUpdates.schedule(ctx)
             }
         }
-        choice(b, nav, "Установка", EngineUpdates.INSTALL, Options.updateInstall, EngineUpdates.INSTALL_ASK, false)
+        choice(b, nav, T.updatesInstall, EngineUpdates.INSTALL, Options.updateInstall, EngineUpdates.INSTALL_ASK, false)
         if (b.prefs.int(EngineUpdates.INSTALL, EngineUpdates.INSTALL_ASK) == EngineUpdates.INSTALL_AUTO) {
-            toggle(b, "Скачивать только по Wi-Fi", "Около 95 МБ за обновление", EngineUpdates.WIFI_ONLY, true, false)
+            toggle(b, T.updatesWifiOnly, T.updatesWifiOnlySummary, EngineUpdates.WIFI_ONLY, true, false)
         }
         item(key = "updateSource") {
-            SettingRow("Источник обновлений", remember(revision) { Sources.updateSource(ctx).name }, onClick = {
-                nav.push("Источник обновлений") { n -> UpdateSourcePage(b, n) { revision++ } }
+            SettingRow(T.updatesSource, remember(revision) { Sources.updateSource(ctx).name }, onClick = {
+                nav.push(T.updatesSource) { n -> UpdateSourcePage(b, n) { revision++ } }
             })
         }
-        nav(nav, "Источники", Sources.enabled(ctx).joinToString(", ") { it.name }) { SourcesPage(b, it) }
-        section("Установлено")
-        item(key = "shellVersion") { SettingRow("Antite ${BuildConfig.VERSION_NAME}", "Сборка ${BuildConfig.VERSION_CODE}") }
-        item(key = "active") { SettingRow("${b.engine.info.type} ${i.active ?: b.engine.info.version}", "Работает" + from(i.activeFrom)) }
-        if (i.pending != null) item(key = "pending") { SettingRow("gecko ${i.pending}", "После перезапуска" + from(i.pendingFrom)) }
+        nav(nav, T.updatesSources, Sources.enabled(ctx).joinToString(", ") { it.name }) { SourcesPage(b, it) }
+        section(T.updatesInstalled)
+        item(key = "shellVersion") { SettingRow("Antite ${BuildConfig.VERSION_NAME}", T.updatesShellBuild(code = BuildConfig.VERSION_CODE)) }
+        item(key = "active") { SettingRow("${b.engine.info.type} ${i.active ?: b.engine.info.version}", T.updatesRunning(origin = from(i.activeFrom))) }
+        if (i.pending != null) item(key = "pending") { SettingRow("gecko ${i.pending}", T.updatesAfterRestart(origin = from(i.pendingFrom))) }
         if (i.previous != null) {
             item(key = "previous") {
-                SettingRow("gecko ${i.previous}", "Предыдущий" + from(i.previousFrom) + ". Нажмите, чтобы вернуть его",
+                SettingRow("gecko ${i.previous}", T.updatesPrevious(origin = from(i.previousFrom)),
                     onClick = { rollBack(i) })
             }
         }
-        note("Если новый движок ${EngineStore.MAX_FAILED_STARTS} раза подряд не запустится, браузер сам вернёт предыдущий")
-        section("Отладка")
+        note(T.updatesRollbackNote(count = EngineStore.MAX_FAILED_STARTS))
+        section(T.updatesDebug)
         item(key = "debug") { DebugInstall(b) { revision++ } }
     }
 }
@@ -439,13 +439,12 @@ private fun DebugInstall(b: Browser, changed: () -> Unit) {
     // Kept in the browser prefs, so the row follows it even when the unlock prompt recreates this item.
     val on = b.prefs.bool(EngineUpdates.DEBUG, false)
     var busy by remember { mutableStateOf<String?>(null) }
-    SwitchRow("Режим отладки", "Установка движка и Antite с любого адреса, в том числе http, без проверки подписи", on) { v ->
+    SwitchRow(T.updatesDebugMode, T.updatesDebugModeSummary, on) { v ->
         if (!v) {
             b.prefs.edit { putBoolean(EngineUpdates.DEBUG, false) }
         } else {
-            b.confirm("Без проверки подписи поставить можно любой код. Он будет работать внутри браузера с доступом ко " +
-                "всему, включая пароли. Включайте только для своих сборок.", "Включить") {
-                Auth.require(ctx, "Включить режим отладки", { b.prefs.edit { putBoolean(EngineUpdates.DEBUG, true) } }, {})
+            b.confirm(T.updatesDebugWarning, T.updatesDebugEnable) {
+                Auth.require(ctx, T.updatesDebugEnableAuth, { b.prefs.edit { putBoolean(EngineUpdates.DEBUG, true) } }, {})
             }
         }
     }
@@ -453,36 +452,36 @@ private fun DebugInstall(b: Browser, changed: () -> Unit) {
     fun install(updates: dev.antite.browser.engine.Updates) {
         val choices = listOfNotNull(
             updates.engine?.let { o ->
-                DialogButton("Движок Gecko ${o.entry.version}, ${(o.size + 512 * 1024) / (1024 * 1024)} МБ") {
-                    busy = "Скачиваем движок…"
-                    b.engineNews.install(o, { busy = "Скачиваем движок… $it%" }) {
+                DialogButton(T.updatesDebugEngine(version = o.entry.version, size = (o.size + 512 * 1024) / (1024 * 1024))) {
+                    busy = T.engineDownloading
+                    b.engineNews.install(o, { busy = T.updatesDebugEngineDownloadingPercent(percent = it) }) {
                         busy = null
                         changed()
                     }
                 }
             },
             updates.shell?.let { s ->
-                DialogButton("Antite, сборка ${s.version}") {
-                    busy = "Скачиваем Antite…"
-                    b.engineNews.installShell(s, { busy = "Скачиваем Antite… $it%" }) { busy = null }
+                DialogButton(T.shellDownloadName(version = s.version)) {
+                    busy = T.updatesDebugShellDownloading
+                    b.engineNews.installShell(s, { busy = T.updatesDebugShellDownloadingPercent(percent = it) }) { busy = null }
                 }
             },
         )
-        if (choices.isEmpty()) b.toast("По этому адресу нет ни движка для этой версии, ни сборки Antite")
-        else b.show(UiDialog.Items("Установить", choices))
+        if (choices.isEmpty()) b.toast(T.updatesDebugNothing)
+        else b.show(UiDialog.Items(T.updatesDebugInstall, choices))
     }
-    SettingRow("Установить с адреса", busy ?: "Адрес engines.json, например http://192.168.1.5:8790/engines.json", onClick = {
+    SettingRow(T.updatesDebugFromAddress, busy ?: T.updatesDebugFromAddressSummary, onClick = {
         if (busy != null) return@SettingRow
-        b.show(UiDialog.Form("Установить с адреса", null, listOf(
-            FormField("Адрес engines.json", b.prefs.string("debugUrl", ""), kind = FormField.Kind.URL),
-        ), "Проверить", { v ->
+        b.show(UiDialog.Form(T.updatesDebugFromAddress, null, listOf(
+            FormField(T.updatesDebugIndexAddress, b.prefs.string("debugUrl", ""), kind = FormField.Kind.URL),
+        ), T.updatesDebugCheck, { v ->
             val url = v[0].trim()
             b.prefs.edit { putString("debugUrl", url) }
-            busy = "Проверяем…"
+            busy = T.updatesChecking
             ctx.lifecycleScope.launch {
                 val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.fromAddress(ctx, url) } }
                 busy = null
-                r.onSuccess(::install).onFailure { b.toast("Не удалось: ${it.message ?: it.javaClass.simpleName}") }
+                r.onSuccess(::install).onFailure { b.toast(T.updatesDebugFailed(reason = it.message ?: it.javaClass.simpleName)) }
             }
             true
         }))
@@ -490,9 +489,9 @@ private fun DebugInstall(b: Browser, changed: () -> Unit) {
 }
 
 private fun updatesSummary(b: Browser): String =
-    if (!b.prefs.bool(EngineUpdates.AUTO, true)) "проверка выключена"
-    else "проверка " + Options.updateInterval[b.prefs.index(EngineUpdates.INTERVAL, Options.updateInterval,
-        EngineUpdates.INTERVAL_DEFAULT)].label.lowercase()
+    if (!b.prefs.bool(EngineUpdates.AUTO, true)) T.updatesCheckOff
+    else T.updatesCheckInterval(interval = Options.updateInterval[b.prefs.index(EngineUpdates.INTERVAL, Options.updateInterval,
+        EngineUpdates.INTERVAL_DEFAULT)].label.lowercase())
 
 @Composable
 private fun UpdateSourcePage(b: Browser, nav: Nav, changed: () -> Unit) {
@@ -500,11 +499,10 @@ private fun UpdateSourcePage(b: Browser, nav: Nav, changed: () -> Unit) {
     var revision by remember { mutableIntStateOf(0) }
     val sources = remember(revision) { Sources.enabled(ctx) }
     val current = remember(revision) { Sources.updateSource(ctx).id }
-    RadioPage(b, nav, "Источник обновлений", sources.map { it.name }, { sources.indexOfFirst { it.id == current } }) { i ->
+    RadioPage(b, nav, T.updatesSource, sources.map { it.name }, { sources.indexOfFirst { it.id == current } }) { i ->
         val s = sources[i]
         if (s.id == current) return@RadioPage
-        b.confirm("Обновления движка и Antite будут приходить только из «${s.name}».\n\n" +
-            "Отпечаток ключа SHA-256:\n${s.fingerprint}", "Сменить") {
+        b.confirm(T.updatesSourceConfirm(source = s.name, fingerprint = s.fingerprint), T.updatesSourceChange) {
             try {
                 Sources.setUpdateSource(ctx, s.id)
                 revision++
@@ -521,20 +519,19 @@ private fun SourcesPage(b: Browser, nav: Nav) {
     val ctx = b.activity
     var revision by remember { mutableIntStateOf(0) }
     val list = remember(revision) { Sources.list(ctx) }
-    fun addSource() = b.show(UiDialog.Form("Добавить источник", "Источник сможет устанавливать код, который выполняется в браузере",
+    fun addSource() = b.show(UiDialog.Form(T.sourcesAdd, T.sourcesAddWarning,
         listOf(
-            FormField("Название", kind = FormField.Kind.TEXT),
-            FormField("Адрес индекса (https://…/engines.json)", kind = FormField.Kind.URL),
-            FormField("Открытый ключ издателя", kind = FormField.Kind.URL),
-        ), "Далее", { v ->
+            FormField(T.ntpTileName, kind = FormField.Kind.TEXT),
+            FormField(T.engineSourceIndexUrl, kind = FormField.Kind.URL),
+            FormField(T.engineSourceKey, kind = FormField.Kind.URL),
+        ), T.actionNext, { v ->
             val key = try {
                 Sources.parseKey(v[2])
             } catch (e: SourceException) {
                 b.toast(e.message ?: "")
                 return@Form false
             }
-            b.confirm("Отпечаток ключа SHA-256:\n${Sources.fingerprint(key)}\n\nСверьте его с отпечатком, который опубликовал " +
-                "издатель. Добавлять источник?", "Добавить") {
+            b.confirm(T.sourcesFingerprintConfirm(fingerprint = Sources.fingerprint(key)), T.actionAdd) {
                 try {
                     Sources.add(ctx, v[0].trim(), v[1].trim(), key)
                     revision++
@@ -544,17 +541,16 @@ private fun SourcesPage(b: Browser, nav: Nav) {
             }
             true
         }))
-    Screen(b, nav, "Источники") {
-        note("Источник - адрес списка движков и ключ его издателя. Движок ставится, только если список подписан этим ключом. " +
-            "Обновления приходят только из источника обновлений, остальные источники можно проверить вручную на их странице")
+    Screen(b, nav, T.updatesSources) {
+        note(T.sourcesNote)
         list.forEach { s ->
             item(key = "src:${s.id}") {
-                SettingRow(s.name, (if (s.enabled) "" else "Выключен\n") + s.url, onClick = {
+                SettingRow(s.name, (if (s.enabled) "" else T.sourcesDisabled + "\n") + s.url, onClick = {
                     nav.push(s.name) { n -> SourcePage(b, n, s.id) { revision++ } }
                 })
             }
         }
-        item(key = "add") { SettingRow("Добавить источник", onClick = ::addSource) }
+        item(key = "add") { SettingRow(T.sourcesAdd, onClick = ::addSource) }
     }
 }
 
@@ -566,28 +562,27 @@ private fun SourcePage(b: Browser, nav: Nav, id: String, changed: () -> Unit) {
     val isUpdateSource = remember(revision) { Sources.updateSource(ctx).id == id }
     var busy by remember { mutableStateOf<String?>(null) }
     fun checkThis() = ctx.lifecycleScope.launch {
-        busy = "Проверяем…"
+        busy = T.updatesChecking
         val (found, offer) = withContext(Dispatchers.IO) {
             EngineUpdates.fromSource(ctx, s).let { it to EngineUpdates.newerThanInstalled(ctx, it.offer) }
         }
         busy = null
         when {
-            found.errors.isNotEmpty() -> b.toast("Не удалось проверить: ${found.errors.joinToString()}")
-            offer == null -> b.toast(found.offer?.let { "Gecko ${it.entry.version} из этого источника не новее установленного" }
-                ?: "Подходящего движка в источнике нет")
-            else -> b.confirm("В источнике «${s.name}» есть Gecko ${offer.entry.version}, " +
-                "${(offer.size + 512 * 1024) / (1024 * 1024)} МБ. Это не источник обновлений: следующие обновления придут из " +
-                "«${Sources.updateSource(ctx).name}». Скачать?", "Скачать") {
-                busy = "Скачиваем…"
-                b.engineNews.install(offer, { busy = "Скачиваем… $it%" }) { busy = null }
+            found.errors.isNotEmpty() -> b.toast(T.sourceCheckFailed(reason = found.errors.joinToString()))
+            offer == null -> b.toast(found.offer?.let { T.sourceNotNewer(version = it.entry.version) }
+                ?: T.sourceNoEngine)
+            else -> b.confirm(T.sourceOfferConfirm(source = s.name, version = offer.entry.version,
+                size = (offer.size + 512 * 1024) / (1024 * 1024), updateSource = Sources.updateSource(ctx).name), T.actionDownload) {
+                busy = T.updatesDownloading
+                b.engineNews.install(offer, { busy = T.updatesDownloadingPercent(percent = it) }) { busy = null }
             }
         }
     }
     Screen(b, nav, s.name) {
         item(key = "enabled") {
-            val summary = listOfNotNull(if (s.builtin) "Встроенный источник Antite" else null,
-                if (isUpdateSource) "Источник обновлений" else null).joinToString(". ").ifEmpty { null }
-            SwitchRow("Использовать", summary, s.enabled) { v ->
+            val summary = listOfNotNull(if (s.builtin) T.sourceBuiltin else null,
+                if (isUpdateSource) T.updatesSource else null).joinToString(". ").ifEmpty { null }
+            SwitchRow(T.sourceUse, summary, s.enabled) { v ->
                 try {
                     Sources.setEnabled(ctx, id, v)
                     revision++
@@ -599,16 +594,16 @@ private fun SourcePage(b: Browser, nav: Nav, id: String, changed: () -> Unit) {
         }
         if (!isUpdateSource) {
             item(key = "check") {
-                SettingRow("Проверить этот источник", busy ?: "Обновления отсюда сами не приходят",
+                SettingRow(T.sourceCheckThis, busy ?: T.sourceCheckThisSummary,
                     onClick = { if (busy == null) checkThis() })
             }
         }
-        item(key = "url") { SettingRow("Адрес", s.url) }
-        item(key = "key") { SettingRow("Отпечаток ключа SHA-256", s.fingerprint) }
+        item(key = "url") { SettingRow(T.sourceAddress, s.url) }
+        item(key = "key") { SettingRow(T.sourceFingerprint, s.fingerprint) }
         if (!s.builtin) {
             item(key = "remove") {
-                SettingRow("Удалить источник", onClick = {
-                    b.confirm("Удалить источник «${s.name}»? Уже установленные движки останутся.", "Удалить") {
+                SettingRow(T.sourceDelete, onClick = {
+                    b.confirm(T.sourceDeleteConfirm(source = s.name), T.actionDelete) {
                         try {
                             Sources.remove(ctx, id)
                             changed()
@@ -626,15 +621,15 @@ private fun SourcePage(b: Browser, nav: Nav, id: String, changed: () -> Unit) {
 @Composable
 private fun DnsPage(b: Browser, nav: Nav) {
     val doh = b.prefs.index("doh", Options.doh, 0)
-    Screen(b, nav, "Безопасный DNS") {
+    Screen(b, nav, T.privacySecureDns) {
         item {
-            SwitchRow("Использовать безопасный DNS", "DNS-запросы шифруются и уходят выбранному провайдеру", doh != 0) { on ->
+            SwitchRow(T.dnsUse, T.dnsUseSummary, doh != 0) { on ->
                 b.prefs.edit { putInt("doh", if (on) maxOf(1, b.prefs.int("dohLast", 1)) else 0) }
                 b.applyEngineSettings()
             }
         }
         if (doh != 0) {
-            section("Провайдер")
+            section(T.dnsProvider)
             Options.doh.drop(1).forEachIndexed { i, o ->
                 item {
                     RadioRow(o.label, doh == i + 1) {
@@ -643,14 +638,14 @@ private fun DnsPage(b: Browser, nav: Nav) {
                     }
                 }
             }
-            choice(b, nav, "Режим", "dohMode", Options.dohModes, 0, true)
+            choice(b, nav, T.dnsMode, "dohMode", Options.dohModes, 0, true)
         }
     }
 }
 
 @Composable
 private fun HomePage(b: Browser, nav: Nav) {
-    fun editUrl(then: () -> Unit = {}) = b.show(UiDialog.Form("Адрес главной страницы", null,
+    fun editUrl(then: () -> Unit = {}) = b.show(UiDialog.Form(T.homeAddressTitle, null,
         listOf(FormField("https://example.com", b.prefs.string("homeUrl", ""), FormField.Kind.URL)),
         onConfirm = { v ->
             var url = v[0].trim()
@@ -660,9 +655,9 @@ private fun HomePage(b: Browser, nav: Nav) {
             then()
             true
         }))
-    Screen(b, nav, "Главная страница") {
-        toggle(b, "Кнопка «Главная страница»", "Показывать кнопку слева от адресной строки", "homeButton", false, false)
-        section("Открывать")
+    Screen(b, nav, T.settingsHome) {
+        toggle(b, T.homeButton, T.homeButtonSummary, "homeButton", false, false)
+        section(T.homeOpen)
         Options.homeModes.forEachIndexed { i, o ->
             item {
                 RadioRow(o.label, b.prefs.int("homeMode", 0) == i) {
@@ -671,33 +666,33 @@ private fun HomePage(b: Browser, nav: Nav) {
                 }
             }
         }
-        if (b.prefs.int("homeMode", 0) == 1) item { SettingRow("Адрес", b.prefs.string("homeUrl", ""), onClick = { editUrl() }) }
+        if (b.prefs.int("homeMode", 0) == 1) item { SettingRow(T.sourceAddress, b.prefs.string("homeUrl", ""), onClick = { editUrl() }) }
     }
 }
 
 @Composable
-private fun TabsPage(b: Browser, nav: Nav) = Screen(b, nav, "Вкладки") {
-    choice(b, nav, "Вид списка вкладок", "tabLayout", Options.tabLayouts, 0, false)
-    choice(b, nav, "При запуске открывать", "startup", Options.startup, 0, false)
-    choice(b, nav, "Ссылки из других приложений", "external", Options.external, 0, false)
-    toggle(b, "Закрывать вкладки инкогнито при сворачивании", null, "closeIncognito", false, false)
-    toggle(b, "Всегда открывать версию для ПК", "Для новых вкладок", "desktopDefault", false, false)
+private fun TabsPage(b: Browser, nav: Nav) = Screen(b, nav, T.settingsTabs) {
+    choice(b, nav, T.tabsLayout, "tabLayout", Options.tabLayouts, 0, false)
+    choice(b, nav, T.tabsStartup, "startup", Options.startup, 0, false)
+    choice(b, nav, T.tabsExternal, "external", Options.external, 0, false)
+    toggle(b, T.tabsCloseIncognito, null, "closeIncognito", false, false)
+    toggle(b, T.tabsDesktopDefault, T.tabsDesktopDefaultSummary, "desktopDefault", false, false)
 }
 
 @Composable
-private fun AccessibilityPage(b: Browser, nav: Nav) = Screen(b, nav, "Специальные возможности") {
-    choice(b, nav, "Размер текста", "font", Options.fonts, 2, true)
-    toggle(b, "Принудительное масштабирование", "Разрешать увеличивать любую страницу, даже если сайт это запрещает",
+private fun AccessibilityPage(b: Browser, nav: Nav) = Screen(b, nav, T.settingsAccessibility) {
+    choice(b, nav, T.a11yFont, "font", Options.fonts, 2, true)
+    toggle(b, T.a11yForceZoom, T.a11yForceZoomSummary,
         "forceZoom", false, true)
-    toggle(b, "Масштаб двойным касанием", null, "doubleTapZoom", true, true)
+    toggle(b, T.a11yDoubleTapZoom, null, "doubleTapZoom", true, true)
 }
 
 @Composable
-private fun SiteSettingsPage(b: Browser, nav: Nav) = Screen(b, nav, "Настройки сайтов") {
-    nav(nav, "Все сайты", "Разрешения и данные по каждому сайту") { AllSitesPage(b, it) }
-    section("Разрешения")
+private fun SiteSettingsPage(b: Browser, nav: Nav) = Screen(b, nav, T.settingsSites) {
+    nav(nav, T.sitesAll, T.sitesAllSummary) { AllSitesPage(b, it) }
+    section(T.sitesPermissions)
     SitePerms.ALL.forEach { c -> nav(nav, c.title, c.labels[b.perms.defaultIndex(c)]) { CategoryPage(b, it, c) } }
-    note("Буфер обмена: движок каждый раз показывает кнопку «Вставить», постоянного разрешения нет.")
+    note(T.sitesClipboardNote)
 }
 
 @Composable
@@ -711,23 +706,23 @@ private fun CategoryPage(b: Browser, nav: Nav, c: SitePerms.Cat) {
         if (c.labels.size == 2) {
             item { SwitchRow(c.title, c.labels[cur], cur == 0) { on -> setDefault(if (on) 0 else 1) } }
         } else {
-            section("По умолчанию")
+            section(T.sitesDefault)
             c.labels.forEachIndexed { i, l -> item { RadioRow(l, i == cur) { setDefault(i) } } }
         }
         if (c == SitePerms.NOTIFICATIONS) {
-            note("Уведомления приходят, пока сайт открыт во вкладке. Push от закрытых сайтов не поддерживается.")
+            note(T.sitesNotificationsNote)
         }
         if (!c.perSite) {
             note(c.note ?: "")
             return@Screen
         }
-        section("Исключения")
+        section(T.sitesExceptions)
         val ex = b.perms.exceptions(c)
-        if (ex.isEmpty()) note("Нет сайтов с особыми настройками")
+        if (ex.isEmpty()) note(T.sitesNoExceptions)
         ex.forEach { (h, v) -> item(key = "ex:$h") { SettingRow(h, b.perms.label(c, v), onClick = { exceptionPage(b, nav, c, h) }) } }
         item {
-            SettingRow("Добавить сайт", onClick = {
-                b.show(UiDialog.Form("Добавить сайт", null, listOf(FormField("example.com", "", FormField.Kind.URL)), "Далее",
+            SettingRow(T.sitesAdd, onClick = {
+                b.show(UiDialog.Form(T.sitesAdd, null, listOf(FormField("example.com", "", FormField.Kind.URL)), T.actionNext,
                     onConfirm = { v ->
                         val h = Urls.hostOfInput(v[0])
                         if (h.isNotEmpty()) exceptionPage(b, nav, c, h)
@@ -740,8 +735,8 @@ private fun CategoryPage(b: Browser, nav: Nav, c: SitePerms.Cat) {
 
 private fun exceptionPage(b: Browser, nav: Nav, c: SitePerms.Cat, h: String) {
     val pairs = c.values.indices.filter { c.values[it] != SitePerms.ASK }.map { c.labels[it] to c.values[it] }.toMutableList()
-    if (pairs.none { it.second == SitePerms.ALLOW }) pairs.add(0, "Разрешать" to SitePerms.ALLOW)
-    pairs += "По умолчанию (${c.labels[b.perms.defaultIndex(c)].lowercase(Locale.ROOT)})" to -1
+    if (pairs.none { it.second == SitePerms.ALLOW }) pairs.add(0, T.permAllow to SitePerms.ALLOW)
+    pairs += T.sitesDefaultWithValue(value = c.labels[b.perms.defaultIndex(c)].lowercase(Locale.ROOT)) to -1
     nav.push("$h · ${c.title}") { n ->
         RadioPage(b, n, "$h · ${c.title}", pairs.map { it.first }, { pairs.indexOfFirst { it.second == b.perms.exception(c, h) } }) { i ->
             b.perms.setException(c, h, pairs[i].second)
@@ -760,12 +755,12 @@ private fun AllSitesPage(b: Browser, nav: Nav) {
         }
     }
     val hosts = (b.perms.hosts() + tracking).distinct().sorted()
-    Screen(b, nav, "Все сайты") {
-        if (hosts.isEmpty()) note("Сайтов с особыми настройками пока нет")
+    Screen(b, nav, T.sitesAll) {
+        if (hosts.isEmpty()) note(T.sitesNoneYet)
         hosts.forEach { h ->
             item(key = h) {
                 val n = SitePerms.ALL.count { b.perms.exception(it, h) >= 0 }
-                SettingRow(h, if (n == 0) "Особых разрешений нет" else "Особых разрешений: $n",
+                SettingRow(h, T.sitesSpecialCount(count = n),
                     onClick = { nav.push(h) { SitePage(b, it, h) } })
             }
         }
@@ -786,29 +781,29 @@ private fun SitePage(b: Browser, nav: Nav, h: String) {
         }
     }
     Screen(b, nav, h) {
-        section("Разрешения")
+        section(T.sitesPermissions)
         SitePerms.ALL.filter { it.perSite }.forEach { c ->
             item(key = c.key) {
                 val ex = b.perms.exception(c, h)
                 SettingRow(c.title, if (ex >= 0) b.perms.label(c, ex)
-                else "По умолчанию: " + c.labels[b.perms.defaultIndex(c)].lowercase(Locale.ROOT),
+                else T.sitesDefaultIs(value = c.labels[b.perms.defaultIndex(c)].lowercase(Locale.ROOT)),
                     onClick = { exceptionPage(b, nav, c, h) })
             }
         }
-        section("Защита")
+        section(T.sitesProtection)
         item {
-            SwitchRow("Защита от отслеживания", if (trackingOff) "Выключена для этого сайта" else "Включена", !trackingOff) { on ->
+            SwitchRow(T.privacyTracking, if (trackingOff) T.sitesTrackingOff else T.sitesTrackingOn, !trackingOff) { on ->
                 b.engine.permissions.set("https://$h", SitePermission.TRACKING_EXCEPTION,
                     if (on) PermissionValue.BLOCK else PermissionValue.ALLOW)
                 revision++
             }
         }
-        section("Данные")
+        section(T.sitesData)
         item {
-            SettingRow("Удалить данные и сбросить разрешения", "Cookie, хранилище и кэш сайта $h", onClick = {
-                b.confirm("Удалить данные сайта $h и сбросить его разрешения?", "Удалить") {
+            SettingRow(T.sitesClear, T.sitesClearSummary(host = h), onClick = {
+                b.confirm(T.sitesClearConfirm(host = h), T.actionDelete) {
                     b.perms.forgetSite(h)
-                    b.engine.storage.clearSite(h) { ok -> if (ok) b.toast("Удалено") }
+                    b.engine.storage.clearSite(h) { ok -> if (ok) b.toast(T.clearDataDone) }
                     revision++
                 }
             })
@@ -824,25 +819,37 @@ private fun LanguagesPage(b: Browser, nav: Nav) {
         b.prefs.edit { putString("langs", list.joinToString(",")) }
         b.applyEngineSettings()
     }
-    Screen(b, nav, "Языки") {
-        section("Языки сайтов")
-        note("Сайты получают этот список в заголовке Accept-Language и выбирают по нему язык")
-        if (cur.isEmpty()) item { SettingRow(Urls.langName(Locale.getDefault().language), "Язык системы") }
+    Screen(b, nav, T.settingsLanguages) {
+        item(key = "uiLanguage") {
+            val options = listOf("" to T.languagesSystem) + L10n.languages
+            fun current() = options.indexOfFirst { it.first == b.prefs.string(L10n.PREF, "") }.coerceAtLeast(0)
+            SettingRow(T.languagesInterface, options[current()].second, onClick = {
+                nav.push(T.languagesInterface) { n ->
+                    RadioPage(b, n, T.languagesInterface, options.map { it.second }, ::current) { i ->
+                        b.prefs.edit { putString(L10n.PREF, options[i].first) }
+                        L10n.init(b.activity)
+                    }
+                }
+            })
+        }
+        section(T.languagesSites)
+        note(T.languagesSitesNote)
+        if (cur.isEmpty()) item { SettingRow(Urls.langName(Locale.getDefault().language), T.languagesSystem) }
         cur.forEachIndexed { i, code ->
             item(key = "lang:$code") {
-                SettingRow(Urls.langName(code), if (i == 0) "Основной" else null, onClick = {
+                SettingRow(Urls.langName(code), if (i == 0) T.languagesPrimary else null, onClick = {
                     b.show(UiDialog.Items(Urls.langName(code), buildList {
-                        if (i > 0) add(DialogButton("Сделать основным") { save(listOf(code) + (cur - code)) })
-                        add(DialogButton("Удалить") { save(cur - code) })
+                        if (i > 0) add(DialogButton(T.languagesMakePrimary) { save(listOf(code) + (cur - code)) })
+                        add(DialogButton(T.actionDelete) { save(cur - code) })
                     }))
                 })
             }
         }
         item {
-            SettingRow("Добавить язык", onClick = {
+            SettingRow(T.languagesAdd, onClick = {
                 val have = cur.ifEmpty { listOf(Locale.getDefault().language) }
-                nav.push("Добавить язык") { n ->
-                    Screen(b, n, "Добавить язык") {
+                nav.push(T.languagesAdd) { n ->
+                    Screen(b, n, T.languagesAdd) {
                         Options.languages.filter { it !in have }.forEach { code ->
                             item { SettingRow(Urls.langName(code), onClick = { save(have + code); n.back() }) }
                         }
@@ -851,22 +858,22 @@ private fun LanguagesPage(b: Browser, nav: Nav) {
             })
         }
         if (tr != null) {
-            section("Перевод")
-            toggle(b, "Предлагать перевод страниц", "Перевод выполняется на устройстве, текст никуда не отправляется",
+            section(T.languagesTranslation)
+            toggle(b, T.languagesOfferTranslation, T.languagesOfferTranslationSummary,
                 "translateOffer", true, true)
             item {
-                SettingRow("Переводить на", Urls.langName(b.prefs.translateTarget), onClick = {
+                SettingRow(T.languagesTranslateTo, Urls.langName(b.prefs.translateTarget), onClick = {
                     tr.supported({ _, to ->
-                        nav.push("Переводить на") { n ->
-                            RadioPage(b, n, "Переводить на", to.map { it.name }, { to.indexOfFirst { it.code == b.prefs.translateTarget } }) { i ->
+                        nav.push(T.languagesTranslateTo) { n ->
+                            RadioPage(b, n, T.languagesTranslateTo, to.map { it.name }, { to.indexOfFirst { it.code == b.prefs.translateTarget } }) { i ->
                                 b.prefs.edit { putString("translateTo", to[i].code) }
                             }
                         }
-                    }, { b.toast("Перевод недоступен") })
+                    }, { b.toast(T.translateUnavailable) })
                 })
             }
-            nav(nav, "Языковые модели", "Скачанные модели перевода") { ModelsPage(b, it) }
-            nav(nav, "Сайты без перевода", null) { NeverTranslatePage(b, it) }
+            nav(nav, T.languagesModels, T.languagesModelsSummary) { ModelsPage(b, it) }
+            nav(nav, T.languagesNeverTranslate, null) { NeverTranslatePage(b, it) }
         }
     }
 }
@@ -878,15 +885,15 @@ private fun ModelsPage(b: Browser, nav: Nav) {
     val models by produceState<List<LanguageModel>?>(null, revision) {
         value = suspendCancellableCoroutine { cont -> tr.models({ cont.resume(it) }, { cont.resume(emptyList()) }) }
     }
-    Screen(b, nav, "Языковые модели") {
-        note("Модель скачивается при первом переводе с языка. Здесь можно скачать заранее или удалить.")
+    Screen(b, nav, T.languagesModels) {
+        note(T.modelsNote)
         val list = models ?: return@Screen
-        if (list.isEmpty()) note("Список моделей пуст")
+        if (list.isEmpty()) note(T.modelsEmpty)
         list.forEach { m ->
             item(key = m.language.code) {
                 val size = android.text.format.Formatter.formatShortFileSize(b.activity, m.size)
-                SettingRow(m.language.name, (if (m.downloaded) "Скачана, " else "Не скачана, ") + size, onClick = {
-                    val done: (Boolean) -> Unit = { ok -> if (ok) revision++ else b.toast("Не получилось") }
+                SettingRow(m.language.name, if (m.downloaded) T.modelDownloaded(size = size) else T.modelNotDownloaded(size = size), onClick = {
+                    val done: (Boolean) -> Unit = { ok -> if (ok) revision++ else b.toast(T.modelActionFailed) }
                     if (m.downloaded) tr.deleteModel(m.language.code, done) else tr.downloadModel(m.language.code, done)
                 })
             }
@@ -901,10 +908,10 @@ private fun NeverTranslatePage(b: Browser, nav: Nav) {
     val sites by produceState(emptyList<String>(), revision) {
         value = suspendCancellableCoroutine { cont -> tr.neverTranslateSites { cont.resume(it) } }
     }
-    Screen(b, nav, "Сайты без перевода") {
-        if (sites.isEmpty()) note("Нет сайтов")
+    Screen(b, nav, T.languagesNeverTranslate) {
+        if (sites.isEmpty()) note(T.neverTranslateEmpty)
         sites.forEach { s ->
-            item(key = s) { SettingRow(s, "Нажмите, чтобы снова предлагать перевод", onClick = { tr.allowTranslateSite(s) { revision++ } }) }
+            item(key = s) { SettingRow(s, T.neverTranslateRow, onClick = { tr.allowTranslateSite(s) { revision++ } }) }
         }
     }
 }
@@ -915,34 +922,34 @@ private fun PasswordsPage(b: Browser, nav: Nav) {
     val data by produceState<Pair<List<SavedLogin>, List<String>>?>(null, revision) {
         value = b.vault.io { logins(null) to nevers() }
     }
-    Screen(b, nav, "Менеджер паролей") {
-        toggle(b, "Предлагать сохранение паролей", null, "passwordsSave", true, true)
-        toggle(b, "Автоматически заполнять пароли", "Подставлять сохранённые данные на страницах входа", "passwordsAutofill", true, true)
+    Screen(b, nav, T.settingsPasswords) {
+        toggle(b, T.passwordsOfferSave, null, "passwordsSave", true, true)
+        toggle(b, T.passwordsAutofill, T.passwordsAutofillSummary, "passwordsAutofill", true, true)
         val (logins, nevers) = data ?: return@Screen
-        section("Пароли")
-        if (logins.isEmpty()) note("Сохранённых паролей нет")
+        section(T.passwordsSection)
+        if (logins.isEmpty()) note(T.passwordsEmpty)
         logins.forEach { l ->
             item(key = l.guid) {
-                SettingRow(l.host, l.username.ifEmpty { "Без имени пользователя" }, onClick = {
-                    Auth.require(b.activity, "Показать пароль", { nav.push(l.host) { LoginPage(b, it, l) } }, {})
+                SettingRow(l.host, l.username.ifEmpty { T.passwordNoUsername }, onClick = {
+                    Auth.require(b.activity, T.passwordsShow, { nav.push(l.host) { LoginPage(b, it, l) } }, {})
                 })
             }
         }
         if (nevers.isNotEmpty()) {
-            section("Никогда не сохранять")
+            section(T.passwordsNeverSave)
             nevers.forEach { h ->
                 item(key = "never:$h") {
-                    SettingRow(h, "Нажмите, чтобы снова предлагать сохранение", onClick = {
+                    SettingRow(h, T.passwordsNeverSaveRow, onClick = {
                         b.activity.lifecycleScope.launch { b.vault.io { removeNever(h) }; revision++ }
                     })
                 }
             }
         }
-        section("Перенос")
-        item { SettingRow("Импортировать пароли", "Из CSV-файла Chrome, Cromite или Firefox", onClick = { importCsv(b) { revision++ } }) }
+        section(T.passwordsTransfer)
+        item { SettingRow(T.passwordsImport, T.passwordsImportSummary, onClick = { importCsv(b) { revision++ } }) }
         item {
-            SettingRow("Экспортировать пароли", "В CSV-файл. Пароли в нём не зашифрованы", onClick = {
-                Auth.require(b.activity, "Экспорт паролей", { exportCsv(b) }, {})
+            SettingRow(T.passwordsExport, T.passwordsExportSummary, onClick = {
+                Auth.require(b.activity, T.passwordsExportAuth, { exportCsv(b) }, {})
             })
         }
     }
@@ -954,7 +961,7 @@ private fun importCsv(b: Browser, done: () -> Unit) = b.activity.openDocument(li
         val n = b.vault.io {
             runCatching { b.activity.contentResolver.openInputStream(uri)!!.use { importCsv(it) } }.getOrDefault(-1)
         }
-        b.toast(if (n < 0) "Не удалось прочитать файл" else "Импортировано паролей: $n")
+        b.toast(if (n < 0) T.passwordsReadFailed else T.passwordsImported(count = n))
         done()
     }
 }
@@ -965,7 +972,7 @@ private fun exportCsv(b: Browser) = b.activity.createDocument("Antite Passwords.
         val n = b.vault.io {
             runCatching { b.activity.contentResolver.openOutputStream(uri)!!.use { exportCsv(it) } }.getOrDefault(-1)
         }
-        b.toast(if (n < 0) "Не удалось записать файл" else "Экспортировано паролей: $n")
+        b.toast(if (n < 0) T.passwordsWriteFailed else T.passwordsExported(count = n))
     }
 }
 
@@ -976,16 +983,16 @@ private fun LoginPage(b: Browser, nav: Nav, l: SavedLogin) {
     var shown by remember { mutableStateOf(false) }
     Screen(b, nav, l.host) {
         val pass = password ?: ""
-        item { SettingRow("Сайт", l.origin) }
-        item { SettingRow("Имя пользователя", l.username.ifEmpty { "Нет" }, onClick = { b.activity.copy(l.username) }) }
-        item { SettingRow("Пароль", if (shown) pass else "••••••••", onClick = { shown = !shown }) }
-        note("Нажмите на пароль, чтобы показать или скрыть его")
-        item { SettingRow("Копировать пароль", onClick = { b.activity.copy(pass, sensitive = true) }) }
+        item { SettingRow(T.passwordSite, l.origin) }
+        item { SettingRow(T.promptUsername, l.username.ifEmpty { T.passwordNone }, onClick = { b.activity.copy(l.username) }) }
+        item { SettingRow(T.promptPassword, if (shown) pass else "••••••••", onClick = { shown = !shown }) }
+        note(T.passwordTapToShow)
+        item { SettingRow(T.passwordCopy, onClick = { b.activity.copy(pass, sensitive = true) }) }
         item {
-            SettingRow("Изменить", onClick = {
-                b.show(UiDialog.Form("Изменить пароль", null, listOf(
-                    FormField("Имя пользователя", l.username),
-                    FormField("Пароль", pass, FormField.Kind.VISIBLE_PASSWORD),
+            SettingRow(T.actionEdit, onClick = {
+                b.show(UiDialog.Form(T.passwordEdit, null, listOf(
+                    FormField(T.promptUsername, l.username),
+                    FormField(T.promptPassword, pass, FormField.Kind.VISIBLE_PASSWORD),
                 ), onConfirm = { v ->
                     if (v[1].isEmpty()) return@Form false
                     b.activity.lifecycleScope.launch { b.vault.io { editLogin(l.guid, v[0], v[1]) }; revision++ }
@@ -994,8 +1001,8 @@ private fun LoginPage(b: Browser, nav: Nav, l: SavedLogin) {
             })
         }
         item {
-            SettingRow("Удалить", onClick = {
-                b.confirm("Удалить пароль для ${l.host}?", "Удалить") {
+            SettingRow(T.actionDelete, onClick = {
+                b.confirm(T.passwordDeleteConfirm(host = l.host), T.actionDelete) {
                     b.activity.lifecycleScope.launch { b.vault.io { deleteLogin(l.guid) } }
                     nav.back()
                 }
@@ -1008,39 +1015,39 @@ private fun LoginPage(b: Browser, nav: Nav, l: SavedLogin) {
 private fun CardsPage(b: Browser, nav: Nav) {
     var revision by remember { mutableIntStateOf(0) }
     val cards by produceState(emptyList<dev.antite.browser.data.SavedCard>(), revision) { value = b.vault.io { cards() } }
-    fun form(card: Card?) = b.show(UiDialog.Form(if (card == null) "Новая карта" else "Изменить карту", null, listOf(
-        FormField("Номер карты", card?.number ?: "", FormField.Kind.NUMBER),
-        FormField("Имя на карте", card?.name ?: "", FormField.Kind.CAPS),
-        FormField("Месяц (ММ)", card?.expirationMonth ?: "", FormField.Kind.NUMBER),
-        FormField("Год (ГГГГ)", card?.expirationYear ?: "", FormField.Kind.NUMBER),
+    fun form(card: Card?) = b.show(UiDialog.Form(if (card == null) T.cardNew else T.cardEdit, null, listOf(
+        FormField(T.cardNumber, card?.number ?: "", FormField.Kind.NUMBER),
+        FormField(T.cardName, card?.name ?: "", FormField.Kind.CAPS),
+        FormField(T.cardMonth, card?.expirationMonth ?: "", FormField.Kind.NUMBER),
+        FormField(T.cardYear, card?.expirationYear ?: "", FormField.Kind.NUMBER),
     ), onConfirm = { v ->
         val digits = v[0].filter { it.isDigit() }
         if (digits.length < 12) {
-            b.toast("Неверный номер карты")
+            b.toast(T.cardBadNumber)
             return@Form false
         }
         val c = Card(card?.guid, v[1].trim(), digits, v[2].trim(), v[3].trim())
         b.activity.lifecycleScope.launch { b.vault.io { saveCard(c) }; revision++ }
         true
     }))
-    Screen(b, nav, "Способы оплаты") {
-        toggle(b, "Сохранять и заполнять способы оплаты", "Номер карты хранится в зашифрованном виде, CVC не сохраняется",
+    Screen(b, nav, T.settingsPayment) {
+        toggle(b, T.cardsEnabled, T.cardsEnabledSummary,
             "cardsEnabled", true, true)
-        section("Карты")
-        if (cards.isEmpty()) note("Сохранённых карт нет")
+        section(T.cardsSection)
+        if (cards.isEmpty()) note(T.cardsEmpty)
         cards.forEach { c ->
             item(key = c.guid) {
                 SettingRow(c.label, c.name, onClick = {
                     b.show(UiDialog.Items(c.label, listOf(
-                        DialogButton("Изменить") {
-                            Auth.require(b.activity, "Изменить карту", {
+                        DialogButton(T.actionEdit) {
+                            Auth.require(b.activity, T.cardEdit, {
                                 b.activity.lifecycleScope.launch {
                                     b.vault.io { fullCards() }.firstOrNull { it.guid == c.guid }?.let(::form)
                                 }
                             }, {})
                         },
-                        DialogButton("Удалить") {
-                            b.confirm("Удалить карту ${c.label}?", "Удалить") {
+                        DialogButton(T.actionDelete) {
+                            b.confirm(T.cardDeleteConfirm(card = c.label), T.actionDelete) {
                                 b.activity.lifecycleScope.launch { b.vault.io { deleteCard(c.guid) }; revision++ }
                             }
                         },
@@ -1048,7 +1055,7 @@ private fun CardsPage(b: Browser, nav: Nav) {
                 })
             }
         }
-        item { SettingRow("Добавить карту", onClick = { form(null) }) }
+        item { SettingRow(T.cardAdd, onClick = { form(null) }) }
     }
 }
 
@@ -1056,16 +1063,16 @@ private fun CardsPage(b: Browser, nav: Nav) {
 private fun AddressesPage(b: Browser, nav: Nav) {
     var revision by remember { mutableIntStateOf(0) }
     val list by produceState(emptyList<Address>(), revision) { value = b.vault.io { addresses() } }
-    fun form(a: Address?) = b.show(UiDialog.Form(if (a == null) "Новый адрес" else "Изменить адрес", null, listOf(
-        FormField("Имя и фамилия", a?.name ?: "", FormField.Kind.NAME),
-        FormField("Организация", a?.organization ?: "", FormField.Kind.NAME),
-        FormField("Улица, дом, квартира", a?.streetAddress ?: "", FormField.Kind.NAME),
-        FormField("Город", a?.addressLevel2 ?: "", FormField.Kind.NAME),
-        FormField("Регион", a?.addressLevel1 ?: "", FormField.Kind.NAME),
-        FormField("Индекс", a?.postalCode ?: "", FormField.Kind.NUMBER),
-        FormField("Страна (код, например RU)", a?.country ?: "", FormField.Kind.CAPS),
-        FormField("Телефон", a?.tel ?: "", FormField.Kind.PHONE),
-        FormField("Эл. почта", a?.email ?: "", FormField.Kind.EMAIL),
+    fun form(a: Address?) = b.show(UiDialog.Form(if (a == null) T.addressNew else T.addressEdit, null, listOf(
+        FormField(T.addressName, a?.name ?: "", FormField.Kind.NAME),
+        FormField(T.addressOrganization, a?.organization ?: "", FormField.Kind.NAME),
+        FormField(T.addressStreet, a?.streetAddress ?: "", FormField.Kind.NAME),
+        FormField(T.addressCity, a?.addressLevel2 ?: "", FormField.Kind.NAME),
+        FormField(T.addressRegion, a?.addressLevel1 ?: "", FormField.Kind.NAME),
+        FormField(T.addressPostalCode, a?.postalCode ?: "", FormField.Kind.NUMBER),
+        FormField(T.addressCountry, a?.country ?: "", FormField.Kind.CAPS),
+        FormField(T.addressPhone, a?.tel ?: "", FormField.Kind.PHONE),
+        FormField(T.addressEmail, a?.email ?: "", FormField.Kind.EMAIL),
     ), onConfirm = { v ->
         val out = (a ?: Address(null)).copy(
             name = v[0].trim(), organization = v[1].trim(), streetAddress = v[2].trim(), addressLevel2 = v[3].trim(),
@@ -1074,17 +1081,17 @@ private fun AddressesPage(b: Browser, nav: Nav) {
         b.activity.lifecycleScope.launch { b.vault.io { saveAddress(out) }; revision++ }
         true
     }))
-    Screen(b, nav, "Адреса и другие данные") {
-        toggle(b, "Сохранять и заполнять адреса", "Имя, адрес, телефон и почта для форм на сайтах", "addressesEnabled", true, true)
-        section("Адреса")
-        if (list.isEmpty()) note("Сохранённых адресов нет")
+    Screen(b, nav, T.settingsAddresses) {
+        toggle(b, T.addressesEnabled, T.addressesEnabledSummary, "addressesEnabled", true, true)
+        section(T.addressesSection)
+        if (list.isEmpty()) note(T.addressesEmpty)
         list.forEach { a ->
             item(key = a.guid) {
                 SettingRow(addressLine(a), onClick = {
                     b.show(UiDialog.Items(addressLine(a), listOf(
-                        DialogButton("Изменить") { form(a) },
-                        DialogButton("Удалить") {
-                            b.confirm("Удалить адрес?", "Удалить") {
+                        DialogButton(T.actionEdit) { form(a) },
+                        DialogButton(T.actionDelete) {
+                            b.confirm(T.addressDeleteConfirm, T.actionDelete) {
                                 b.activity.lifecycleScope.launch { b.vault.io { deleteAddress(a.guid!!) }; revision++ }
                             }
                         },
@@ -1092,6 +1099,6 @@ private fun AddressesPage(b: Browser, nav: Nav) {
                 })
             }
         }
-        item { SettingRow("Добавить адрес", onClick = { form(null) }) }
+        item { SettingRow(T.addressAdd, onClick = { form(null) }) }
     }
 }

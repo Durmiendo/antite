@@ -8,6 +8,7 @@ import dev.antite.browser.engine.Engines
 import dev.antite.browser.engine.Offer
 import dev.antite.browser.engine.ShellOffer
 import dev.antite.browser.engine.UpdateDownloads
+import dev.antite.browser.l10n.T
 import dev.antite.browser.service.DownloadService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -47,20 +48,19 @@ class EngineNews(private val b: Browser) {
         if (active != null && active != seen) st.edit().putString("seenVersion", active).apply()
         val parts = notice?.split(' ')
         if (parts?.getOrNull(0) == "rollback") {
-            b.show(UiDialog.Message("Новый движок не запустился",
-                "Gecko ${parts.getOrNull(1)} трижды подряд не смог запуститься. Браузер вернул Gecko ${parts.getOrNull(2)}, " +
-                    "эта версия больше не будет предлагаться.", buttons = listOf(DialogButton("Понятно"))))
+            b.show(UiDialog.Message(T.engineRollbackTitle,
+                T.engineRollbackText(failed = parts.getOrNull(1), restored = parts.getOrNull(2)), buttons = listOf(DialogButton(T.actionOk))))
         } else if (seen != null && active != null && active != seen) {
-            b.toast("Движок обновлён: Gecko $active")
+            b.toast(T.engineUpdated(version = active))
         }
         val shell = st.getInt("shellAvailable", 0)
         if (!asked && shell > BuildConfig.VERSION_CODE && System.currentTimeMillis() >= st.getLong("postponed.shell$shell", 0)) {
             asked = true
-            b.show(UiDialog.Message("Доступна новая версия Antite",
-                "Сборка $shell. Скачать и установить? Система попросит подтвердить установку.",
+            b.show(UiDialog.Message(T.shellOfferTitle,
+                T.shellOfferText(version = shell),
                 buttons = listOf(
-                    DialogButton("Позже") { st.edit().putLong("postponed.shell$shell", System.currentTimeMillis() + POSTPONE_MS).apply() },
-                    DialogButton("Обновить") { updateShell() },
+                    DialogButton(T.actionLater) { st.edit().putLong("postponed.shell$shell", System.currentTimeMillis() + POSTPONE_MS).apply() },
+                    DialogButton(T.actionUpdate) { updateShell() },
                 )))
             return@launch
         }
@@ -70,29 +70,29 @@ class EngineNews(private val b: Browser) {
         ) return@launch
         if (System.currentTimeMillis() < st.getLong("postponed.$available", 0)) return@launch
         asked = true
-        b.show(UiDialog.Message("Доступен новый движок",
-            "Gecko $available. Скачать и установить? Браузер переключится на него после перезапуска.",
+        b.show(UiDialog.Message(T.engineOfferTitle,
+            T.engineOfferText(version = available),
             buttons = listOf(
-                DialogButton("Позже") { st.edit().putLong("postponed.$available", System.currentTimeMillis() + POSTPONE_MS).apply() },
-                DialogButton("Обновить") { update() },
+                DialogButton(T.actionLater) { st.edit().putLong("postponed.$available", System.currentTimeMillis() + POSTPONE_MS).apply() },
+                DialogButton(T.actionUpdate) { update() },
             )))
     }
 
     private fun update() = ctx.lifecycleScope.launch {
-        b.toast("Скачиваем движок…")
+        b.toast(T.engineDownloading)
         val offer = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx).engine }.getOrNull() }
-        if (offer == null) return@launch b.toast("Не удалось получить обновление")
+        if (offer == null) return@launch b.toast(T.engineUpdateUnavailable)
         install(offer)
     }
 
     // Without a progress callback nothing on screen shows the download, so a message does.
     fun updateShell(progress: ((Int) -> Unit)? = null, done: () -> Unit = {}) = ctx.lifecycleScope.launch {
-        if (progress == null) b.toast("Скачиваем новую версию Antite…")
+        if (progress == null) b.toast(T.shellDownloading)
         val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx).shell } }
         val offer = r.getOrNull()
         if (offer == null) {
             done()
-            return@launch b.toast("Не удалось обновить Antite: ${r.exceptionOrNull()?.message ?: "обновления больше нет в источнике"}")
+            return@launch b.toast(T.shellUpdateFailed(reason = r.exceptionOrNull()?.message ?: T.shellUpdateGone))
         }
         installShell(offer, progress ?: {}, done)
     }
@@ -100,7 +100,7 @@ class EngineNews(private val b: Browser) {
     fun installShell(offer: ShellOffer, progress: (Int) -> Unit = {}, done: () -> Unit = {}) =
         UpdateDownloads.shell(ctx, offer, progress) { status, error ->
             done()
-            if (status == DownloadService.FAILED) b.toast("Не удалось обновить Antite: ${error?.message}")
+            if (status == DownloadService.FAILED) b.toast(T.shellUpdateFailed(reason = error?.message))
         }
 
     fun install(offer: Offer, progress: (Int) -> Unit = {}, done: () -> Unit = {}) =
@@ -108,13 +108,13 @@ class EngineNews(private val b: Browser) {
             done()
             when (status) {
                 DownloadService.DONE -> askRestart(offer.entry.version)
-                DownloadService.FAILED -> b.toast("Не удалось скачать движок: ${error?.message}")
+                DownloadService.FAILED -> b.toast(T.engineDownloadFailed(reason = error?.message))
             }
         }
 
-    fun askRestart(version: String) = b.show(UiDialog.Message("Движок скачан",
-        "Gecko $version начнёт работать после перезапуска браузера.",
-        buttons = listOf(DialogButton("Позже"), DialogButton("Перезапустить") { restart() })))
+    fun askRestart(version: String) = b.show(UiDialog.Message(T.engineDownloadedTitle,
+        T.engineDownloadedText(version = version),
+        buttons = listOf(DialogButton(T.actionLater), DialogButton(T.actionRestart) { restart() })))
 
     fun restart() {
         b.saveNow()

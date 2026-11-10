@@ -1,6 +1,7 @@
 package dev.antite.browser
 
 import androidx.annotation.DrawableRes
+import dev.antite.browser.l10n.T
 import dev.antite.engine.Prompt
 
 class DialogButton(val label: String, val action: () -> Unit = {})
@@ -44,7 +45,7 @@ sealed interface UiDialog {
         val title: String,
         val message: String? = null,
         val fields: List<FormField>,
-        val confirm: String = "Сохранить",
+        val confirm: String = T.actionSave,
         val onConfirm: (List<String>) -> Boolean,
         override val onDismiss: () -> Unit = {},
     ) : UiDialog

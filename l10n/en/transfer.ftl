@@ -1,0 +1,12 @@
+transfer-waiting = Waiting for the browser to close…
+transfer-export-title = Export data
+transfer-import-title = Import data
+transfer-open-browser = Open the browser
+transfer-saving = Saving data…
+transfer-reading = Reading the file…
+transfer-exported = Done. All data is saved to the file.
+transfer-imported = Done. The data is restored.
+transfer-bad-password = Wrong password or a damaged file. The browser data is unchanged.
+transfer-export-failed = Could not save the data: { $reason }
+transfer-import-failed = Could not restore the data: { $reason }. The browser data is unchanged.
+transfer-cannot-stop = could not stop the browser processes

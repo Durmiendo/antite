@@ -38,11 +38,12 @@ import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
 import dev.antite.browser.data.Db
 import dev.antite.browser.data.Entry
+import dev.antite.browser.l10n.T
 import dev.antite.browser.service.Downloads
 import kotlinx.coroutines.launch
 
 fun ago(time: Long): String {
-    if (System.currentTimeMillis() - time < DateUtils.MINUTE_IN_MILLIS) return "только что"
+    if (System.currentTimeMillis() - time < DateUtils.MINUTE_IN_MILLIS) return T.timeJustNow
     return DateUtils.getRelativeTimeSpanString(time, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
         DateUtils.FORMAT_ABBREV_RELATIVE).toString()
 }
@@ -75,16 +76,16 @@ fun LibraryScreen(b: Browser) {
     }
 
     val title = when (kind) {
-        LibraryKind.HISTORY -> "История"
-        LibraryKind.BOOKMARKS -> "Закладки"
-        LibraryKind.CLOSED -> "Недавние вкладки"
-        LibraryKind.DOWNLOADS -> "Скачанные файлы"
+        LibraryKind.HISTORY -> T.menuHistory
+        LibraryKind.BOOKMARKS -> T.menuBookmarks
+        LibraryKind.CLOSED -> T.menuRecentTabs
+        LibraryKind.DOWNLOADS -> T.menuDownloads
     }
     val empty = when (kind) {
-        LibraryKind.HISTORY -> "История пуста"
-        LibraryKind.BOOKMARKS -> "Закладок пока нет. Добавить можно звездой в меню."
-        LibraryKind.CLOSED -> "Недавно закрытых вкладок нет"
-        LibraryKind.DOWNLOADS -> "Загрузок пока нет"
+        LibraryKind.HISTORY -> T.libraryHistoryEmpty
+        LibraryKind.BOOKMARKS -> T.libraryBookmarksEmpty
+        LibraryKind.CLOSED -> T.libraryClosedEmpty
+        LibraryKind.DOWNLOADS -> T.libraryDownloadsEmpty
     }
     val icon = when (kind) {
         LibraryKind.HISTORY -> R.drawable.ic_history
@@ -108,46 +109,46 @@ fun LibraryScreen(b: Browser) {
         val name = e.title?.ifEmpty { null } ?: e.url ?: ""
         val list = when (kind) {
             LibraryKind.HISTORY -> listOf(
-                DialogButton("Открыть в новой вкладке") { open(e, true) },
-                DialogButton("Копировать ссылку") { b.activity.copy(e.url ?: "") },
-                DialogButton("Удалить из истории") { change { deleteHistory(e.id) } },
+                DialogButton(T.openInNewTab) { open(e, true) },
+                DialogButton(T.actionCopyLink) { b.activity.copy(e.url ?: "") },
+                DialogButton(T.libraryDeleteFromHistory) { change { deleteHistory(e.id) } },
             )
             LibraryKind.BOOKMARKS -> listOf(
-                DialogButton("Открыть в новой вкладке") { open(e, true) },
-                DialogButton("Переименовать") {
-                    b.show(UiDialog.Form("Название закладки", null, listOf(FormField("Название", e.title ?: "")),
+                DialogButton(T.openInNewTab) { open(e, true) },
+                DialogButton(T.actionRename) {
+                    b.show(UiDialog.Form(T.libraryBookmarkName, null, listOf(FormField(T.ntpTileName, e.title ?: "")),
                         onConfirm = { v -> change { renameBookmark(e.id, v[0].trim()) }; true }))
                 },
-                DialogButton("Копировать ссылку") { b.activity.copy(e.url ?: "") },
-                DialogButton("Удалить") { change { deleteBookmark(e.id) } },
+                DialogButton(T.actionCopyLink) { b.activity.copy(e.url ?: "") },
+                DialogButton(T.actionDelete) { change { deleteBookmark(e.id) } },
             )
             LibraryKind.CLOSED -> listOf(
-                DialogButton("Восстановить") { open(e, false) },
-                DialogButton("Копировать ссылку") { b.activity.copy(e.url ?: "") },
-                DialogButton("Удалить из списка") { change { deleteClosed(e.id) } },
+                DialogButton(T.actionRestore) { open(e, false) },
+                DialogButton(T.actionCopyLink) { b.activity.copy(e.url ?: "") },
+                DialogButton(T.libraryRemoveFromList) { change { deleteClosed(e.id) } },
             )
             LibraryKind.DOWNLOADS -> if (Downloads.loading(e)) listOf(
-                DialogButton("Отменить загрузку") { b.downloads.cancel(e) },
+                DialogButton(T.libraryCancelDownload) { b.downloads.cancel(e) },
             ) else listOf(
-                DialogButton("Открыть") { b.downloads.open(e) },
-                DialogButton("Поделиться") { b.downloads.share(e) },
-                DialogButton("Убрать из списка") { change { deleteDownload(e.id) } },
+                DialogButton(T.actionOpen) { b.downloads.open(e) },
+                DialogButton(T.actionShare) { b.downloads.share(e) },
+                DialogButton(T.libraryDropFromList) { change { deleteDownload(e.id) } },
             )
         }
         b.show(UiDialog.Items(name, list))
     }
 
     fun clearAll() = when (kind) {
-        LibraryKind.HISTORY -> b.confirm("Удалить всю историю просмотров?", "Удалить") { change { clearHistory() } }
+        LibraryKind.HISTORY -> b.confirm(T.libraryClearHistory, T.actionDelete) { change { clearHistory() } }
         LibraryKind.CLOSED -> change { clearClosed() }
-        LibraryKind.DOWNLOADS -> b.confirm("Очистить список загрузок? Сами файлы останутся в папке Download.", "Очистить") {
+        LibraryKind.DOWNLOADS -> b.confirm(T.libraryClearDownloads, T.actionClear) {
             change { clearDownloads() }
         }
         LibraryKind.BOOKMARKS -> {}
     }
 
     PageScaffold(title, { b.overlay = dev.antite.browser.Overlay.NONE }, actions = {
-        if (kind != LibraryKind.BOOKMARKS) TextButton(onClick = ::clearAll) { Text("Очистить", color = p.accent) }
+        if (kind != LibraryKind.BOOKMARKS) TextButton(onClick = ::clearAll) { Text(T.actionClear, color = p.accent) }
     }) {
         item {
             Row(
@@ -161,7 +162,7 @@ fun LibraryScreen(b: Browser) {
                     modifier = Modifier.weight(1f).padding(start = 10.dp),
                     decorationBox = { inner ->
                         Box(contentAlignment = Alignment.CenterStart) {
-                            if (filter.isEmpty()) Text("Поиск", color = p.textSecondary, fontSize = 16.sp)
+                            if (filter.isEmpty()) Text(T.librarySearch, color = p.textSecondary, fontSize = 16.sp)
                             inner()
                         }
                     })
@@ -173,7 +174,7 @@ fun LibraryScreen(b: Browser) {
             val sub = when (kind) {
                 LibraryKind.HISTORY -> "$host · ${ago(e.time)}"
                 LibraryKind.BOOKMARKS -> e.url
-                LibraryKind.CLOSED -> "$host · закрыта ${ago(e.time)}"
+                LibraryKind.CLOSED -> T.libraryClosedAt(host = host, ago = ago(e.time))
                 LibraryKind.DOWNLOADS -> "${Downloads.status(e)} · ${ago(e.time)}"
             }
             SettingRow(

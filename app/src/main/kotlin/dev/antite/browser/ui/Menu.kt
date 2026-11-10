@@ -47,6 +47,7 @@ import dev.antite.browser.Browser
 import dev.antite.browser.LibraryKind
 import dev.antite.browser.R
 import dev.antite.browser.Urls
+import dev.antite.browser.l10n.T
 
 private sealed interface MenuEntry {
     class Item(@DrawableRes val icon: Int, val label: String, val enabled: Boolean = true, val action: () -> Unit) : MenuEntry
@@ -76,49 +77,49 @@ fun BrowserMenu(b: Browser) {
     val open = { b.menuOpen }
     if (more) {
         MenuPopup(open, close, scroll, emptyList(), listOf(
-            MenuEntry.Item(R.drawable.ic_picture_as_pdf, "Сохранить как PDF", web) { b.downloads.savePdf(t) },
-            MenuEntry.Item(R.drawable.ic_link, "Копировать ссылку") { b.activity.copy(t.url) },
-            MenuEntry.Item(R.drawable.ic_refresh, "Обновить без кэша") { b.ensureSession(t).reload(bypassCache = true) },
-            MenuEntry.Item(R.drawable.ic_restore_page, "Недавние вкладки") { b.showLibrary(LibraryKind.CLOSED) },
+            MenuEntry.Item(R.drawable.ic_picture_as_pdf, T.menuSavePdf, web) { b.downloads.savePdf(t) },
+            MenuEntry.Item(R.drawable.ic_link, T.menuCopyLink) { b.activity.copy(t.url) },
+            MenuEntry.Item(R.drawable.ic_refresh, T.menuReloadNoCache) { b.ensureSession(t).reload(bypassCache = true) },
+            MenuEntry.Item(R.drawable.ic_restore_page, T.menuRecentTabs) { b.showLibrary(LibraryKind.CLOSED) },
         ))
         return
     }
     val bookmarked = web && t.bookmarked
     MenuPopup(open, close, scroll, listOf(
-        TopIcon(R.drawable.ic_arrow_forward, "Вперёд", t.canGoForward) { b.ensureSession(t).goForward() },
+        TopIcon(R.drawable.ic_arrow_forward, T.menuForward, t.canGoForward) { b.ensureSession(t).goForward() },
         TopIcon(if (bookmarked) R.drawable.ic_star_fill1 else R.drawable.ic_star,
-            if (bookmarked) "Удалить из закладок" else "Добавить в закладки", web) { b.toggleBookmark(t) },
-        TopIcon(R.drawable.ic_download, "Сохранить как PDF", web) { b.downloads.savePdf(t) },
-        TopIcon(R.drawable.ic_info, "Сведения о сайте", true) { b.pageInfo() },
-        TopIcon(if (t.loading) R.drawable.ic_close else R.drawable.ic_refresh, if (t.loading) "Остановить" else "Обновить", true) {
+            if (bookmarked) T.menuBookmarkRemove else T.menuBookmarkAdd, web) { b.toggleBookmark(t) },
+        TopIcon(R.drawable.ic_download, T.menuSavePdf, web) { b.downloads.savePdf(t) },
+        TopIcon(R.drawable.ic_info, T.menuPageInfo, true) { b.pageInfo() },
+        TopIcon(if (t.loading) R.drawable.ic_close else R.drawable.ic_refresh, if (t.loading) T.menuStop else T.menuReload, true) {
             val s = b.ensureSession(t)
             if (t.loading) s.stop() else s.reload()
         },
     ), listOf(
-        MenuEntry.Item(R.drawable.ic_add_box, "Новая вкладка") { b.newTabAndFocus(false) },
-        MenuEntry.Item(R.drawable.ic_incognito, "Новая вкладка инкогнито") { b.newTabAndFocus(true) },
+        MenuEntry.Item(R.drawable.ic_add_box, T.tabNew) { b.newTabAndFocus(false) },
+        MenuEntry.Item(R.drawable.ic_incognito, T.menuNewIncognitoTab) { b.newTabAndFocus(true) },
         MenuEntry.Line,
-        MenuEntry.Item(R.drawable.ic_history, "История") { b.showLibrary(LibraryKind.HISTORY) },
-        MenuEntry.Item(R.drawable.ic_delete, "Удалить данные о работе в браузере") { b.clearDataDialog() },
+        MenuEntry.Item(R.drawable.ic_history, T.menuHistory) { b.showLibrary(LibraryKind.HISTORY) },
+        MenuEntry.Item(R.drawable.ic_delete, T.menuClearData) { b.clearDataDialog() },
         MenuEntry.Line,
-        MenuEntry.Item(R.drawable.ic_download_done, "Скачанные файлы") { b.showLibrary(LibraryKind.DOWNLOADS) },
-        MenuEntry.Item(R.drawable.ic_star, "Закладки") { b.showLibrary(LibraryKind.BOOKMARKS) },
-        MenuEntry.Item(R.drawable.ic_folder, "Добавить все вкладки в закладки") { b.bookmarkAllTabs() },
-        MenuEntry.Item(R.drawable.ic_devices, "Недавние вкладки") { b.showLibrary(LibraryKind.CLOSED) },
-        MenuEntry.Item(R.drawable.ic_extension, "Открыть меню расширений") { b.openExtensionsMenu() },
+        MenuEntry.Item(R.drawable.ic_download_done, T.menuDownloads) { b.showLibrary(LibraryKind.DOWNLOADS) },
+        MenuEntry.Item(R.drawable.ic_star, T.menuBookmarks) { b.showLibrary(LibraryKind.BOOKMARKS) },
+        MenuEntry.Item(R.drawable.ic_folder, T.menuBookmarkAll) { b.bookmarkAllTabs() },
+        MenuEntry.Item(R.drawable.ic_devices, T.menuRecentTabs) { b.showLibrary(LibraryKind.CLOSED) },
+        MenuEntry.Item(R.drawable.ic_extension, T.menuExtensions) { b.openExtensionsMenu() },
         MenuEntry.Line,
-        MenuEntry.Item(R.drawable.ic_share, "Поделиться…") { b.activity.share(t.url, t.title) },
-        MenuEntry.Item(R.drawable.ic_find_in_page, "Найти на странице") { b.showFind() },
-        MenuEntry.Item(R.drawable.ic_translate, if (t.translated) "Показать оригинал" else "Перевести…") { b.translate(t) },
-        MenuEntry.Sub(R.drawable.ic_home_repair_service, "Ещё инструменты") { more = true },
-        MenuEntry.Item(R.drawable.ic_install_desktop, "Установить и создать ярлык") { b.activity.addShortcut(t, b.icons.get(Urls.host(t.url))) },
+        MenuEntry.Item(R.drawable.ic_share, T.menuShare) { b.activity.share(t.url, t.title) },
+        MenuEntry.Item(R.drawable.ic_find_in_page, T.menuFind) { b.showFind() },
+        MenuEntry.Item(R.drawable.ic_translate, if (t.translated) T.menuShowOriginal else T.menuTranslate) { b.translate(t) },
+        MenuEntry.Sub(R.drawable.ic_home_repair_service, T.menuMoreTools) { more = true },
+        MenuEntry.Item(R.drawable.ic_install_desktop, T.menuInstallShortcut) { b.activity.addShortcut(t, b.icons.get(Urls.host(t.url))) },
         MenuEntry.Item(R.drawable.ic_description, "View source") {
             if (t.url.isNotEmpty() && !t.url.startsWith("view-source:")) b.openTab("view-source:" + t.url, t.incognito, t, true)
         },
-        MenuEntry.Check(R.drawable.ic_desktop_windows, "Версия для ПК", t.desktop) { b.toggleDesktop(t) },
-        MenuEntry.Check(R.drawable.ic_brightness_6, "Тёмная тема", b.prefs.isDark()) { b.toggleDark() },
+        MenuEntry.Check(R.drawable.ic_desktop_windows, T.menuDesktopSite, t.desktop) { b.toggleDesktop(t) },
+        MenuEntry.Check(R.drawable.ic_brightness_6, T.menuDarkTheme, b.prefs.isDark()) { b.toggleDark() },
         MenuEntry.Line,
-        MenuEntry.Item(R.drawable.ic_settings, "Настройки") { b.showSettings() },
+        MenuEntry.Item(R.drawable.ic_settings, T.menuSettings) { b.showSettings() },
         MenuEntry.Item(R.drawable.ic_exit_to_app, "Exit") { b.exitApp() },
     ))
 }

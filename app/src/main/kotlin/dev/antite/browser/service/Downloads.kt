@@ -12,6 +12,7 @@ import dev.antite.browser.Browser
 import dev.antite.browser.Urls
 import dev.antite.browser.data.Entry
 import dev.antite.browser.data.Tab
+import dev.antite.browser.l10n.T
 import dev.antite.engine.DownloadRequest
 import kotlinx.coroutines.launch
 import java.io.InputStream
@@ -40,7 +41,7 @@ class Downloads(private val b: Browser) {
     fun savePdf(t: Tab) {
         val base = (t.title.ifEmpty { Urls.host(t.url) }).replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80)
         b.ensureSession(t).saveAsPdf { input ->
-            if (input != null) save(input, "$base.pdf", "application/pdf", null, -1) else b.toast("Не удалось сохранить PDF")
+            if (input != null) save(input, "$base.pdf", "application/pdf", null, -1) else b.toast(T.downloadPdfFailed)
         }
     }
 
@@ -53,7 +54,7 @@ class Downloads(private val b: Browser) {
     }
 
     private fun save(body: InputStream, name: String, mime: String, chosen: Uri?, total: Long) {
-        b.toast("Загрузка: $name")
+        b.toast(T.downloadStarted(name = name))
         askNotifications()
         b.activity.lifecycleScope.launch {
             val id = b.db.io { addDownload(name, mime) }
@@ -65,12 +66,12 @@ class Downloads(private val b: Browser) {
     fun cancel(e: Entry) = DownloadService.cancel(e.id)
 
     fun open(e: Entry) {
-        val url = e.url ?: return b.toast("Файл ещё не готов")
+        val url = e.url ?: return b.toast(T.downloadNotReady)
         try {
             b.activity.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(url), mime(e))
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         } catch (ex: Exception) {
-            b.toast("Нет приложения, чтобы открыть этот файл")
+            b.toast(T.downloadNoApp)
         }
     }
 
@@ -84,12 +85,12 @@ class Downloads(private val b: Browser) {
 
     companion object {
         fun status(e: Entry): String = when (e.extra?.split('|')?.firstOrNull()) {
-            DownloadService.DONE -> "Скачано"
-            DownloadService.FAILED -> "Ошибка"
-            DownloadService.CANCELLED -> "Отменено"
+            DownloadService.DONE -> T.downloadStatusDone
+            DownloadService.FAILED -> T.downloadStatusFailed
+            DownloadService.CANCELLED -> T.downloadStatusCancelled
             else -> when (val p = DownloadService.progress[e.id]) {
-                null, -1f -> "Загружается"
-                else -> "Загружается ${(p * 100).toInt()}%"
+                null, -1f -> T.downloadStatusLoading
+                else -> T.downloadStatusPercent(percent = (p * 100).toInt())
             }
         }
 

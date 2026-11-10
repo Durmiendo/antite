@@ -82,6 +82,7 @@ import dev.antite.browser.Browser
 import dev.antite.browser.Overlay
 import dev.antite.browser.R
 import dev.antite.browser.Urls
+import dev.antite.browser.l10n.T
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
@@ -262,7 +263,7 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
 
     Column(modifier.fillMaxWidth().height(56.dp).background(if (inc) p.toolbarIncognito else p.toolbar)) {
         Row(Modifier.fillMaxWidth().weight(1f).padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (b.prefs.bool("homeButton", false) && !b.urlFocused) IconBtn(R.drawable.ic_home, "Главная страница") { b.goHome() }
+            if (b.prefs.bool("homeButton", false) && !b.urlFocused) IconBtn(R.drawable.ic_home, T.toolbarHome) { b.goHome() }
             Row(
                 Modifier.weight(1f).height(40.dp).background(if (inc) p.pillIncognito else p.pill, RoundedCornerShape(20.dp))
                     .padding(horizontal = 4.dp),
@@ -297,7 +298,7 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
                         decorationBox = { inner ->
                             Box(contentAlignment = Alignment.CenterStart) {
                                 if (b.urlFocused) {
-                                    if (field.text.isEmpty()) Text("Введите запрос или URL", color = p.textSecondary, fontSize = 16.sp)
+                                    if (field.text.isEmpty()) Text(T.toolbarHint, color = p.textSecondary, fontSize = 16.sp)
                                     inner()
                                 } else {
                                     UrlText(t?.url.orEmpty())
@@ -314,14 +315,14 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
                 }
             }
             if (!b.urlFocused) {
-                IconBtn(R.drawable.ic_add, "Новая вкладка") { b.newTabAndFocus(inc) }
+                IconBtn(R.drawable.ic_add, T.tabNew) { b.newTabAndFocus(inc) }
                 val n = b.incognitoCount(inc)
                 Box(Modifier.size(48.dp).clickable { b.showSwitcher() }, contentAlignment = Alignment.Center) {
                     Box(Modifier.size(22.dp).border(2.dp, p.text, RoundedCornerShape(5.dp)), contentAlignment = Alignment.Center) {
                         Text(if (n >= 100) ":D" else n.toString(), color = p.text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Box(Modifier.width(40.dp).height(48.dp).clickable(onClickLabel = "Меню") { b.menuOpen = true }.semantics { contentDescription = "Меню" }, contentAlignment = Alignment.Center) {
+                Box(Modifier.width(40.dp).height(48.dp).clickable(onClickLabel = T.toolbarMenu) { b.menuOpen = true }.semantics { contentDescription = T.toolbarMenu }, contentAlignment = Alignment.Center) {
                     Ico(R.drawable.ic_more_vert)
                 }
             }
@@ -344,7 +345,7 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
 private fun UrlText(url: String) {
     val p = LocalPalette.current
     if (Urls.isBlank(url)) {
-        Text("Введите запрос или URL", color = p.textSecondary, fontSize = 16.sp, maxLines = 1)
+        Text(T.toolbarHint, color = p.textSecondary, fontSize = 16.sp, maxLines = 1)
         return
     }
     val d = remember(url) { Urls.display(url) }
@@ -398,15 +399,15 @@ private fun FindBar(b: Browser) {
             modifier = Modifier.weight(1f).focusRequester(focus),
             decorationBox = { inner ->
                 Box(contentAlignment = Alignment.CenterStart) {
-                    if (text.isEmpty()) Text("Найти на странице", color = p.textSecondary, fontSize = 16.sp)
+                    if (text.isEmpty()) Text(T.findHint, color = p.textSecondary, fontSize = 16.sp)
                     inner()
                 }
             },
         )
         Text(b.findResult, color = p.textSecondary, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 8.dp))
-        IconBtn(R.drawable.ic_keyboard_arrow_up, "Назад") { b.find(null, backwards = true) }
-        IconBtn(R.drawable.ic_keyboard_arrow_down, "Вперёд") { b.find(null) }
-        IconBtn(R.drawable.ic_close, "Закрыть") { b.hideFind() }
+        IconBtn(R.drawable.ic_keyboard_arrow_up, T.findPrevious) { b.find(null, backwards = true) }
+        IconBtn(R.drawable.ic_keyboard_arrow_down, T.findNext) { b.find(null) }
+        IconBtn(R.drawable.ic_close, T.actionClose) { b.hideFind() }
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 }
@@ -426,12 +427,12 @@ private fun LoginBar(b: Browser, offer: dev.antite.engine.Prompt.SelectLogin, mo
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Ico(R.drawable.ic_key, size = 18)
-                    Text(if (o.generated) "Предложить надёжный пароль" else o.login.username.ifEmpty { "Без имени пользователя" },
+                    Text(if (o.generated) T.loginSuggestStrong else o.login.username.ifEmpty { T.passwordNoUsername },
                         color = p.text, fontSize = 14.sp, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
                 }
             }
         }
-        IconBtn(R.drawable.ic_close, "Скрыть") { b.dismissLoginOffer() }
+        IconBtn(R.drawable.ic_close, T.actionHide) { b.dismissLoginOffer() }
     }
 }
 
@@ -441,13 +442,13 @@ private fun DefaultBrowserBar(b: Browser, modifier: Modifier) {
     Column(modifier.fillMaxWidth().background(p.menu).padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Ico(R.drawable.ic_public)
-            Text("Сделать Antite браузером по умолчанию?", color = p.text, fontSize = 14.sp,
+            Text(T.defaultBrowserQuestion, color = p.text, fontSize = 14.sp,
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            listOf("Нет" to { b.answerDefaultBrowser(yes = false, later = false) },
-                "Позже" to { b.answerDefaultBrowser(yes = false, later = true) },
-                "Да" to { b.answerDefaultBrowser(yes = true, later = false) }).forEach { (label, action) ->
+            listOf(T.actionNo to { b.answerDefaultBrowser(yes = false, later = false) },
+                T.actionLater to { b.answerDefaultBrowser(yes = false, later = true) },
+                T.actionYes to { b.answerDefaultBrowser(yes = true, later = false) }).forEach { (label, action) ->
                 Text(label, color = p.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp,
                     modifier = Modifier.clickable(onClick = action).padding(12.dp))
             }
@@ -464,12 +465,12 @@ private fun TranslateBar(b: Browser, text: String, modifier: Modifier) {
     ) {
         Ico(R.drawable.ic_translate)
         Text(text, color = p.text, fontSize = 14.sp, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-        Text("Перевести", color = p.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+        Text(T.translateAction, color = p.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp,
             modifier = Modifier.clickable {
                 b.translateOffer = null
                 b.current?.let(b::translate)
             }.padding(12.dp))
-        IconBtn(R.drawable.ic_close, "Закрыть") { b.translateOffer = null }
+        IconBtn(R.drawable.ic_close, T.actionClose) { b.translateOffer = null }
     }
 }
 

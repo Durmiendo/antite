@@ -1,0 +1,16 @@
+prompt-auth-title = Sign in required
+prompt-password = Password
+prompt-username = Username
+prompt-sign-in = Sign in
+prompt-leave-page = Leave the page? Changes may not be saved.
+prompt-stay = Stay
+prompt-leave = Leave
+prompt-repost = Send the form data again?
+prompt-resend = Send
+prompt-select-card = Choose a card
+prompt-select-address = Choose an address
+prompt-save-card = Save the card?
+prompt-card-valid-until = Valid until { $month }/{ $year }
+prompt-save-address = Save the address?
+prompt-empty-address = Empty address
+prompt-color = Color

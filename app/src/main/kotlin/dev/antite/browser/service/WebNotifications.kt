@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.Uri
 import dev.antite.browser.MainActivity
 import dev.antite.browser.R
+import dev.antite.browser.l10n.T
 import dev.antite.engine.NotificationHandler
 import dev.antite.engine.WebNotificationEvent
 
@@ -26,7 +27,7 @@ class WebNotifications(context: Context) : NotificationHandler {
 
     private val app = context.applicationContext
     private val nm = app.getSystemService(NotificationManager::class.java).apply {
-        createNotificationChannel(NotificationChannel(CHANNEL, "Уведомления сайтов", NotificationManager.IMPORTANCE_DEFAULT))
+        createNotificationChannel(NotificationChannel(CHANNEL, T.notificationsSitesChannel, NotificationManager.IMPORTANCE_DEFAULT))
     }
 
     override fun onNotification(event: WebNotificationEvent) {

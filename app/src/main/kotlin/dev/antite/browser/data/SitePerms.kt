@@ -1,23 +1,29 @@
 package dev.antite.browser.data
 
 import android.content.Context
+import dev.antite.browser.l10n.T
 import dev.antite.engine.Engine
 import dev.antite.engine.PermissionDefault
 import dev.antite.engine.PermissionValue
 import dev.antite.engine.SitePermission
 
 class SitePerms(context: Context, private val prefs: Prefs, private val engine: Engine) {
+    // Texts are read when shown, so they follow the interface language.
     class Cat(
         val key: String,
-        val title: String,
+        private val titleOf: () -> String,
         val engineKinds: List<SitePermission>,
-        val labels: List<String>,
+        private val labelsOf: () -> List<String>,
         val values: List<Int>,
         val def: Int,
-        val request: String?,
-        val note: String?,
+        private val requestOf: (() -> String)?,
+        private val noteOf: (() -> String)?,
     ) {
-        val perSite: Boolean get() = note == null
+        val title: String get() = titleOf()
+        val labels: List<String> get() = labelsOf()
+        val request: String? get() = requestOf?.invoke()
+        val note: String? get() = noteOf?.invoke()
+        val perSite: Boolean get() = noteOf == null
     }
 
     companion object {
@@ -26,34 +32,32 @@ class SitePerms(context: Context, private val prefs: Prefs, private val engine: 
         const val BLOCK = 2
         const val MUTED = 3
 
-        private val ASK_BLOCK = listOf("Спрашивать", "Блокировать") to listOf(ASK, BLOCK)
-        private val ALLOW_BLOCK = listOf("Разрешать", "Блокировать") to listOf(ALLOW, BLOCK)
-        private val ALLOW_ASK_BLOCK = listOf("Разрешать", "Спрашивать", "Блокировать") to listOf(ALLOW, ASK, BLOCK)
+        private val ASK_BLOCK = { listOf(T.permAsk, T.permBlock) } to listOf(ASK, BLOCK)
+        private val ALLOW_BLOCK = { listOf(T.permAllow, T.permBlock) } to listOf(ALLOW, BLOCK)
+        private val ALLOW_ASK_BLOCK = { listOf(T.permAllow, T.permAsk, T.permBlock) } to listOf(ALLOW, ASK, BLOCK)
 
         private fun cat(
-            key: String, title: String, kinds: List<SitePermission>, opts: Pair<List<String>, List<Int>>,
-            def: Int, request: String?, note: String? = null,
+            key: String, title: () -> String, kinds: List<SitePermission>, opts: Pair<() -> List<String>, List<Int>>,
+            def: Int, request: (() -> String)?, note: (() -> String)? = null,
         ) = Cat(key, title, kinds, opts.first, opts.second, def, request, note)
 
-        val LOCATION = cat("location", "Местоположение", listOf(SitePermission.LOCATION), ASK_BLOCK, 0, "ваше местоположение")
-        val CAMERA = cat("camera", "Камера", emptyList(), ASK_BLOCK, 0, "доступ к камере")
-        val MIC = cat("mic", "Микрофон", emptyList(), ASK_BLOCK, 0, "доступ к микрофону")
-        val NOTIFICATIONS = cat("notifications", "Уведомления", listOf(SitePermission.NOTIFICATIONS), ASK_BLOCK, 0,
-            "разрешение показывать уведомления")
-        val JS = cat("js", "JavaScript", emptyList(), ALLOW_BLOCK, 0, null)
-        val POPUPS = cat("popups", "Всплывающие окна", emptyList(), ALLOW_BLOCK, 1, null)
-        val AUTOPLAY = Cat("autoplay", "Автовоспроизведение",
+        val LOCATION = cat("location", { T.permLocation }, listOf(SitePermission.LOCATION), ASK_BLOCK, 0, { T.permLocationRequest })
+        val CAMERA = cat("camera", { T.permCamera }, emptyList(), ASK_BLOCK, 0, { T.permCameraRequest })
+        val MIC = cat("mic", { T.permMic }, emptyList(), ASK_BLOCK, 0, { T.permMicRequest })
+        val NOTIFICATIONS = cat("notifications", { T.permNotifications }, listOf(SitePermission.NOTIFICATIONS), ASK_BLOCK, 0,
+            { T.permNotificationsRequest })
+        val JS = cat("js", { T.permJs }, emptyList(), ALLOW_BLOCK, 0, null)
+        val POPUPS = cat("popups", { T.permPopups }, emptyList(), ALLOW_BLOCK, 1, null)
+        val AUTOPLAY = Cat("autoplay", { T.permAutoplay },
             listOf(SitePermission.AUTOPLAY_AUDIBLE, SitePermission.AUTOPLAY_INAUDIBLE),
-            listOf("Разрешать", "Только без звука", "Блокировать"), listOf(ALLOW, MUTED, BLOCK), 1, null, null)
-        val DRM = cat("drm", "Защищённый контент", listOf(SitePermission.DRM), ALLOW_ASK_BLOCK, 0,
-            "воспроизведение защищённого контента (DRM)")
-        val STORAGE = cat("storage", "Постоянное хранилище", listOf(SitePermission.PERSISTENT_STORAGE), ALLOW_ASK_BLOCK, 0,
-            "постоянное хранилище данных")
-        val LNA = cat("lna", "Доступ к локальной сети", listOf(SitePermission.LOCAL_NETWORK, SitePermission.LOCAL_DEVICE),
-            ASK_BLOCK, 0, "доступ к устройствам в локальной сети")
-        val XR = cat("xr", "Виртуальная реальность", listOf(SitePermission.XR), ASK_BLOCK, 0, "доступ к VR-устройствам")
-        val SENSORS = cat("sensors", "Датчики движения", emptyList(), ALLOW_BLOCK, 0, null,
-            "Движок применяет это сразу ко всем сайтам, исключений нет")
+            { listOf(T.permAllow, T.permMutedOnly, T.permBlock) }, listOf(ALLOW, MUTED, BLOCK), 1, null, null)
+        val DRM = cat("drm", { T.permDrm }, listOf(SitePermission.DRM), ALLOW_ASK_BLOCK, 0, { T.permDrmRequest })
+        val STORAGE = cat("storage", { T.permStorage }, listOf(SitePermission.PERSISTENT_STORAGE), ALLOW_ASK_BLOCK, 0,
+            { T.permStorageRequest })
+        val LNA = cat("lna", { T.permLna }, listOf(SitePermission.LOCAL_NETWORK, SitePermission.LOCAL_DEVICE),
+            ASK_BLOCK, 0, { T.permLnaRequest })
+        val XR = cat("xr", { T.permXr }, listOf(SitePermission.XR), ASK_BLOCK, 0, { T.permXrRequest })
+        val SENSORS = cat("sensors", { T.permSensors }, emptyList(), ALLOW_BLOCK, 0, null, { T.permSensorsNote })
 
         val ALL = listOf(LOCATION, CAMERA, MIC, NOTIFICATIONS, JS, POPUPS, AUTOPLAY, DRM, STORAGE, LNA, XR, SENSORS)
 
@@ -158,9 +162,9 @@ class SitePerms(context: Context, private val prefs: Prefs, private val engine: 
     fun label(c: Cat, value: Int): String {
         val i = c.values.indexOf(value)
         return if (i >= 0) c.labels[i] else when (value) {
-            ALLOW -> "Разрешать"
-            BLOCK -> "Блокировать"
-            else -> "Спрашивать"
+            ALLOW -> T.permAllow
+            BLOCK -> T.permBlock
+            else -> T.permAsk
         }
     }
 }

@@ -21,6 +21,7 @@ import dev.antite.browser.data.SitePerms
 import dev.antite.browser.data.Tab
 import dev.antite.browser.data.TabStore
 import dev.antite.browser.data.Vault
+import dev.antite.browser.l10n.T
 import dev.antite.browser.service.AutofillBridge
 import dev.antite.browser.service.Downloads
 import dev.antite.browser.service.MediaPlayback
@@ -140,7 +141,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     }
 
     fun confirm(text: String, button: String, action: () -> Unit) = show(
-        UiDialog.Message(message = text, buttons = listOf(DialogButton("Отмена"), DialogButton(button, action))),
+        UiDialog.Message(message = text, buttons = listOf(DialogButton(T.actionCancel), DialogButton(button, action))),
     )
 
     // ---------------------------------------------------------------- tabs
@@ -347,7 +348,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val data = intent?.data
         // An explicit intent passes any scheme past the filter; javascript: would run in the open page.
         if (data != null && data.scheme?.lowercase() !in setOf("http", "https")) {
-            toast("Ссылка не открыта: ${data.scheme}: не поддерживается")
+            toast(T.linkUnsupported(scheme = data.scheme))
             if (needTab) newTabAndFocus(false)
             return
         }
@@ -444,8 +445,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun makeDefaultBrowser() {
         activity.requestDefaultBrowser { ok ->
-            if (ok || activity.isDefaultBrowser()) toast("Antite - браузер по умолчанию")
-            else toast("Не вышло. Браузер по умолчанию выбирается в настройках Android")
+            if (ok || activity.isDefaultBrowser()) toast(T.defaultBrowserDone)
+            else toast(T.defaultBrowserFailed)
         }
     }
 
@@ -524,7 +525,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val add = !t.bookmarked
         t.bookmarked = add
         activity.lifecycleScope.launch { db.io { if (add) addBookmark(url, title) else removeBookmark(url) } }
-        toast(if (add) "Добавлено в закладки" else "Удалено из закладок")
+        toast(if (add) T.bookmarkAdded else T.bookmarkRemoved)
     }
 
     fun bookmarkAllTabs() {
@@ -532,7 +533,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val data = pages.map { it.url to it.title }
         activity.lifecycleScope.launch { db.io { data.forEach { addBookmark(it.first, it.second) } } }
         pages.forEach { it.bookmarked = true }
-        toast("В закладки добавлено вкладок: ${pages.size}")
+        toast(T.bookmarksAddedTabs(count = pages.size))
     }
 
     fun translate(t: Tab) {
@@ -548,16 +549,16 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             runTranslation(s, from, to)
             return
         }
-        val tr = engine.translation ?: return toast("Перевод недоступен")
+        val tr = engine.translation ?: return toast(T.translateUnavailable)
         tr.supported({ fromList, _ ->
-            show(UiDialog.Items("Язык страницы", fromList.map { l -> DialogButton(l.name) { runTranslation(s, l.code, to) } }))
-        }, { toast("Перевод недоступен") })
+            show(UiDialog.Items(T.translatePageLanguage, fromList.map { l -> DialogButton(l.name) { runTranslation(s, l.code, to) } }))
+        }, { toast(T.translateUnavailable) })
     }
 
     private fun runTranslation(s: EngineTab, from: String, to: String) {
-        if (from == to) return toast("Страница уже на языке перевода")
-        toast("Перевод… Первый раз скачивается языковая модель")
-        s.translate(from, to) { err -> if (err != null) toast("Не удалось перевести: $err") }
+        if (from == to) return toast(T.translateSameLanguage)
+        toast(T.translateInProgress)
+        s.translate(from, to) { err -> if (err != null) toast(T.translateFailed(reason = err)) }
     }
 
     fun clearData(cache: Boolean, siteData: Boolean, permissions: Boolean, history: Boolean) {
@@ -580,14 +581,14 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             if (siteData) add(DataKind.COOKIES_AND_SITE_DATA)
             if (permissions) add(DataKind.PERMISSIONS)
         }
-        engine.storage.clear(kinds) { ok -> toast(if (ok) "Удалено" else "Не удалось удалить данные") }
+        engine.storage.clear(kinds) { ok -> toast(if (ok) T.clearDataDone else T.clearDataFailed) }
     }
 
     fun openExtensionsMenu() {
         val ext = engine.extensions
         val list = ext?.list().orEmpty()
-        if (ext == null || list.isEmpty()) return toast("Расширений нет")
-        show(UiDialog.Items("Расширения", list.map { e ->
+        if (ext == null || list.isEmpty()) return toast(T.extensionsNone)
+        show(UiDialog.Items(T.extensionsTitle, list.map { e ->
             DialogButton(e.name) {
                 if (e.hasAction) ext.clickAction(e.id) else e.optionsUrl?.let { openTab(it, false, current, true) }
             }
@@ -596,7 +597,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun openUboDashboard() {
         val ubo = engine.extensions?.list()?.firstOrNull { it.id == UBO_ID }?.optionsUrl
-        if (ubo == null) return toast("uBlock Origin ещё не установлен")
+        if (ubo == null) return toast(T.uboNotInstalled)
         overlay = Overlay.NONE
         openTab(ubo, false, current, true)
     }
@@ -619,10 +620,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     }
 
     fun clearDataDialog() = show(UiDialog.Checks(
-        "Удалить данные",
-        listOf("Кэш", "Cookie и данные сайтов", "Разрешения сайтов", "История просмотров"),
+        T.clearDataTitle,
+        listOf(T.clearDataCache, T.clearDataCookies, T.clearDataPermissions, T.clearDataHistory),
         listOf(true, true, false, false),
-        "Удалить",
+        T.actionDelete,
         { c -> clearData(c[0], c[1], c[2], c[3]) },
     ))
 
@@ -632,20 +633,20 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val text = buildString {
             append(t.url).append("\n\n")
             if (t.url.startsWith("https://")) {
-                append(if (t.secure) "Подключение защищено" else "Подключение не защищено")
-                if (t.issuer.isNotEmpty()) append("\nСертификат: ").append(issuerName(t.issuer))
+                append(if (t.secure) T.pageInfoSecure else T.pageInfoInsecure)
+                if (t.issuer.isNotEmpty()) append("\n").append(T.pageInfoCertificate(issuer = issuerName(t.issuer)))
             } else if (t.url.startsWith("http://")) {
-                append("Подключение не защищено (HTTP)")
+                append(T.pageInfoHttp)
             }
-            if (t.incognito) append("\n\nРежим инкогнито")
+            if (t.incognito) append("\n\n").append(T.pageInfoIncognito)
         }
         show(UiDialog.Message(
-            title = host ?: "Сведения о сайте",
+            title = host ?: T.menuPageInfo,
             message = text,
             buttons = buildList {
-                add(DialogButton("Копировать URL") { activity.copy(t.url) })
-                if (Urls.isWeb(t.url)) add(DialogButton("Настройки сайта") { showSettings(Urls.siteHost(t.url)) })
-                add(DialogButton("OK"))
+                add(DialogButton(T.pageInfoCopyUrl) { activity.copy(t.url) })
+                if (Urls.isWeb(t.url)) add(DialogButton(T.pageInfoSiteSettings) { showSettings(Urls.siteHost(t.url)) })
+                add(DialogButton(T.actionConfirm))
             },
         ))
     }
@@ -662,25 +663,25 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val link = info.linkUrl
         val src = info.srcUrl
         if (link != null) {
-            items += DialogButton("Открыть в новой вкладке") {
+            items += DialogButton(T.openInNewTab) {
                 openTab(link, t.incognito, t, false)
-                toast("Вкладка открыта в фоне")
+                toast(T.contextTabOpened)
             }
-            if (!t.incognito) items += DialogButton("Открыть в новой вкладке инкогнито") { openTab(link, true, null, true) }
-            items += DialogButton("Копировать адрес ссылки") { activity.copy(link) }
+            if (!t.incognito) items += DialogButton(T.contextOpenIncognito) { openTab(link, true, null, true) }
+            items += DialogButton(T.contextCopyLinkAddress) { activity.copy(link) }
             info.linkText?.takeIf { it.isNotEmpty() }?.let { text ->
-                items += DialogButton("Копировать текст ссылки") { activity.copy(text) }
+                items += DialogButton(T.contextCopyLinkText) { activity.copy(text) }
             }
-            items += DialogButton("Поделиться ссылкой") { activity.share(link, null) }
+            items += DialogButton(T.contextShareLink) { activity.share(link, null) }
         }
         if (src != null && info.isImage) {
-            items += DialogButton("Открыть изображение в новой вкладке") { openTab(src, t.incognito, t, false) }
-            items += DialogButton("Скачать изображение") {
+            items += DialogButton(T.contextOpenImage) { openTab(src, t.incognito, t, false) }
+            items += DialogButton(T.contextDownloadImage) {
                 engine.download(src, t.url, t.incognito) { r ->
-                    if (r != null) downloads.start(r, prefs.bool("dlAsk", false)) else toast("Не удалось скачать изображение")
+                    if (r != null) downloads.start(r, prefs.bool("dlAsk", false)) else toast(T.contextDownloadImageFailed)
                 }
             }
-            items += DialogButton("Копировать адрес изображения") { activity.copy(src) }
+            items += DialogButton(T.contextCopyImageAddress) { activity.copy(src) }
         }
         if (items.isNotEmpty()) show(UiDialog.Items(link ?: src, items))
     }
@@ -690,13 +691,13 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     private fun askSite(icon: Int, host: String, what: String, answer: (Int) -> Unit) {
         var result = -1
         show(UiDialog.Message(
-            title = "$host запрашивает $what",
+            title = T.siteAsks(host = host, what = what),
             icon = icon,
             stacked = true,
             buttons = listOf(
-                DialogButton("Разрешить при посещении сайта") { result = SitePerms.ALLOW },
-                DialogButton("Разрешить в этот раз") { result = ALLOW_ONCE },
-                DialogButton("Не разрешать") { result = SitePerms.BLOCK },
+                DialogButton(T.siteAllowAlways) { result = SitePerms.ALLOW },
+                DialogButton(T.siteAllowOnce) { result = ALLOW_ONCE },
+                DialogButton(T.siteDeny) { result = SitePerms.BLOCK },
             ),
             onDismiss = { answer(result) },
         ))
@@ -727,7 +728,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             if (mode == SitePerms.ALLOW) r.allow() else r.deny()
             return
         }
-        askSite(permIcon(c), h, c.request ?: "разрешение") { answer ->
+        askSite(permIcon(c), h, c.request ?: T.sitePermissionGeneric) { answer ->
             if ((answer == SitePerms.ALLOW || answer == SitePerms.BLOCK) && !t.incognito) {
                 perms.setException(c, h, answer)
             } else {
@@ -748,9 +749,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val askMic = mic && perms.decide(SitePerms.MIC, h) == SitePerms.ASK
         if (!askCam && !askMic) return r.grant(cam, mic)
         val what = when {
-            askCam && askMic -> "доступ к камере и микрофону"
-            askCam -> "доступ к камере"
-            else -> "доступ к микрофону"
+            askCam && askMic -> T.siteCameraAndMic
+            askCam -> T.permCameraRequest
+            else -> T.permMicRequest
         }
         askSite(if (askCam) R.drawable.ic_videocam else R.drawable.ic_mic, h, what) { answer ->
             if ((answer == SitePerms.ALLOW || answer == SitePerms.BLOCK) && !t.incognito) {
@@ -774,7 +775,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
                 val ok = perms.decide(SitePerms.POPUPS, Urls.siteHost(t.url)) == SitePerms.ALLOW
                 if (ok) p.allow() else {
                     p.dismiss()
-                    toast("Всплывающее окно заблокировано")
+                    toast(T.popupBlocked)
                 }
             }
             is Prompt.File -> activity.pickFiles(p.mimeTypes, p.multiple) { uris ->
@@ -786,7 +787,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
                 dismissLoginOffer()
                 loginOffer = p
             }
-            is Prompt.SelectCard -> Auth.require(activity, "Заполнить данные карты", { show(UiDialog.Engine(p)) }, { p.dismiss() })
+            is Prompt.SelectCard -> Auth.require(activity, T.cardFillAuth, { show(UiDialog.Engine(p)) }, { p.dismiss() })
             is Prompt.SaveCard -> if (prefs.bool("cardsEnabled", true)) show(UiDialog.Engine(p)) else p.dismiss()
             is Prompt.SaveAddress -> if (prefs.bool("addressesEnabled", true)) show(UiDialog.Engine(p)) else p.dismiss()
             else -> show(UiDialog.Engine(p))
@@ -926,14 +927,14 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         override fun onTranslationOffer() {
             if (t !== current || !prefs.bool("translateOffer", true)) return
             val from = t.docLang?.let { Urls.langName(it) + " → " } ?: ""
-            translateOffer = "Перевести страницу? $from" + Urls.langName(prefs.translateTarget)
+            translateOffer = T.translateOffer(languages = from + Urls.langName(prefs.translateTarget))
             main.postDelayed({ translateOffer = null }, 15000)
         }
 
         override fun onTranslationState(state: TranslationState) {
             state.pageLanguage?.let { t.docLang = it }
             t.translated = state.translated
-            if (state.error != null && t === current) toast("Ошибка перевода: ${state.error}")
+            if (state.error != null && t === current) toast(T.translateError(reason = state.error))
         }
 
         override fun onMedia(event: MediaEvent) {

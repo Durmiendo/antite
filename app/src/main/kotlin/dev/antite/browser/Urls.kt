@@ -102,7 +102,7 @@ object Urls {
     }
 
     fun langName(code: String): String {
-        val n = Locale.forLanguageTag(code).getDisplayName(Locale.forLanguageTag("ru"))
+        val n = Locale.forLanguageTag(code).getDisplayName(Locale.forLanguageTag(dev.antite.browser.l10n.L10n.code))
         if (n.isEmpty()) return code
         return n.substring(0, 1).uppercase(Locale.ROOT) + n.substring(1)
     }

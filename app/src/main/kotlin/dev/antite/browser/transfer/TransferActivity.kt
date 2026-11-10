@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.antite.browser.MainActivity
+import dev.antite.browser.l10n.T
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.LocalPalette
 import java.io.FileNotFoundException
@@ -52,7 +53,7 @@ class TransferActivity : ComponentActivity() {
                 )
     }
 
-    private var status by mutableStateOf("Ждём закрытия браузера…")
+    private var status by mutableStateOf(T.transferWaiting)
     private var fraction by mutableStateOf<Float?>(null)
     private var finished by mutableStateOf(false)
 
@@ -70,7 +71,7 @@ class TransferActivity : ComponentActivity() {
                     Modifier.fillMaxSize().background(p.background).padding(32.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text(if (intent.getBooleanExtra(EXTRA_EXPORT, true)) "Экспорт данных" else "Импорт данных",
+                    Text(if (intent.getBooleanExtra(EXTRA_EXPORT, true)) T.transferExportTitle else T.transferImportTitle,
                         color = p.text, fontSize = 22.sp)
                     Text(status, color = p.textSecondary, fontSize = 16.sp, modifier = Modifier.padding(vertical = 16.dp))
                     if (!finished) {
@@ -81,7 +82,7 @@ class TransferActivity : ComponentActivity() {
                             LinearProgressIndicator({ f }, Modifier.fillMaxWidth(), color = p.accent)
                         }
                     } else {
-                        TextButton(onClick = ::openBrowser) { Text("Открыть браузер", color = p.accent, fontSize = 16.sp) }
+                        TextButton(onClick = ::openBrowser) { Text(T.transferOpenBrowser, color = p.accent, fontSize = 16.sp) }
                     }
                 }
             }
@@ -97,7 +98,7 @@ class TransferActivity : ComponentActivity() {
         val result = try {
             if (uri == null || password == null) throw IOException("no file")
             stopOtherProcesses()
-            status = if (export) "Сохраняем данные…" else "Читаем файл…"
+            status = if (export) T.transferSaving else T.transferReading
             var last = 0L
             val report = { p: Progress ->
                 val now = SystemClock.elapsedRealtime()
@@ -109,19 +110,19 @@ class TransferActivity : ComponentActivity() {
             if (export) {
                 val out = contentResolver.openOutputStream(uri, "wt") ?: throw FileNotFoundException()
                 out.use { DataTransfer.export(this, dataDir, it, password, report) }
-                "Готово. Все данные сохранены в файл."
+                T.transferExported
             } else {
                 val size = contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
                     ?.use { if (it.moveToFirst()) it.getLong(0) else -1L } ?: -1L
                 val input = contentResolver.openInputStream(uri) ?: throw FileNotFoundException()
                 input.use { DataTransfer.import(this, dataDir, it, size, password, report) }
-                "Готово. Данные восстановлены."
+                T.transferImported
             }
         } catch (e: WrongPasswordException) {
-            "Неверный пароль или файл повреждён. Данные браузера не изменены."
+            T.transferBadPassword
         } catch (e: Exception) {
             Log.w("Antite", "transfer failed", e)
-            if (export) "Не удалось сохранить данные: ${e.message}" else "Не удалось восстановить данные: ${e.message}. Данные браузера не изменены."
+            if (export) T.transferExportFailed(reason = e.message) else T.transferImportFailed(reason = e.message)
         } finally {
             password?.fill(' ')
         }
@@ -144,7 +145,7 @@ class TransferActivity : ComponentActivity() {
             list.forEach { Process.killProcess(it.pid) }
             Thread.sleep(100)
         }
-        throw IOException("не удалось остановить процессы браузера")
+        throw IOException(T.transferCannotStop)
     }
 
     private fun openBrowser() {

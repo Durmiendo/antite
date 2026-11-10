@@ -30,6 +30,7 @@ import androidx.lifecycle.Lifecycle
 import dev.antite.browser.data.Tab
 import dev.antite.browser.engine.EngineSetupActivity
 import dev.antite.browser.engine.Engines
+import dev.antite.browser.l10n.T
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.BrowserScreen
 import dev.antite.browser.ui.LocalBrowser
@@ -230,7 +231,7 @@ class MainActivity : ComponentActivity() {
         val clip = ClipData.newPlainText(if (sensitive) "password" else "url", text)
         if (sensitive) clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
         getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
-        browser.toast("Скопировано")
+        browser.toast(T.toastCopied)
     }
 
     fun share(url: String, title: String?) {
@@ -241,9 +242,9 @@ class MainActivity : ComponentActivity() {
     }
 
     fun addShortcut(t: Tab, icon: Bitmap?) {
-        if (!Urls.isWeb(t.url)) return browser.toast("Ярлык можно создать только для сайта")
+        if (!Urls.isWeb(t.url)) return browser.toast(T.shortcutSiteOnly)
         val sm = getSystemService(ShortcutManager::class.java)
-        if (sm == null || !sm.isRequestPinShortcutSupported) return browser.toast("Рабочий стол не поддерживает ярлыки")
+        if (sm == null || !sm.isRequestPinShortcutSupported) return browser.toast(T.shortcutUnsupported)
         val host = Urls.host(t.url)
         val label = t.title.ifEmpty { host }
         sm.requestPinShortcut(ShortcutInfo.Builder(this, "site-" + t.url.hashCode())

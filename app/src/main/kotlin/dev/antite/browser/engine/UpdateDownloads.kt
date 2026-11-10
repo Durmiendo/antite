@@ -3,6 +3,7 @@ package dev.antite.browser.engine
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import dev.antite.browser.l10n.T
 import dev.antite.browser.service.DownloadService
 
 // The engine and Antite builds download like files: a notification with progress, speed and cancel, and the download
@@ -10,9 +11,9 @@ import dev.antite.browser.service.DownloadService
 object UpdateDownloads {
     private val main = Handler(Looper.getMainLooper())
 
-    fun engineName(offer: Offer) = "Движок Gecko ${offer.entry.version}"
+    fun engineName(offer: Offer) = T.engineDownloadName(version = offer.entry.version)
 
-    fun shellName(offer: ShellOffer) = "Antite, сборка ${offer.version}"
+    fun shellName(offer: ShellOffer) = T.shellDownloadName(version = offer.version)
 
     fun engineTask(context: Context, offer: Offer) = DownloadService.job(engineName(offer)) { t ->
         EngineUpdates.install(context, offer) { done, total -> t.report(done, total) }

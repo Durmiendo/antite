@@ -11,6 +11,7 @@ import android.graphics.Rect
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.util.Rational
+import dev.antite.browser.l10n.T
 import dev.antite.engine.MediaController
 import dev.antite.engine.MediaEvent
 
@@ -120,7 +121,7 @@ class Pip(private val activity: MainActivity) {
             activity, 0, Intent(ACTION_TOGGLE).setPackage(activity.packageName),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val label = if (play) "Играть" else "Пауза"
+        val label = if (play) T.mediaPlay else T.mediaPause
         val icon = if (play) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause
         return RemoteAction(Icon.createWithResource(activity, icon), label, label, intent)
     }

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
 import android.util.Log
+import dev.antite.browser.l10n.T
 import java.io.File
 
 object ShellInstaller {
@@ -52,7 +53,7 @@ class ShellInstallReceiver : BroadcastReceiver() {
                 val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
                 Log.w("Antite", "shell update failed: $status $message")
                 EngineUpdates.state(context).edit()
-                    .putString("lastError", "новая версия Antite не установилась: ${message ?: status}").apply()
+                    .putString("lastError", T.shellInstallFailed(reason = message ?: status)).apply()
             }
         }
     }

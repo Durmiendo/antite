@@ -1,0 +1,16 @@
+prompt-auth-title = Требуется вход
+prompt-password = Пароль
+prompt-username = Имя пользователя
+prompt-sign-in = Войти
+prompt-leave-page = Покинуть страницу? Изменения могут не сохраниться.
+prompt-stay = Остаться
+prompt-leave = Покинуть
+prompt-repost = Отправить данные формы повторно?
+prompt-resend = Отправить
+prompt-select-card = Выберите карту
+prompt-select-address = Выберите адрес
+prompt-save-card = Сохранить карту?
+prompt-card-valid-until = Действует до { $month }/{ $year }
+prompt-save-address = Сохранить адрес?
+prompt-empty-address = Пустой адрес
+prompt-color = Цвет

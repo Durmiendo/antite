@@ -6,6 +6,7 @@ import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.os.CancellationSignal
 import android.os.SystemClock
+import dev.antite.browser.l10n.T
 
 object Auth {
     private const val GRACE_MS = 60_000L
@@ -16,7 +17,7 @@ object Auth {
         if (lastOk != 0L && SystemClock.elapsedRealtime() - lastOk < GRACE_MS) return ok()
         val km = a.getSystemService(KeyguardManager::class.java)
         if (km == null || !km.isDeviceSecure) {
-            onUnavailable("Чтобы открыть пароли, включите блокировку экрана в настройках Android")
+            onUnavailable(T.authNeedScreenLock)
             return cancelled()
         }
         BiometricPrompt.Builder(a)

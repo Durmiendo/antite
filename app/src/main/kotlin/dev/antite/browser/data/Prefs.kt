@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import androidx.compose.runtime.mutableIntStateOf
+import dev.antite.browser.l10n.T
 import dev.antite.engine.BackgroundService
 import dev.antite.engine.ColorScheme
 import dev.antite.engine.CookiePolicy
@@ -16,11 +17,12 @@ import java.util.Locale
 
 data class Option<T>(val label: String, val value: T)
 
+// Lists with labels are built when read, so the labels follow the interface language.
 object Options {
-    val engines = listOf(
+    val engines get() = listOf(
         Option("DuckDuckGo", "https://duckduckgo.com/?q="),
         Option("Google", "https://www.google.com/search?q="),
-        Option("Яндекс", "https://yandex.ru/search/?text="),
+        Option(T.engineYandex, "https://yandex.ru/search/?text="),
         Option("Bing", "https://www.bing.com/search?q="),
         Option("Startpage", "https://www.startpage.com/do/search?q="),
     )
@@ -31,54 +33,54 @@ object Options {
         "https://api.bing.com/osjson.aspx?query=",
         "https://duckduckgo.com/ac/?type=list&q=",
     )
-    val tracking = listOf(
-        Option("Стандартная", TrackingProtection.STANDARD),
-        Option("Строгая", TrackingProtection.STRICT),
-        Option("Выключена", TrackingProtection.OFF),
+    val tracking get() = listOf(
+        Option(T.trackingStandard, TrackingProtection.STANDARD),
+        Option(T.trackingStrict, TrackingProtection.STRICT),
+        Option(T.trackingOff, TrackingProtection.OFF),
     )
-    val cookies = listOf(
-        Option("Полная защита (изолировать сторонние)", CookiePolicy.ISOLATE_THIRD_PARTY),
-        Option("Блокировать сторонние трекеры", CookiePolicy.BLOCK_TRACKERS),
-        Option("Блокировать все сторонние", CookiePolicy.BLOCK_THIRD_PARTY),
-        Option("Разрешить все", CookiePolicy.ALLOW_ALL),
+    val cookies get() = listOf(
+        Option(T.cookiesIsolate, CookiePolicy.ISOLATE_THIRD_PARTY),
+        Option(T.cookiesBlockTrackers, CookiePolicy.BLOCK_TRACKERS),
+        Option(T.cookiesBlockThirdParty, CookiePolicy.BLOCK_THIRD_PARTY),
+        Option(T.cookiesAllowAll, CookiePolicy.ALLOW_ALL),
     )
-    val doh = listOf<Option<String?>>(
-        Option("Выключено", null),
+    val doh get() = listOf<Option<String?>>(
+        Option(T.dohOff, null),
         Option("Cloudflare", "https://mozilla.cloudflare-dns.com/dns-query"),
         Option("Quad9", "https://dns.quad9.net/dns-query"),
         Option("Mullvad", "https://dns.mullvad.net/dns-query"),
-        Option("AdGuard (с блокировкой рекламы)", "https://dns.adguard-dns.com/dns-query"),
+        Option(T.dohAdguard, "https://dns.adguard-dns.com/dns-query"),
     )
-    val dohModes = listOf(
-        Option("Если доступен (иначе обычный DNS)", DnsOverHttpsMode.FALLBACK),
-        Option("Только защищённый DNS", DnsOverHttpsMode.ONLY),
+    val dohModes get() = listOf(
+        Option(T.dohModeFallback, DnsOverHttpsMode.FALLBACK),
+        Option(T.dohModeOnly, DnsOverHttpsMode.ONLY),
     )
     val fonts = listOf(0.8f, 0.9f, 1f, 1.1f, 1.2f, 1.3f, 1.5f, 1.75f, 2f).map { Option("${(it * 100).toInt()}%", it) }
-    val startup = listOf(Option("Последние вкладки", 0), Option("Новая вкладка", 1))
-    val external = listOf(Option("В новой вкладке", 0), Option("В текущей вкладке", 1))
-    val themes = listOf(
-        Option("Как в системе", ColorScheme.SYSTEM),
-        Option("Светлая", ColorScheme.LIGHT),
-        Option("Тёмная", ColorScheme.DARK),
+    val startup get() = listOf(Option(T.startupLastTabs, 0), Option(T.tabNew, 1))
+    val external get() = listOf(Option(T.externalNewTab, 0), Option(T.externalCurrentTab, 1))
+    val themes get() = listOf(
+        Option(T.themeSystem, ColorScheme.SYSTEM),
+        Option(T.themeLight, ColorScheme.LIGHT),
+        Option(T.themeDark, ColorScheme.DARK),
     )
-    val webRtc = listOf(
-        Option("Без ограничений", WebRtcPolicy.DEFAULT),
-        Option("Не раскрывать локальный IP", WebRtcPolicy.HIDE_LOCAL_IP),
-        Option("Только через прокси", WebRtcPolicy.PROXY_ONLY),
-        Option("Отключить WebRTC", WebRtcPolicy.DISABLED),
+    val webRtc get() = listOf(
+        Option(T.webrtcDefault, WebRtcPolicy.DEFAULT),
+        Option(T.webrtcHideLocalIp, WebRtcPolicy.HIDE_LOCAL_IP),
+        Option(T.webrtcProxyOnly, WebRtcPolicy.PROXY_ONLY),
+        Option(T.webrtcDisabled, WebRtcPolicy.DISABLED),
     )
-    val fingerprint = listOf(
-        Option("Стандартная (в инкогнито)", FingerprintProtection.PRIVATE_ONLY),
-        Option("Усиленная (везде)", FingerprintProtection.ALWAYS),
-        Option("Максимальная (resistFingerprinting)", FingerprintProtection.MAXIMUM),
+    val fingerprint get() = listOf(
+        Option(T.fingerprintPrivate, FingerprintProtection.PRIVATE_ONLY),
+        Option(T.fingerprintAlways, FingerprintProtection.ALWAYS),
+        Option(T.fingerprintMaximum, FingerprintProtection.MAXIMUM),
     )
-    val updateInstall = listOf(Option("Спрашивать", 0), Option("Автоматически", 1))
-    val updateInterval = listOf(
-        Option("Раз в минуту, пока браузер открыт", 1), Option("Раз в 15 минут", 15), Option("Раз в час", 60),
-        Option("Раз в 6 часов", 360), Option("Раз в день", 1440),
+    val updateInstall get() = listOf(Option(T.updateInstallAsk, 0), Option(T.updateInstallAuto, 1))
+    val updateInterval get() = listOf(
+        Option(T.updateEveryMinute, 1), Option(T.updateEvery15Minutes, 15), Option(T.updateEveryHour, 60),
+        Option(T.updateEvery6Hours, 360), Option(T.updateEveryDay, 1440),
     )
-    val tabLayouts = listOf(Option("Сетка", 0), Option("Список (как в Яндексе)", 1))
-    val homeModes = listOf(Option("Новая вкладка", 0), Option("Свой адрес", 1))
+    val tabLayouts get() = listOf(Option(T.tabLayoutGrid, 0), Option(T.tabLayoutList, 1))
+    val homeModes get() = listOf(Option(T.tabNew, 0), Option(T.homeOwnAddress, 1))
     val languages = listOf(
         "ru", "en", "uk", "be", "kk", "de", "fr", "es", "it", "pt", "pl", "cs", "tr", "zh", "ja", "ko", "ar", "he",
         "hi", "fi", "sv", "nl", "el", "hu", "ro", "bg", "sr", "ka", "hy", "az", "uz", "lv", "lt", "et", "vi", "id",

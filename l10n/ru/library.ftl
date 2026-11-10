@@ -1,0 +1,14 @@
+time-just-now = только что
+library-history-empty = История пуста
+library-bookmarks-empty = Закладок пока нет. Добавить можно звездой в меню.
+library-closed-empty = Недавно закрытых вкладок нет
+library-downloads-empty = Загрузок пока нет
+library-delete-from-history = Удалить из истории
+library-bookmark-name = Название закладки
+library-remove-from-list = Удалить из списка
+library-cancel-download = Отменить загрузку
+library-drop-from-list = Убрать из списка
+library-clear-history = Удалить всю историю просмотров?
+library-clear-downloads = Очистить список загрузок? Сами файлы останутся в папке Download.
+library-search = Поиск
+library-closed-at = { $host } · закрыта { $ago }

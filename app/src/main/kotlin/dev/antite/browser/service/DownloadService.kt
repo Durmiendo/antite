@@ -19,6 +19,7 @@ import android.util.Log
 import androidx.compose.runtime.mutableStateMapOf
 import dev.antite.browser.R
 import dev.antite.browser.data.Db
+import dev.antite.browser.l10n.T
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -142,7 +143,7 @@ class DownloadService : Service() {
         if (t == null) {
             if (foreground == null) {
                 startForeground(Int.MAX_VALUE, Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_download)
-                    .setContentTitle("Загрузки").build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                    .setContentTitle(T.downloadsChannel).build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
             }
             return
         }
@@ -174,7 +175,7 @@ class DownloadService : Service() {
 
     class Runner(private val context: Context) {
         private val nm = context.getSystemService(NotificationManager::class.java).apply {
-            createNotificationChannel(NotificationChannel(CHANNEL, "Загрузки", NotificationManager.IMPORTANCE_LOW))
+            createNotificationChannel(NotificationChannel(CHANNEL, T.downloadsChannel, NotificationManager.IMPORTANCE_LOW))
         }
 
         private fun mb(bytes: Long) = Formatter.formatShortFileSize(context, bytes)
@@ -190,7 +191,7 @@ class DownloadService : Service() {
                 .setProgress(100, if (known) (t.done * 100 / t.total).toInt() else 0, !known)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .addAction(Notification.Action.Builder(null, "Отмена", cancel).build())
+                .addAction(Notification.Action.Builder(null, T.actionCancel, cancel).build())
                 .build()
         }
 
@@ -198,28 +199,28 @@ class DownloadService : Service() {
             val parts = mutableListOf<String>()
             if (t.total > 0) {
                 parts += "${done * 100 / t.total}%"
-                parts += "${mb(done)} из ${mb(t.total)}"
+                parts += T.downloadSizeOf(done = mb(done), total = mb(t.total))
             } else {
                 parts += mb(done)
             }
             if (t.speed > 0) {
-                parts += "${mb(t.speed.toLong())}/с"
-                if (t.total > 0) parts += "осталось " + eta(((t.total - done) / t.speed).toLong())
+                parts += T.downloadSpeed(size = mb(t.speed.toLong()))
+                if (t.total > 0) parts += T.downloadTimeLeft(time = eta(((t.total - done) / t.speed).toLong()))
             }
             return parts.joinToString(" · ")
         }
 
         private fun eta(seconds: Long): String = when {
-            seconds < 60 -> "${maxOf(seconds, 1)} с"
-            seconds < 3600 -> "${(seconds + 30) / 60} мин"
-            else -> "${seconds / 3600} ч ${(seconds % 3600) / 60} мин"
+            seconds < 60 -> T.timeSeconds(n = maxOf(seconds, 1))
+            seconds < 3600 -> T.timeMinutes(n = (seconds + 30) / 60)
+            else -> T.timeHoursMinutes(hours = seconds / 3600, minutes = (seconds % 3600) / 60)
         }
 
         fun resultNotification(t: Task, status: String, uri: Uri?) {
             if (status == CANCELLED) return nm.cancel(notificationId(t.id))
             val b = Notification.Builder(context, CHANNEL)
                 .setSmallIcon(if (status == DONE) android.R.drawable.stat_sys_download_done else android.R.drawable.stat_notify_error)
-                .setContentTitle(if (status == DONE) "Скачано" else "Не удалось скачать")
+                .setContentTitle(if (status == DONE) T.downloadStatusDone else T.downloadFailed)
                 .setContentText(t.name)
                 .setAutoCancel(true)
             if (status == DONE && uri != null) {

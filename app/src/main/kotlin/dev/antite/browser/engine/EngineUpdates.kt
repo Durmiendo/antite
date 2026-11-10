@@ -14,6 +14,7 @@ import android.util.Log
 import dev.antite.browser.BuildConfig
 import dev.antite.browser.MainActivity
 import dev.antite.browser.R
+import dev.antite.browser.l10n.T
 import dev.antite.browser.service.DownloadService
 import java.io.File
 import java.io.IOException
@@ -69,7 +70,7 @@ object EngineUpdates {
         val key = "serial.${source.id}"
         val index = EngineIndex.verify(json, sig, EngineIndex.publicKey(source.key), st.getLong(key, 0))
         st.edit().putLong(key, index.serial).commit()
-        val abi = Abi.current ?: throw IOException("неизвестная архитектура процессора ${System.getProperty("os.arch")}")
+        val abi = Abi.current ?: throw IOException(T.engineUnknownAbi(arch = System.getProperty("os.arch")))
         val engine = index.choose(abi, dev.antite.engine.BuildConfig.ENGINE_API, BuildConfig.VERSION_CODE)?.let { Offer(it, abi, source) }
         val shell = index.shell?.let { s -> s.apk[abi]?.let { ShellOffer(s.version, it, source) } }
         return Fetched(engine, shell)
@@ -85,9 +86,9 @@ object EngineUpdates {
             fetch(context, s)
         } catch (e: IndexExpiredException) {
             val date = java.text.DateFormat.getDateInstance().format(java.util.Date(e.expires * 1000))
-            return Found(null, null, listOf("${s.name}: список движков устарел ($date). Проверьте дату на телефоне"))
+            return Found(null, null, listOf(T.engineIndexExpired(source = s.name, date = date)))
         } catch (e: IndexException) {
-            return Found(null, null, listOf("${s.name}: подпись не прошла проверку"))
+            return Found(null, null, listOf(T.engineIndexBadSignature(source = s.name)))
         } catch (e: Exception) {
             return Found(null, null, listOf("${s.name}: ${e.message ?: e.javaClass.simpleName}"))
         }
@@ -101,10 +102,10 @@ object EngineUpdates {
 
     // Debug mode: what an index at any address offers, without checking its signature; nothing is remembered.
     fun fromAddress(context: Context, url: String): Updates {
-        if (!debugEnabled(context)) throw IOException("режим отладки выключен")
+        if (!debugEnabled(context)) throw IOException(T.engineDebugOff)
         val index = EngineIndex.unsigned(fetcher.open(url).use(InputStream::readBytes))
-        val abi = Abi.current ?: throw IOException("неизвестная архитектура процессора ${System.getProperty("os.arch")}")
-        val source = Source("debug", "Отладка", url, "", enabled = false)
+        val abi = Abi.current ?: throw IOException(T.engineUnknownAbi(arch = System.getProperty("os.arch")))
+        val source = Source("debug", T.engineDebugSource, url, "", enabled = false)
         val engine = index.choose(abi, dev.antite.engine.BuildConfig.ENGINE_API, BuildConfig.VERSION_CODE)?.let { Offer(it, abi, source) }
         val shell = index.shell?.let { s -> s.apk[abi]?.let { ShellOffer(s.version, it, source) } }
         return Updates(engine, shell)
@@ -197,7 +198,7 @@ object EngineUpdates {
 
     fun notify(context: Context, id: Int, title: String, text: String) {
         val nm = context.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Обновления браузера", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, T.updatesChannel, NotificationManager.IMPORTANCE_LOW))
         val open = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val n = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_public)
@@ -228,11 +229,11 @@ object EngineUpdates {
         }
         // A shell is installed by the system installer, which always asks the user.
         updates.shell?.let {
-            notify(context, NOTIFY_SHELL, "Доступна новая версия Antite", "Сборка ${it.version}. Откройте браузер, чтобы обновить")
+            notify(context, NOTIFY_SHELL, T.updatesShellAvailable, T.updatesShellAvailableText(version = it.version))
         }
         val offer = updates.engine ?: return
         if (settings(context).getInt(INSTALL, INSTALL_ASK) != INSTALL_AUTO) {
-            notify(context, NOTIFY_ENGINE, "Доступен новый движок", "Gecko ${offer.entry.version}. Откройте браузер, чтобы обновить")
+            notify(context, NOTIFY_ENGINE, T.updatesEngineAvailable, T.updatesEngineAvailableText(version = offer.entry.version))
             return
         }
         val metered = context.getSystemService(ConnectivityManager::class.java).isActiveNetworkMetered
@@ -242,7 +243,7 @@ object EngineUpdates {
         }
         val task = UpdateDownloads.engineTask(context, offer)
         if (DownloadService.runHere(context, task) == DownloadService.FAILED) {
-            state(context).edit().putString("lastError", "не удалось скачать: ${task.error?.message}").commit()
+            state(context).edit().putString("lastError", T.updatesDownloadFailed(reason = task.error?.message)).commit()
         }
     }
 }

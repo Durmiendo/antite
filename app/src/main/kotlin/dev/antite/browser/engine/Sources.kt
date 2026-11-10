@@ -2,6 +2,7 @@ package dev.antite.browser.engine
 
 import android.content.Context
 import dev.antite.browser.BuildConfig
+import dev.antite.browser.l10n.T
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -36,11 +37,11 @@ object Sources {
         val b64 = text.replace(Regex("-----[A-Z ]+-----"), "").filterNot(Char::isWhitespace)
         try {
             val key = EngineIndex.publicKey(b64)
-            if (key.algorithm != "EC") throw SourceException("ключ не ECDSA")
+            if (key.algorithm != "EC") throw SourceException(T.sourceErrorNotEc)
         } catch (e: SourceException) {
             throw e
         } catch (e: Exception) {
-            throw SourceException("это не открытый ключ ECDSA P-256")
+            throw SourceException(T.sourceErrorNotP256)
         }
         return b64
     }
@@ -69,13 +70,13 @@ object Sources {
     }
 
     fun setUpdateSource(context: Context, id: String) {
-        if (enabled(context).none { it.id == id }) throw SourceException("источник выключен или удалён")
+        if (enabled(context).none { it.id == id }) throw SourceException(T.sourceErrorDisabled)
         state(context).edit().putString(UPDATE, id).remove("available").remove("shellAvailable").commit()
     }
 
     @Synchronized
     fun save(context: Context, sources: List<Source>) {
-        if (sources.none { it.enabled }) throw SourceException("должен остаться хотя бы один включённый источник")
+        if (sources.none { it.enabled }) throw SourceException(T.sourceErrorLast)
         val arr = JSONArray()
         for (s in sources) {
             val o = JSONObject().put("id", s.id).put("enabled", s.enabled)
@@ -87,7 +88,7 @@ object Sources {
 
     fun add(context: Context, name: String, url: String, key: String, onlyThis: Boolean = false): Source {
         if (!url.startsWith("https://") && !url.startsWith("http://localhost:") && !url.startsWith("http://127.0.0.1:")) {
-            throw SourceException("адрес должен начинаться с https://")
+            throw SourceException(T.sourceErrorHttps)
         }
         val current = list(context)
         val s = Source("s" + System.currentTimeMillis(), name.ifBlank { android.net.Uri.parse(url).host ?: url }, url, parseKey(key), true)
@@ -108,7 +109,7 @@ object Sources {
     }
 
     private fun requireNotUpdateSource(context: Context, id: String) {
-        if (updateSource(context).id == id) throw SourceException("это источник обновлений, сначала выберите другой")
+        if (updateSource(context).id == id) throw SourceException(T.sourceErrorIsUpdateSource)
     }
 
     private fun Source.copy(enabled: Boolean) = Source(id, name, url, key, enabled, builtin)

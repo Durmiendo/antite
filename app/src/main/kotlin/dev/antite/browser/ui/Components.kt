@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.antite.browser.R
+import dev.antite.browser.l10n.T
 
 @Composable
 fun Ico(@DrawableRes res: Int, tint: Color = LocalPalette.current.icon, size: Int = 24, modifier: Modifier = Modifier) {
@@ -57,7 +58,7 @@ fun PageScaffold(title: String, onBack: () -> Unit, actions: @Composable () -> U
             Modifier.fillMaxWidth().height(56.dp).padding(start = 4.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconBtn(R.drawable.ic_arrow_back, "Назад", onClick = onBack)
+            IconBtn(R.drawable.ic_arrow_back, T.actionBack, onClick = onBack)
             Text(
                 title, color = p.text, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = 12.dp),

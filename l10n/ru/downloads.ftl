@@ -1,0 +1,14 @@
+downloads-channel = Загрузки
+download-pdf-failed = Не удалось сохранить PDF
+download-started = Загрузка: { $name }
+download-not-ready = Файл ещё не готов
+download-no-app = Нет приложения, чтобы открыть этот файл
+download-status-done = Скачано
+download-status-failed = Ошибка
+download-status-cancelled = Отменено
+download-status-loading = Загружается
+download-status-percent = Загружается { $percent }%
+download-failed = Не удалось скачать
+download-size-of = { $done } из { $total }
+download-speed = { $size }/с
+download-time-left = осталось { $time }

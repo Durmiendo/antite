@@ -46,6 +46,7 @@ import dev.antite.browser.Browser
 import dev.antite.browser.R
 import dev.antite.browser.Urls
 import dev.antite.browser.data.Tab
+import dev.antite.browser.l10n.T
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyGridState
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -74,7 +75,7 @@ fun TabSwitcher(b: Browser) {
                 ) { Ico(R.drawable.ic_incognito, if (inc) p.onAccent else p.icon) }
             }
             Spacer(Modifier.weight(1f))
-            IconBtn(R.drawable.ic_add, "Новая вкладка") {
+            IconBtn(R.drawable.ic_add, T.tabNew) {
                 b.overlay = dev.antite.browser.Overlay.NONE
                 b.newTabAndFocus(inc)
             }

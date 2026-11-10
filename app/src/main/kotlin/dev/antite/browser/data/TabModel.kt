@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.antite.browser.l10n.T
 import dev.antite.engine.EngineTab
 
 class Tab(val id: Long, val incognito: Boolean) {
@@ -44,6 +45,6 @@ class Tab(val id: Long, val incognito: Boolean) {
         get() = when {
             title.isNotEmpty() -> title
             url.isNotEmpty() && url != "about:blank" -> url
-            else -> "Новая вкладка"
+            else -> T.tabNew
         }
 }

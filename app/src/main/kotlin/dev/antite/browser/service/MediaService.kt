@@ -15,6 +15,7 @@ import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.IBinder
 import dev.antite.browser.MainActivity
+import dev.antite.browser.l10n.T
 import dev.antite.engine.MediaController
 import dev.antite.engine.MediaEvent
 
@@ -87,7 +88,7 @@ class MediaService : Service() {
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL, "Воспроизведение", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(CHANNEL, T.mediaChannel, NotificationManager.IMPORTANCE_LOW),
         )
         session = MediaSession(this, "Antite").apply {
             setCallback(object : MediaSession.Callback() {
@@ -146,17 +147,17 @@ class MediaService : Service() {
         val open = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(title.ifEmpty { "Воспроизведение" })
+            .setContentTitle(title.ifEmpty { T.mediaChannel })
             .setContentText(artist)
             .setLargeIcon(art)
             .setOngoing(playing)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE))
             .setDeleteIntent(action(ACTION_STOP, 5))
-            .addAction(button(android.R.drawable.ic_media_previous, "Назад", ACTION_PREV, 1))
-            .addAction(if (playing) button(android.R.drawable.ic_media_pause, "Пауза", ACTION_PAUSE, 2)
-            else button(android.R.drawable.ic_media_play, "Играть", ACTION_PLAY, 3))
-            .addAction(button(android.R.drawable.ic_media_next, "Вперёд", ACTION_NEXT, 4))
+            .addAction(button(android.R.drawable.ic_media_previous, T.mediaPrevious, ACTION_PREV, 1))
+            .addAction(if (playing) button(android.R.drawable.ic_media_pause, T.mediaPause, ACTION_PAUSE, 2)
+            else button(android.R.drawable.ic_media_play, T.mediaPlay, ACTION_PLAY, 3))
+            .addAction(button(android.R.drawable.ic_media_next, T.mediaNext, ACTION_NEXT, 4))
             .setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0, 1, 2))
             .build()
     }

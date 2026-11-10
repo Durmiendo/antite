@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.antite.browser.BuildConfig
 import dev.antite.browser.FormField
+import dev.antite.browser.l10n.T
 import dev.antite.browser.service.DownloadService
 import dev.antite.browser.ui.FormDialog
 import dev.antite.browser.ui.AntiteTheme
@@ -50,7 +51,7 @@ class EngineSetupActivity : ComponentActivity() {
         val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         val url = intent.getStringExtra("indexUrl")?.takeIf { debuggable } ?: return
         val existing = Sources.list(this).firstOrNull { it.url == url && it.enabled }
-        if (existing == null) Sources.add(this, "Тестовый", url, BuildConfig.PUBLISHER_KEY, onlyThis = true)
+        if (existing == null) Sources.add(this, T.engineTestSource, url, BuildConfig.PUBLISHER_KEY, onlyThis = true)
         else Sources.setUpdateSource(this, existing.id)
     }
 
@@ -63,36 +64,36 @@ class EngineSetupActivity : ComponentActivity() {
                     Modifier.fillMaxSize().background(p.background).padding(32.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text("Движок браузера", color = p.text, fontSize = 22.sp)
+                    Text(T.engineSetupTitle, color = p.text, fontSize = 22.sp)
                     when (val s = this@EngineSetupActivity.state) {
                         State.Checking -> {
-                            Info("Проверяем источник обновлений…")
+                            Info(T.engineSetupChecking)
                             LinearProgressIndicator(Modifier.fillMaxWidth(), color = p.accent)
                         }
                         is State.Ready -> {
-                            Info("Для работы браузеру нужен движок. Он скачивается один раз и потом обновляется отдельно.")
-                            Info("Gecko ${s.offer.entry.version}, ${mb(s.offer.size)} МБ\nИсточник: ${s.offer.source.name} (${Uri.parse(s.offer.source.url).host})" +
-                                if (s.offer.source.builtin) "" else "\nКлюч SHA-256: ${s.offer.source.fingerprint}")
-                            TextButton(onClick = { download(s) }) { Text("Скачать", color = p.accent, fontSize = 16.sp) }
-                            TextButton(onClick = { adding = true }) { Text("Другой источник", color = p.accent, fontSize = 16.sp) }
+                            Info(T.engineSetupIntro)
+                            Info(T.engineSetupOffer(version = s.offer.entry.version, size = mb(s.offer.size), source = s.offer.source.name,
+                                host = Uri.parse(s.offer.source.url).host) +
+                                if (s.offer.source.builtin) "" else "\n" + T.engineSetupKey(fingerprint = s.offer.source.fingerprint))
+                            TextButton(onClick = { download(s) }) { Text(T.actionDownload, color = p.accent, fontSize = 16.sp) }
+                            TextButton(onClick = { adding = true }) { Text(T.engineOtherSource, color = p.accent, fontSize = 16.sp) }
                         }
                         is State.Downloading -> {
-                            Info("Скачиваем и проверяем…")
+                            Info(T.engineSetupDownloading)
                             LinearProgressIndicator({ s.fraction }, Modifier.fillMaxWidth(), color = p.accent)
                         }
                         is State.Failed -> {
                             Info(s.message)
-                            TextButton(onClick = ::check) { Text("Повторить", color = p.accent, fontSize = 16.sp) }
-                            TextButton(onClick = { adding = true }) { Text("Другой источник", color = p.accent, fontSize = 16.sp) }
+                            TextButton(onClick = ::check) { Text(T.actionRetry, color = p.accent, fontSize = 16.sp) }
+                            TextButton(onClick = { adding = true }) { Text(T.engineOtherSource, color = p.accent, fontSize = 16.sp) }
                         }
                     }
                 }
                 if (adding) {
-                    FormDialog("Другой источник", "Источник сможет устанавливать код, который выполняется в браузере. " +
-                        "Добавляйте только тот, чьему издателю доверяете", listOf(
-                        FormField("Адрес индекса (https://…/engines.json)", kind = FormField.Kind.URL),
-                        FormField("Открытый ключ издателя", kind = FormField.Kind.URL),
-                    ), "Добавить", { v ->
+                    FormDialog(T.engineOtherSource, T.engineOtherSourceWarning, listOf(
+                        FormField(T.engineSourceIndexUrl, kind = FormField.Kind.URL),
+                        FormField(T.engineSourceKey, kind = FormField.Kind.URL),
+                    ), T.actionAdd, { v ->
                         try {
                             Sources.add(this, "", v[0].trim(), v[1], onlyThis = true)
                             check()
@@ -124,11 +125,11 @@ class EngineSetupActivity : ComponentActivity() {
                 when {
                     found.offer != null -> State.Ready(found.offer)
                     found.errors.isNotEmpty() ->
-                        State.Failed("Не удалось получить список движков. Проверьте подключение к интернету.\n" + found.errors.joinToString("\n"))
-                    else -> State.Failed("В источнике нет движка для архитектуры ${Abi.current} и этой версии браузера.")
+                        State.Failed(T.engineSetupListFailedOffline + "\n" + found.errors.joinToString("\n"))
+                    else -> State.Failed(T.engineSetupNoneForAbi(abi = Abi.current))
                 }
             } catch (e: Exception) {
-                State.Failed("Не удалось получить список движков: ${e.message}")
+                State.Failed(T.engineSetupListFailed(reason = e.message))
             }
         }
     }
@@ -154,7 +155,7 @@ class EngineSetupActivity : ComponentActivity() {
             state = when (status) {
                 DownloadService.DONE -> return@engine Engines.restart(this)
                 DownloadService.CANCELLED -> ready
-                else -> State.Failed("Не удалось скачать движок: ${error?.message}")
+                else -> State.Failed(T.engineDownloadFailed(reason = error?.message))
             }
         }
     }

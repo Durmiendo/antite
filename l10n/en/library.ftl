@@ -1,0 +1,14 @@
+time-just-now = just now
+library-history-empty = History is empty
+library-bookmarks-empty = No bookmarks yet. Add one with the star in the menu.
+library-closed-empty = No recently closed tabs
+library-downloads-empty = No downloads yet
+library-delete-from-history = Delete from history
+library-bookmark-name = Bookmark name
+library-remove-from-list = Remove from the list
+library-cancel-download = Cancel the download
+library-drop-from-list = Remove from the list
+library-clear-history = Delete all browsing history?
+library-clear-downloads = Clear the download list? The files stay in the Download folder.
+library-search = Search
+library-closed-at = { $host } · closed { $ago }
