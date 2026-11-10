@@ -39,9 +39,11 @@ def artifact(port, path, data):
 
 def engine_pages(port):
     """Files of a local engine source: a signed index, the adapter package and the GeckoView AAR."""
-    version = prop("geckoviewVersion")
+    gecko = prop("geckoviewVersion")
+    revision = int(prop("adapterRevision"))
+    version = f"{gecko}.{revision}" if revision else gecko
     adapter = open(f"engine-gecko/build/outputs/engine/gecko-{version}-adapter.zip", "rb").read()
-    aar_path = glob.glob(os.path.expanduser(f"~/.gradle/caches/modules-2/files-2.1/org.mozilla.geckoview/geckoview/{version}/*/geckoview-{version}.aar"))[0]
+    aar_path = glob.glob(os.path.expanduser(f"~/.gradle/caches/modules-2/files-2.1/org.mozilla.geckoview/geckoview/{gecko}/*/geckoview-{gecko}.aar"))[0]
     aar = open(aar_path, "rb").read()
     index = json.dumps({
         "format": 1,
@@ -66,7 +68,20 @@ def download_engine(d, port):
     d.shell(f"am start -n {PACKAGE}/.MainActivity --es indexUrl http://localhost:{port}/engines.json")
     d.wait("Gecko " + prop("geckoviewVersion"), timeout=30)
     d.tap("Скачать", exact=True)
-    d.wait("Закреплённые", timeout=300, exact=True)
+    for _ in range(10):
+        if d.find("Разрешить", exact=True) is not None:
+            d.tap("Разрешить", exact=True)
+            break
+        time.sleep(0.5)
+    # The progress notification lives only while the engine downloads: the browser restarts right after.
+    seen = False
+    end = time.time() + 300
+    while d.find("Закреплённые", exact=True) is None:
+        if time.time() > end:
+            d.fail("browser did not start with the new engine")
+        seen = seen or "Движок Gecko " + prop("geckoviewVersion") in d.shell("dumpsys notification --noredact", check=False)
+    if not seen:
+        d.fail("no notification for the engine download")
 
 
 def main():

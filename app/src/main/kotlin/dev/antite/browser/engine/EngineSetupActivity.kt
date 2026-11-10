@@ -1,11 +1,15 @@
 package dev.antite.browser.engine
 
+import android.Manifest
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.antite.browser.BuildConfig
 import dev.antite.browser.FormField
+import dev.antite.browser.service.DownloadService
 import dev.antite.browser.ui.FormDialog
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.LocalPalette
@@ -128,21 +133,28 @@ class EngineSetupActivity : ComponentActivity() {
         }
     }
 
+    private var pending: State.Ready? = null
+    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        pending?.let(::start)
+        pending = null
+    }
+
+    // The download shows its progress in a notification, so it asks for them first; a refusal does not stop it.
     private fun download(ready: State.Ready) {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            pending = ready
+            return askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        start(ready)
+    }
+
+    private fun start(ready: State.Ready) {
         state = State.Downloading(0f)
-        thread(name = "engine-download") {
-            try {
-                var last = 0L
-                EngineUpdates.install(this, ready.offer) { done, total ->
-                    val now = System.currentTimeMillis()
-                    if (now - last > 100) {
-                        last = now
-                        state = State.Downloading(done.toFloat() / total)
-                    }
-                }
-                Engines.restart(this)
-            } catch (e: Exception) {
-                state = State.Failed("Не удалось скачать движок: ${e.message}")
+        UpdateDownloads.engine(this, ready.offer, { state = State.Downloading(it / 100f) }) { status, error ->
+            state = when (status) {
+                DownloadService.DONE -> return@engine Engines.restart(this)
+                DownloadService.CANCELLED -> ready
+                else -> State.Failed("Не удалось скачать движок: ${error?.message}")
             }
         }
     }

@@ -19,6 +19,7 @@ from engine_setup import download_engine, engine_pages  # noqa: E402
 PORT = 8775
 SIZE = 12 * 1024 * 1024
 RATE = 512 * 1024
+ENGINE_RATE = 16 * 1024 * 1024
 
 
 def serve(pages):
@@ -44,7 +45,12 @@ def serve(pages):
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            # The engine comes slowly enough for its progress notification to be seen.
+            step = 1024 * 1024
+            for i in range(0, len(body), step):
+                self.wfile.write(body[i:i + step])
+                if len(body) > step:
+                    time.sleep(step / ENGINE_RATE)
 
         def log_message(self, *args):
             pass

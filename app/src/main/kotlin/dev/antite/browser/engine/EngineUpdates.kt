@@ -14,6 +14,7 @@ import android.util.Log
 import dev.antite.browser.BuildConfig
 import dev.antite.browser.MainActivity
 import dev.antite.browser.R
+import dev.antite.browser.service.DownloadService
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -239,11 +240,9 @@ object EngineUpdates {
             scheduleDownload(context)
             return
         }
-        try {
-            install(context, offer)
-        } catch (e: Exception) {
-            Log.w("Antite", "engine update download failed", e)
-            state(context).edit().putString("lastError", "не удалось скачать: ${e.message}").commit()
+        val task = UpdateDownloads.engineTask(context, offer)
+        if (DownloadService.runHere(context, task) == DownloadService.FAILED) {
+            state(context).edit().putString("lastError", "не удалось скачать: ${task.error?.message}").commit()
         }
     }
 }

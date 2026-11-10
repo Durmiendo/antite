@@ -6,7 +6,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.engine.Engines
 import dev.antite.browser.engine.Offer
-import dev.antite.browser.engine.ShellInstaller
+import dev.antite.browser.engine.ShellOffer
+import dev.antite.browser.engine.UpdateDownloads
+import dev.antite.browser.service.DownloadService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -86,40 +88,29 @@ class EngineNews(private val b: Browser) {
     // Without a progress callback nothing on screen shows the download, so a message does.
     fun updateShell(progress: ((Int) -> Unit)? = null, done: () -> Unit = {}) = ctx.lifecycleScope.launch {
         if (progress == null) b.toast("Скачиваем новую версию Antite…")
-        val r = withContext(Dispatchers.IO) {
-            runCatching {
-                val offer = EngineUpdates.check(ctx).shell ?: throw java.io.IOException("обновления больше нет в источнике")
-                var last = -1L
-                ShellInstaller.install(ctx, offer) { d, total ->
-                    val pct = d * 100 / total
-                    if (pct != last) {
-                        last = pct
-                        ctx.runOnUiThread { progress?.invoke(pct.toInt()) }
-                    }
-                }
-            }
+        val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx).shell } }
+        val offer = r.getOrNull()
+        if (offer == null) {
+            done()
+            return@launch b.toast("Не удалось обновить Antite: ${r.exceptionOrNull()?.message ?: "обновления больше нет в источнике"}")
         }
-        done()
-        r.exceptionOrNull()?.let { b.toast("Не удалось обновить Antite: ${it.message}") }
+        installShell(offer, progress ?: {}, done)
     }
 
-    fun install(offer: Offer, progress: (Int) -> Unit = {}, done: () -> Unit = {}) = ctx.lifecycleScope.launch {
-        val r = withContext(Dispatchers.IO) {
-            runCatching {
-                var last = -1L
-                EngineUpdates.install(ctx, offer) { d, total ->
-                    val pct = d * 100 / total
-                    if (pct != last) {
-                        last = pct
-                        ctx.runOnUiThread { progress(pct.toInt()) }
-                    }
-                }
+    fun installShell(offer: ShellOffer, progress: (Int) -> Unit = {}, done: () -> Unit = {}) =
+        UpdateDownloads.shell(ctx, offer, progress) { status, error ->
+            done()
+            if (status == DownloadService.FAILED) b.toast("Не удалось обновить Antite: ${error?.message}")
+        }
+
+    fun install(offer: Offer, progress: (Int) -> Unit = {}, done: () -> Unit = {}) =
+        UpdateDownloads.engine(ctx, offer, progress) { status, error ->
+            done()
+            when (status) {
+                DownloadService.DONE -> askRestart(offer.entry.version)
+                DownloadService.FAILED -> b.toast("Не удалось скачать движок: ${error?.message}")
             }
         }
-        done()
-        if (r.isFailure) return@launch b.toast("Не удалось скачать движок: ${r.exceptionOrNull()?.message}")
-        askRestart(offer.entry.version)
-    }
 
     fun askRestart(version: String) = b.show(UiDialog.Message("Движок скачан",
         "Gecko $version начнёт работать после перезапуска браузера.",

@@ -464,17 +464,7 @@ private fun DebugInstall(b: Browser, changed: () -> Unit) {
             updates.shell?.let { s ->
                 DialogButton("Antite, сборка ${s.version}") {
                     busy = "Скачиваем Antite…"
-                    ctx.lifecycleScope.launch {
-                        val r = withContext(Dispatchers.IO) {
-                            runCatching {
-                                ShellInstaller.install(ctx, s) { d, total ->
-                                    ctx.runOnUiThread { busy = "Скачиваем Antite… ${d * 100 / total}%" }
-                                }
-                            }
-                        }
-                        busy = null
-                        r.exceptionOrNull()?.let { b.toast("Не удалось установить Antite: ${it.message}") }
-                    }
+                    b.engineNews.installShell(s, { busy = "Скачиваем Antite… $it%" }) { busy = null }
                 }
             },
         )
