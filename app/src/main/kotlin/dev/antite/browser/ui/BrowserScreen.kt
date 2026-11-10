@@ -90,6 +90,7 @@ import dev.antite.browser.Overlay
 import dev.antite.browser.R
 import dev.antite.browser.Urls
 import dev.antite.browser.closePopup
+import dev.antite.browser.data.Options
 import dev.antite.browser.find
 import dev.antite.browser.hideFind
 import dev.antite.browser.l10n.T
@@ -105,7 +106,7 @@ fun BrowserScreen(b: Browser) {
     val density = LocalDensity.current
     val toolbarPx = with(density) { 56.dp.toPx() }
     b.toolbarHeightPx = toolbarPx
-    b.navDeadZonePx = with(density) { 32.dp.toPx() }
+    b.navDeadZonePx = with(density) { Options.navDeadZones[b.prefs.index("navDeadZone", Options.navDeadZones, 2)].value.dp.toPx() }
     val t = b.current
     val bar = if (t?.incognito == true) p.toolbarIncognito else p.toolbar
     val navInset = WindowInsets.navigationBars.getBottom(density)

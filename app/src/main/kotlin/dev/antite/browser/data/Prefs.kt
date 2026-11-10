@@ -80,6 +80,9 @@ object Options {
         Option(T.updateEveryMinute, 1), Option(T.updateEvery15Minutes, 15), Option(T.updateEveryHour, 60),
         Option(T.updateEvery6Hours, 360), Option(T.updateEveryDay, 1440),
     )
+    val navDeadZones get() = listOf(0, 16, 32, 48, 64).map { Option(T.unitDp(value = it), it) }
+    val liveTabs get() = listOf(2, 4, 6, 8, 12).map { Option(it.toString(), it) }
+    val frequentSites get() = listOf(0, 4, 8, 12, 16, 24).map { Option(if (it == 0) T.ntpFrequentNone else it.toString(), it) }
     // Indexes into Motion.speeds.
     val animationSpeeds get() = listOf(T.animationOff, T.animationSlow, T.animationNormal, T.animationFast, T.animationFaster)
         .mapIndexed { i, label -> Option(label, i) }

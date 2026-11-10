@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.data.Db
 import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.data.IconCache
+import dev.antite.browser.data.Options
 import dev.antite.browser.data.Prefs
 import dev.antite.browser.data.SitePerms
 import dev.antite.browser.data.Tab
@@ -51,7 +52,6 @@ enum class LibraryKind { HISTORY, BOOKMARKS, CLOSED, DOWNLOADS }
 
 class Browser(val activity: MainActivity, val engine: Engine) {
     companion object {
-        private const val MAX_LIVE_SESSIONS = 6
         internal const val ALLOW_ONCE = 4
         const val UBO_ID = "uBlock0@raymondhill.net"
 
@@ -214,8 +214,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     private fun trimSessions() {
         val live = tabs.filter { it.live && !it.incognito && it !== current }.sortedBy { it.lastUsed }
-        if (live.size < MAX_LIVE_SESSIONS) return
-        for (t in live.take(live.size - MAX_LIVE_SESSIONS + 1)) {
+        val max = Options.liveTabs[prefs.index("liveTabs", Options.liveTabs, 2)].value
+        if (live.size < max) return
+        for (t in live.take(live.size - max + 1)) {
             t.engineTab?.close()
             t.engineTab = null
         }
@@ -420,7 +421,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun moveToolbar(h: Float) {
         hidden = h.coerceIn(0f, toolbarHeightPx)
-        if (hidden >= toolbarHeightPx) barsHidden = true
+        if (hidden >= toolbarHeightPx) barsHidden = prefs.bool("navBarHide", true)
         else if (hidden <= toolbarHeightPx - navDeadZonePx) barsHidden = false
     }
 
@@ -432,6 +433,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }
         val dy = y - lastScrollY
         lastScrollY = y
+        if (!prefs.bool("toolbarHide", true)) return
         toolbarMotion.onScrolled(dy.toFloat())
         moveToolbar(if (y <= 0) 0f else hidden + dy)
     }

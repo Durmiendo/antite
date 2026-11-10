@@ -48,6 +48,7 @@ import dev.antite.browser.R
 import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
 import dev.antite.browser.data.Entry
+import dev.antite.browser.data.Options
 import dev.antite.browser.data.Site
 import dev.antite.browser.l10n.T
 import kotlinx.coroutines.delay
@@ -79,9 +80,10 @@ fun NewTabPage(b: Browser, modifier: Modifier) {
     val hidden = b.prefs.stringSet("hiddenHosts")
     LaunchedEffect(b.ntpRevision, hidden) {
         if (b.ntpRevision > 0) delay(150)
+        val count = Options.frequentSites[b.prefs.index("ntpFrequent", Options.frequentSites, 3)].value
         val (pi, fr) = b.db.io {
             val list = pins()
-            list to frequent(hidden + list.map { Urls.host(it.url) }, 12)
+            list to frequent(hidden + list.map { Urls.host(it.url) }, count)
         }
         pins = pi
         frequent = fr

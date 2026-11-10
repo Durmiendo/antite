@@ -121,6 +121,7 @@ internal fun MainPage(b: Browser, nav: Nav) {
         section(T.settingsAdvanced)
         nav(nav, T.settingsHome, if (p.bool("homeButton", false)) homeSummary(b) else T.settingsOff) { HomePage(b, it) }
         nav(nav, T.settingsTabs, T.settingsTabsSummary) { TabsPage(b, it) }
+        nav(nav, T.settingsToolbar, T.settingsToolbarSummary) { ToolbarPage(b, it) }
         nav(nav, T.settingsAccessibility, T.settingsAccessibilitySummary) { AccessibilityPage(b, it) }
         nav(nav, T.settingsSites, T.settingsSitesSummary) { SiteSettingsPage(b, it) }
         nav(nav, T.settingsLanguages, T.settingsLanguagesSummary) { LanguagesPage(b, it) }
@@ -238,6 +239,17 @@ internal fun TabsPage(b: Browser, nav: Nav) = Screen(b, nav, T.settingsTabs) {
     choice(b, nav, T.tabsExternal, "external", Options.external, 0, false)
     toggle(b, T.tabsCloseIncognito, null, "closeIncognito", false, false)
     toggle(b, T.tabsDesktopDefault, T.tabsDesktopDefaultSummary, "desktopDefault", false, false)
+    choice(b, nav, T.tabsLive, "liveTabs", Options.liveTabs, 2, false)
+    note(T.tabsLiveNote)
+    choice(b, nav, T.tabsFrequent, "ntpFrequent", Options.frequentSites, 3, false)
+}
+
+@Composable
+internal fun ToolbarPage(b: Browser, nav: Nav) = Screen(b, nav, T.settingsToolbar) {
+    toggle(b, T.toolbarHideOnScroll, T.toolbarHideOnScrollSummary, "toolbarHide", true, false)
+    toggle(b, T.toolbarHideNavBar, T.toolbarHideNavBarSummary, "navBarHide", true, false)
+    choice(b, nav, T.toolbarNavDeadZone, "navDeadZone", Options.navDeadZones, 2, false)
+    note(T.toolbarNavDeadZoneNote)
 }
 
 @Composable
