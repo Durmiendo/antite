@@ -33,6 +33,7 @@ class Tab(val id: Long, val incognito: Boolean) {
     var secure by mutableStateOf(false)
     var securityHost by mutableStateOf("")
     var issuer by mutableStateOf("")
+    var httpsOnlyFailed by mutableStateOf<String?>(null)
     var desktop by mutableStateOf(false)
     var docLang: String? = null
     var translated by mutableStateOf(false)

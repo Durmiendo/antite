@@ -29,6 +29,7 @@ data class Palette(
     val accent: Color,
     val onAccent: Color,
     val secure: Color,
+    val insecure: Color,
     val card: Color,
     val background: Color,
 )
@@ -52,6 +53,7 @@ val DarkPalette = Palette(
     accent = Color(0xFFFCB4B8),
     onAccent = Color(0xFF561D24),
     secure = Color(0xFF81C995),
+    insecure = Color(0xFFF28B82),
     card = Color(0xFF2A2A2A),
     background = Color(0xFF131313),
 )
@@ -75,6 +77,7 @@ val LightPalette = Palette(
     accent = Color(0xFF9C4049),
     onAccent = Color(0xFFFFFFFF),
     secure = Color(0xFF188038),
+    insecure = Color(0xFFD93025),
     card = Color(0xFFF1F3F4),
     background = Color(0xFFF6F7F8),
 )

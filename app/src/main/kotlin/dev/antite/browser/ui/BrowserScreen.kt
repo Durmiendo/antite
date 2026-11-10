@@ -327,7 +327,7 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
                                     if (field.text.isEmpty()) Text(T.toolbarHint, color = p.textSecondary, fontSize = 16.sp)
                                     inner()
                                 } else {
-                                    UrlText(t?.url.orEmpty())
+                                    UrlText(t?.url.orEmpty(), insecure = t != null && t.httpsOnlyFailed == t.url)
                                 }
                             }
                         },
@@ -368,16 +368,22 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
 }
 
 @Composable
-private fun UrlText(url: String) {
+private fun UrlText(url: String, insecure: Boolean) {
     val p = LocalPalette.current
     if (Urls.isBlank(url)) {
         Text(T.toolbarHint, color = p.textSecondary, fontSize = 16.sp, maxLines = 1)
         return
     }
     val d = remember(url) { Urls.display(url) }
+    val downgraded = insecure && d.scheme == "https://"
     val s = buildAnnotatedString {
-        when (d.scheme) {
-            "https://" -> {
+        // The HTTPS upgrade failed, so the page is not https: show the scheme the site really has, in red.
+        when {
+            downgraded -> {
+                withStyle(SpanStyle(color = p.insecure)) { append("http") }
+                withStyle(SpanStyle(color = p.textSecondary)) { append("://") }
+            }
+            d.scheme == "https://" -> {
                 withStyle(SpanStyle(color = p.secure)) { append("https") }
                 withStyle(SpanStyle(color = p.textSecondary)) { append("://") }
             }
@@ -394,7 +400,7 @@ private fun UrlText(url: String) {
         val width = constraints.maxWidth
         val shift = remember(s, width) {
             val layout = measurer.measure(s, style, softWrap = false, maxLines = 1)
-            (layout.getHorizontalPosition(d.scheme.length + d.hostEnd, usePrimaryDirection = true) - width).coerceAtLeast(0f)
+            (layout.getHorizontalPosition((if (downgraded) "http://".length else d.scheme.length) + d.hostEnd, usePrimaryDirection = true) - width).coerceAtLeast(0f)
         }
         Text(s, style = style, maxLines = 1, softWrap = false,
             modifier = Modifier.wrapContentWidth(Alignment.Start, unbounded = true).offset { IntOffset(-shift.roundToInt(), 0) })

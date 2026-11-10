@@ -48,6 +48,10 @@ def main():
         d.launch(SITE)
         d.wait("Подключение не защищено", timeout=40, exact=True)
         print("1. warning shown")
+        # Gecko reports the upgraded https address; the bar must show the http the site really has.
+        if d.find("http://httpforever.com/", exact=True) is None:
+            d.fail("the address bar does not show http:// on the warning")
+        print("1a. address bar shows http://")
         with open(os.path.join(a.out, "https-only-warning.png"), "wb") as f:
             f.write(d.adb("exec-out", "screencap", "-p", binary=True))
         d.tap("Перейти на сайт", exact=True)

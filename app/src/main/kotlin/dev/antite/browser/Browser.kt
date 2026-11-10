@@ -494,8 +494,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             refreshBookmarked(t)
         }
 
-        override fun errorPage(url: String, error: LoadError): String =
-            ErrorPage.html(url, error, if (prefs.isDark()) DarkPalette else LightPalette)
+        override fun errorPage(url: String, error: LoadError): String {
+            if (error == LoadError.HTTPS_ONLY) t.httpsOnlyFailed = url
+            return ErrorPage.html(url, error, if (prefs.isDark()) DarkPalette else LightPalette)
+        }
 
         override fun onTitleChange(title: String) {
             t.title = title
@@ -508,6 +510,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
         override fun onPageStart(url: String) {
             if (skipInitialBlank(url)) return
+            if (url != t.httpsOnlyFailed) t.httpsOnlyFailed = null
             t.loading = true
             t.progress = 0
             if (t === current) toolbarMotion.show()
@@ -525,6 +528,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
         override fun onSecurityChange(info: SecurityInfo) {
             t.secure = info.secure
+            if (info.secure) t.httpsOnlyFailed = null
             t.securityHost = info.host
             t.issuer = info.issuer
         }
