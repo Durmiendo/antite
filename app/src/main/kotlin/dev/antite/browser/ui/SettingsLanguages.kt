@@ -20,7 +20,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 
 @Composable
 internal fun LanguagesPage(b: Browser, nav: Nav) {
-    val tr = b.engine.translation
+    val tr = b.translation
     val cur = b.prefs.locales
     fun save(list: List<String>) {
         b.prefs.edit { putString("langs", list.joinToString(",")) }
@@ -87,7 +87,7 @@ internal fun LanguagesPage(b: Browser, nav: Nav) {
 
 @Composable
 internal fun ModelsPage(b: Browser, nav: Nav) {
-    val tr = b.engine.translation ?: return
+    val tr = b.translation ?: return
     var revision by remember { mutableIntStateOf(0) }
     val models by produceState<List<LanguageModel>?>(null, revision) {
         value = suspendCancellableCoroutine { cont -> tr.models({ cont.resume(it) }, { cont.resume(emptyList()) }) }
@@ -110,7 +110,7 @@ internal fun ModelsPage(b: Browser, nav: Nav) {
 
 @Composable
 internal fun NeverTranslatePage(b: Browser, nav: Nav) {
-    val tr = b.engine.translation ?: return
+    val tr = b.translation ?: return
     var revision by remember { mutableIntStateOf(0) }
     val sites by produceState(emptyList<String>(), revision) {
         value = suspendCancellableCoroutine { cont -> tr.neverTranslateSites { cont.resume(it) } }

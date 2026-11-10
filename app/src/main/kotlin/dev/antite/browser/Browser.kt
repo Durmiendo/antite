@@ -53,6 +53,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         private const val MAX_LIVE_SESSIONS = 6
         internal const val ALLOW_ONCE = 4
         const val UBO_ID = "uBlock0@raymondhill.net"
+
+        // Page translation is off until it works well (user, 10.11.2026); this one switch brings it back.
+        const val TRANSLATION_ENABLED = false
         private const val UBO_URL = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
     }
 
@@ -88,6 +91,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var findVisible by mutableStateOf(false)
     var findResult by mutableStateOf("")
     var translateOffer by mutableStateOf<String?>(null)
+    val translation get() = if (TRANSLATION_ENABLED) engine.translation else null
     var defaultBrowserOffer by mutableStateOf(false)
     var loginOffer by mutableStateOf<Prompt.SelectLogin?>(null)
     private var defaultBrowserChecked = false
@@ -598,7 +602,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         override fun onAndroidPermission(request: AndroidPermissionRequest) = askAndroidPermission(request)
 
         override fun onTranslationOffer() {
-            if (t !== current || !prefs.bool("translateOffer", true)) return
+            if (t !== current || translation == null || !prefs.bool("translateOffer", true)) return
             val from = t.docLang?.let { Urls.langName(it) + " → " } ?: ""
             translateOffer = T.translateOffer(languages = from + Urls.langName(prefs.translateTarget))
             main.postDelayed({ translateOffer = null }, 15000)

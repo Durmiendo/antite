@@ -85,7 +85,7 @@ fun Browser.translate(t: Tab) {
         runTranslation(s, from, to)
         return
     }
-    val tr = engine.translation ?: return toast(T.translateUnavailable)
+    val tr = translation ?: return toast(T.translateUnavailable)
     tr.supported({ fromList, _ ->
         show(UiDialog.Items(T.translatePageLanguage, fromList.map { l -> DialogButton(l.name) { runTranslation(s, l.code, to) } }))
     }, { toast(T.translateUnavailable) })

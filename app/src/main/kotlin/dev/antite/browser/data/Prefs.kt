@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import androidx.compose.runtime.mutableIntStateOf
+import dev.antite.browser.Browser
 import dev.antite.browser.l10n.T
 import dev.antite.engine.BackgroundService
 import dev.antite.engine.ColorScheme
@@ -184,7 +185,7 @@ class Prefs(context: Context) {
             dohMode = if (doh == 0) DnsOverHttpsMode.OFF else Options.dohModes[index("dohMode", Options.dohModes, 0)].value,
             dohUrl = Options.doh[doh].value,
             locales = locales,
-            offerTranslation = bool("translateOffer", true),
+            offerTranslation = Browser.TRANSLATION_ENABLED && bool("translateOffer", true),
             motionSensors = perms.defaultValue(SitePerms.SENSORS) == SitePerms.ALLOW,
             permissionDefaults = perms.engineDefaults(),
             savePasswords = bool("passwordsSave", true),

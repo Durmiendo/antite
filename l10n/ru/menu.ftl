@@ -24,3 +24,4 @@ menu-install-shortcut = Установить и создать ярлык
 menu-desktop-site = Версия для ПК
 menu-dark-theme = Тёмная тема
 menu-settings = Настройки
+menu-view-source = Исходный код страницы

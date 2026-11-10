@@ -104,7 +104,7 @@ fun BrowserMenu(b: Browser) {
             val s = b.ensureSession(t)
             if (t.loading) s.stop() else s.reload()
         },
-    ), listOf(
+    ), listOfNotNull(
         MenuEntry.Item(R.drawable.ic_add_box, T.tabNew) { b.newTabAndFocus(false) },
         MenuEntry.Item(R.drawable.ic_incognito, T.menuNewIncognitoTab) { b.newTabAndFocus(true) },
         MenuEntry.Line,
@@ -119,10 +119,11 @@ fun BrowserMenu(b: Browser) {
         MenuEntry.Line,
         MenuEntry.Item(R.drawable.ic_share, T.menuShare) { b.activity.share(t.url, t.title) },
         MenuEntry.Item(R.drawable.ic_find_in_page, T.menuFind) { b.showFind() },
-        MenuEntry.Item(R.drawable.ic_translate, if (t.translated) T.menuShowOriginal else T.menuTranslate) { b.translate(t) },
+        if (b.translation == null) null
+        else MenuEntry.Item(R.drawable.ic_translate, if (t.translated) T.menuShowOriginal else T.menuTranslate) { b.translate(t) },
         MenuEntry.Sub(R.drawable.ic_home_repair_service, T.menuMoreTools) { more = true },
         MenuEntry.Item(R.drawable.ic_install_desktop, T.menuInstallShortcut) { b.activity.addShortcut(t, b.icons.get(Urls.host(t.url))) },
-        MenuEntry.Item(R.drawable.ic_description, "View source") {
+        MenuEntry.Item(R.drawable.ic_description, T.menuViewSource) {
             if (t.url.isNotEmpty() && !t.url.startsWith("view-source:")) b.openTab("view-source:" + t.url, t.incognito, t, true)
         },
         MenuEntry.Check(R.drawable.ic_desktop_windows, T.menuDesktopSite, t.desktop) { b.toggleDesktop(t) },

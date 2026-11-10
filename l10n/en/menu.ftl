@@ -24,3 +24,4 @@ menu-install-shortcut = Install and add a shortcut
 menu-desktop-site = Desktop site
 menu-dark-theme = Dark theme
 menu-settings = Settings
+menu-view-source = View source
