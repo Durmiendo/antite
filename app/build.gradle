@@ -123,8 +123,87 @@ def geckoManifest = tasks.register('geckoManifest', GeckoManifestTask) {
     aar.from(configurations.geckoAar)
 }
 
+// Interface strings live in l10n/<language>/*.ftl (docs/decisions/0005-localization.md). This generates object T from
+// the Russian files: a property per message, a function with named parameters per message with variables.
+abstract class L10nKeysTask extends DefaultTask {
+    @InputDirectory
+    abstract DirectoryProperty getSource()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDir()
+
+    static String camel(String id) {
+        def parts = id.split(/[-_]/)
+        return parts[0] + parts.drop(1).collect { it.capitalize() }.join('')
+    }
+
+    @TaskAction
+    void run() {
+        def entries = new LinkedHashMap<String, TreeSet<String>>()
+        source.get().asFile.listFiles().findAll { it.name.endsWith('.ftl') }.sort { it.name }.each { f ->
+            String current = null
+            f.readLines('UTF-8').each { line ->
+                def m = line =~ /^([a-zA-Z][a-zA-Z0-9_-]*) *=/
+                if (m.find()) {
+                    current = m.group(1)
+                    entries[current] = new TreeSet<String>()
+                } else if (line && !line.startsWith(' ') && !line.startsWith('}')) {
+                    current = null
+                }
+                if (current) (line =~ /\{\s*\$([a-zA-Z][a-zA-Z0-9_-]*)/).each { entries[current] << it[1] }
+            }
+        }
+        def out = new StringBuilder('package dev.antite.browser.l10n\n\n// Generated from l10n/ru/*.ftl by the l10nKeys task.\nobject T {\n')
+        entries.each { id, vars ->
+            if (vars.isEmpty()) {
+                out << "    val ${camel(id)}: String get() = L10n.format(\"$id\")\n"
+            } else {
+                def params = vars.collect { "${camel(it)}: Any?" }.join(', ')
+                def map = vars.collect { "\"$it\" to ${camel(it)}" }.join(', ')
+                out << "    fun ${camel(id)}($params): String = L10n.format(\"$id\", mapOf($map))\n"
+            }
+        }
+        out << '}\n'
+        def dir = new File(outputDir.get().asFile, 'dev/antite/browser/l10n')
+        dir.mkdirs()
+        new File(dir, 'T.kt').write(out.toString(), 'UTF-8')
+    }
+}
+
+abstract class L10nAssetsTask extends DefaultTask {
+    @InputDirectory
+    abstract DirectoryProperty getSource()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDir()
+
+    @TaskAction
+    void run() {
+        def root = outputDir.get().asFile
+        root.deleteDir()
+        def target = new File(root, 'l10n')
+        source.get().asFile.eachFileRecurse { f ->
+            if (f.isFile() && f.name.endsWith('.ftl')) {
+                def to = new File(target, source.get().asFile.toPath().relativize(f.toPath()).toString())
+                to.parentFile.mkdirs()
+                to.bytes = f.bytes
+            }
+        }
+    }
+}
+
+def l10nKeys = tasks.register('l10nKeys', L10nKeysTask) {
+    source = rootProject.layout.projectDirectory.dir('l10n/ru')
+}
+
+def l10nAssets = tasks.register('l10nAssets', L10nAssetsTask) {
+    source = rootProject.layout.projectDirectory.dir('l10n')
+}
+
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.sources.manifests.addGeneratedManifestFile(geckoManifest, { it.outputManifest })
+        variant.sources.kotlin.addGeneratedSourceDirectory(l10nKeys, { it.outputDir })
+        variant.sources.assets.addGeneratedSourceDirectory(l10nAssets, { it.outputDir })
     }
 }
