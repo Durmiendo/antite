@@ -4,7 +4,8 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 
-class EngineStore(filesDir: File, val abi: String? = Abi.current) {
+// An engine counts only if it was built for this shell's engine API: an older adapter lacks methods the shell calls.
+class EngineStore(filesDir: File, val abi: String? = Abi.current, val api: Int = dev.antite.engine.BuildConfig.ENGINE_API) {
     companion object {
         const val READY = "ready"
         const val RESOURCES = "gecko.zip"
@@ -18,6 +19,8 @@ class EngineStore(filesDir: File, val abi: String? = Abi.current) {
         const val ABI = "abi"
 
         fun abiOf(engine: File): String? = runCatching { File(engine, ABI).readText().trim() }.getOrNull()
+
+        fun apiOf(engine: File): Int? = runCatching { JSONObject(File(engine, "engine.json").readText()).getInt("api") }.getOrNull()
     }
 
     val dir = File(filesDir, "engines")
@@ -25,7 +28,7 @@ class EngineStore(filesDir: File, val abi: String? = Abi.current) {
     private fun read(name: String): File? {
         val value = runCatching { File(dir, name).readText().trim() }.getOrNull() ?: return null
         if (value.isEmpty() || '/' in value) return null
-        return File(dir, value).takeIf { File(it, READY).exists() && abiOf(it) == abi }
+        return File(dir, value).takeIf { File(it, READY).exists() && abiOf(it) == abi && apiOf(it) == api }
     }
 
     private fun write(name: String, engine: File) {

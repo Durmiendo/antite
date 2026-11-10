@@ -196,11 +196,11 @@ class EngineInstallerTest {
     @Test
     fun engineOfAnotherArchitectureIsNotActive() {
         val files = tmp.newFolder("files")
-        val dir = EngineInstaller(EngineStore(files, "x86_64").dir, fetcher)
+        val dir = EngineInstaller(EngineStore(files, "x86_64", api = 1).dir, fetcher)
             .install(parse(index()).choose("x86_64", 1, 1)!!, "x86_64") { _, _ -> }
-        EngineStore(files, "x86_64").activate(dir)
-        assertEquals(dir, EngineStore(files, "x86_64").active())
-        assertNull(EngineStore(files, "arm64-v8a").active())
+        EngineStore(files, "x86_64", api = 1).activate(dir)
+        assertEquals(dir, EngineStore(files, "x86_64", api = 1).active())
+        assertNull(EngineStore(files, "arm64-v8a", api = 1).active())
     }
 
     @Test
@@ -232,7 +232,7 @@ class EngineInstallerTest {
 
     @Test
     fun activationPointsAtTheInstalledEngine() {
-        val store = EngineStore(tmp.newFolder("files"), "x86_64")
+        val store = EngineStore(tmp.newFolder("files"), "x86_64", api = 1)
         assertNull(store.active())
         val dir = EngineInstaller(store.dir, fetcher).install(parse(index()).choose("x86_64", 1, 1)!!, "x86_64") { _, _ -> }
         assertNull("installing does not activate", store.active())

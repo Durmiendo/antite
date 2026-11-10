@@ -13,10 +13,10 @@ class EngineStoreTest {
     @get:Rule
     val tmp = TemporaryFolder()
 
-    private fun engine(store: EngineStore, name: String, version: String): File = File(store.dir, name).apply {
+    private fun engine(store: EngineStore, name: String, version: String, api: Int = store.api): File = File(store.dir, name).apply {
         mkdirs()
         File(this, EngineStore.READY).createNewFile()
-        File(this, "engine.json").writeText("""{"version":"$version"}""")
+        File(this, "engine.json").writeText("""{"version":"$version","api":$api}""")
         File(this, EngineStore.ABI).writeText(store.abi!!)
     }
 
@@ -35,6 +35,20 @@ class EngineStoreTest {
         assertNull(store.pending())
         assertFalse(store.applyPending())
         assertEquals("2", store.version(b))
+    }
+
+    @Test
+    fun engineForAnotherApiIsNotUsed() {
+        val store = EngineStore(tmp.root, "x86_64", api = 3)
+        val old = engine(store, "gecko-1", "1", api = 2)
+        store.activate(old)
+        assertNull(store.active())
+        val next = engine(store, "gecko-2", "2", api = 2)
+        store.setPending(next)
+        assertFalse(store.applyPending())
+        val fit = engine(store, "gecko-3", "3")
+        store.activate(fit)
+        assertEquals(fit, store.active())
     }
 
     @Test
