@@ -94,7 +94,9 @@ sealed interface MediaEvent {
     data class Fullscreen(val controller: MediaController, val full: Boolean, val width: Long, val height: Long) : MediaEvent
 }
 
-enum class LoadError { HOST_NOT_FOUND, CONNECTION, TIMEOUT, OFFLINE, SECURITY, BLOCKED, OTHER }
+// HTTPS_ONLY came with adapter revision 4 and is last, so older adapters and shells stay compatible: an older
+// adapter reports that failure as OTHER.
+enum class LoadError { HOST_NOT_FOUND, CONNECTION, TIMEOUT, OFFLINE, SECURITY, BLOCKED, OTHER, HTTPS_ONLY }
 
 interface TabCallbacks {
     fun onLocationChange(url: String)

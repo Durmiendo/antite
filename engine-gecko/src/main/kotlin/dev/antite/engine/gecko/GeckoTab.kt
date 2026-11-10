@@ -195,6 +195,7 @@ internal class GeckoTab(
 
             override fun onLoadError(s: GeckoSession, uri: String?, error: WebRequestError): GeckoResult<String>? {
                 val kind = when {
+                    error.code == WebRequestError.ERROR_HTTPS_ONLY -> LoadError.HTTPS_ONLY
                     error.code == WebRequestError.ERROR_UNKNOWN_HOST -> LoadError.HOST_NOT_FOUND
                     error.code == WebRequestError.ERROR_CONNECTION_REFUSED -> LoadError.CONNECTION
                     error.code == WebRequestError.ERROR_NET_TIMEOUT -> LoadError.TIMEOUT

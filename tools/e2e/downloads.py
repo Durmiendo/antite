@@ -96,9 +96,8 @@ def main():
     d.install(a.apk)
     download_engine(d, PORT)
 
-    print("2. a download asks for notifications and shows progress")
+    print("2. a download shows progress (notifications were allowed on the engine setup screen)")
     d.launch(f"http://localhost:{PORT}/{first}")
-    d.tap("Разрешить", timeout=30, exact=True)
     wait(d, "no progress notification", lambda: first in notifications(d) and "из" in notifications(d), 30)
     wait(d, "no speed, time left or percent in the notification",
          lambda: all(x in notifications(d) for x in ("/с", "осталось", "%")), 30)

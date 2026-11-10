@@ -6,3 +6,6 @@ error-offline = No internet connection.
 error-security = Could not make a secure connection to { $host }. The site's certificate did not pass the check.
 error-blocked = Site { $host } is blocked as dangerous.
 error-other = An error happened while loading { $host }.
+error-insecure-title = Connection is not secure
+error-insecure-text = { $host } does not support a secure connection. Attackers can see and change information you send or receive from the site.
+error-insecure-continue = Continue to site
