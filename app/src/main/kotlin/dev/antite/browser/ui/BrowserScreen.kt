@@ -82,7 +82,12 @@ import dev.antite.browser.Browser
 import dev.antite.browser.Overlay
 import dev.antite.browser.R
 import dev.antite.browser.Urls
+import dev.antite.browser.closePopup
+import dev.antite.browser.find
+import dev.antite.browser.hideFind
 import dev.antite.browser.l10n.T
+import dev.antite.browser.pageInfo
+import dev.antite.browser.translate
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 

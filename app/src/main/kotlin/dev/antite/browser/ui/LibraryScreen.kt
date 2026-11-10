@@ -39,6 +39,7 @@ import dev.antite.browser.Urls
 import dev.antite.browser.data.Db
 import dev.antite.browser.data.Entry
 import dev.antite.browser.l10n.T
+import dev.antite.browser.restoreClosed
 import dev.antite.browser.service.Downloads
 import kotlinx.coroutines.launch
 

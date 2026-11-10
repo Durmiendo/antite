@@ -47,7 +47,16 @@ import dev.antite.browser.Browser
 import dev.antite.browser.LibraryKind
 import dev.antite.browser.R
 import dev.antite.browser.Urls
+import dev.antite.browser.bookmarkAllTabs
+import dev.antite.browser.clearDataDialog
 import dev.antite.browser.l10n.T
+import dev.antite.browser.openExtensionsMenu
+import dev.antite.browser.pageInfo
+import dev.antite.browser.showFind
+import dev.antite.browser.toggleBookmark
+import dev.antite.browser.toggleDark
+import dev.antite.browser.toggleDesktop
+import dev.antite.browser.translate
 
 private sealed interface MenuEntry {
     class Item(@DrawableRes val icon: Int, val label: String, val enabled: Boolean = true, val action: () -> Unit) : MenuEntry
