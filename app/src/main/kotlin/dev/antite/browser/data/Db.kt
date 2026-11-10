@@ -14,7 +14,7 @@ data class Entry(val id: Long, val url: String?, val title: String?, val time: L
 
 data class Site(val host: String, val url: String, val title: String?)
 
-class Db private constructor(context: Context) : SQLiteOpenHelper(context, "antite.db", null, 2) {
+class Db private constructor(context: Context) : SQLiteOpenHelper(context, "antite.db", null, 3) {
     companion object {
         private const val HISTORY_KEEP_MS = 90L * 24 * 3600 * 1000
 
@@ -40,13 +40,17 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "anti
         db.execSQL("CREATE TABLE bookmarks (id INTEGER PRIMARY KEY, url TEXT UNIQUE NOT NULL, title TEXT, created INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE downloads (id INTEGER PRIMARY KEY, name TEXT NOT NULL, uri TEXT, mime TEXT, created INTEGER NOT NULL, status TEXT NOT NULL)")
         db.execSQL("CREATE TABLE closed (id INTEGER PRIMARY KEY, url TEXT NOT NULL, title TEXT, state TEXT, closed INTEGER NOT NULL)")
-        onUpgrade(db, 1, 2)
+        onUpgrade(db, 1, 3)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldV: Int, newV: Int) {
         if (oldV < 2) {
             db.execSQL("ALTER TABLE history ADD COLUMN visits INTEGER NOT NULL DEFAULT 1")
             db.execSQL("CREATE TABLE pins (id INTEGER PRIMARY KEY, url TEXT NOT NULL, title TEXT, pos INTEGER NOT NULL)")
+        }
+        if (oldV < 3) {
+            db.execSQL("ALTER TABLE downloads ADD COLUMN source TEXT")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN size INTEGER")
         }
     }
 
@@ -195,17 +199,19 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "anti
     fun bookmarks(filter: String?): List<Entry> =
         query("SELECT id, url, title, created, NULL FROM bookmarks", "created", filter, 5000)
 
-    fun addDownload(name: String, mime: String): Long = writableDatabase.insert("downloads", null, ContentValues().apply {
+    fun addDownload(name: String, mime: String, source: String): Long = writableDatabase.insert("downloads", null, ContentValues().apply {
         put("name", name)
         put("mime", mime)
+        put("source", source)
         put("created", System.currentTimeMillis())
         put("status", "loading")
     })
 
-    fun finishDownload(id: Long, uri: String?, status: String) {
+    fun finishDownload(id: Long, uri: String?, status: String, size: Long) {
         writableDatabase.update("downloads", ContentValues().apply {
             put("uri", uri)
             put("status", status)
+            put("size", size)
         }, "id=?", arrayOf(id.toString()))
     }
 
@@ -216,7 +222,7 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "anti
     }
 
     fun downloads(filter: String?): List<Entry> = query(
-        "SELECT id, uri, name, created, status || '|' || IFNULL(mime,'') FROM downloads", "created", filter, 1000,
+        "SELECT id, uri, name, created, status || '|' || IFNULL(mime,'') || '|' || IFNULL(source,'') || '|' || IFNULL(size,-1) FROM downloads", "created", filter, 1000,
     )
 
     fun clearDownloads() {

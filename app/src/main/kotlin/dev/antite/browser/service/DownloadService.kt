@@ -276,7 +276,7 @@ class DownloadService : Service() {
                 else cr.delete(target, null, null)
             }
             val uri = if (status == DONE) (target ?: t.target) else null
-            if (t.id >= 0) Db.get(context).finishDownload(t.id, uri?.toString(), status)
+            if (t.id >= 0) Db.get(context).finishDownload(t.id, uri?.toString(), status, t.done)
             main.post {
                 progress.remove(t.id)
                 t.onDone(status, error)

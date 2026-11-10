@@ -128,6 +128,8 @@ internal fun MainPage(b: Browser, nav: Nav) {
         nav(nav, T.settingsDownloads, if (p.bool("dlAsk", false)) T.settingsDownloadsAsk else T.settingsDownloadsDefault) {
             Screen(b, it, T.settingsDownloads) {
                 toggle(b, T.settingsDownloadsAskToggle, T.settingsDownloadsAskSummary, "dlAsk", false, false)
+                choice(b, it, T.dlLayout, "dlLayout", Options.downloadLayouts, 0, false)
+                choice(b, it, T.dlPreview, "dlPreview", Options.downloadPreviews, 0, false)
             }
         }
         item { SettingRow("uBlock Origin", T.settingsUboSummary, onClick = b::openUboDashboard) }

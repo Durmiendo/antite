@@ -34,3 +34,4 @@ action-share = Поделиться
 action-copy-link = Копировать ссылку
 action-rename = Переименовать
 action-restore = Восстановить
+action-more = Ещё

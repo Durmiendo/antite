@@ -42,6 +42,13 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (keysDir) signingConfig signingConfigs.release
         }
+        // A debug build signed with the release key: installs over a release build without losing data, so a phone
+        // with the published Antite can be debugged (run-as, logs of the app process).
+        logs {
+            initWith debug
+            if (keysDir) signingConfig signingConfigs.release
+            matchingFallbacks = ['debug']
+        }
     }
 
     compileOptions {

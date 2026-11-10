@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -170,6 +172,10 @@ fun LibraryScreen(b: Browser) {
             }
         }
         if (loaded && items.isEmpty()) note(empty)
+        if (kind == LibraryKind.DOWNLOADS && b.prefs.int("dlLayout", 0) == 1) {
+            downloadBlocks(b, items, { open(it, false) }, ::actions)
+            return@PageScaffold
+        }
         items(items, key = { it.id }) { e ->
             val host = Urls.host(e.url)
             val sub = when (kind) {
@@ -182,7 +188,9 @@ fun LibraryScreen(b: Browser) {
                 e.title?.ifEmpty { null } ?: e.url ?: "", sub,
                 onClick = { open(e, false) }, onLongClick = { actions(e) },
                 leading = {
-                    if (kind == LibraryKind.DOWNLOADS) Ico(icon) else {
+                    if (kind == LibraryKind.DOWNLOADS) Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                        MediaThumb(b, e, Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)), 80) { Ico(icon) }
+                    } else {
                         val bmp = b.icons.get(host)
                         if (bmp != null) SiteIcon(bmp, host, 24) else Ico(icon)
                     }

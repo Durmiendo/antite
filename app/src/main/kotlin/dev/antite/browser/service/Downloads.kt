@@ -32,16 +32,16 @@ class Downloads(private val b: Browser) {
     fun start(r: DownloadRequest, askTarget: Boolean) {
         val name = URLUtil.guessFileName(r.url, r.contentDisposition, r.contentType)
         val mime = r.contentType?.substringBefore(';')?.trim()?.ifEmpty { null } ?: "application/octet-stream"
-        if (!askTarget) return save(r.body, name, mime, null, r.contentLength)
+        if (!askTarget) return save(r.body, name, mime, null, r.contentLength, Urls.host(r.url))
         b.activity.createDocument(name, mime) { uri ->
-            if (uri == null) runCatching { r.body.close() } else save(r.body, name, mime, uri, r.contentLength)
+            if (uri == null) runCatching { r.body.close() } else save(r.body, name, mime, uri, r.contentLength, Urls.host(r.url))
         }
     }
 
     fun savePdf(t: Tab) {
         val base = (t.title.ifEmpty { Urls.host(t.url) }).replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80)
         b.ensureSession(t).saveAsPdf { input ->
-            if (input != null) save(input, "$base.pdf", "application/pdf", null, -1) else b.toast(T.downloadPdfFailed)
+            if (input != null) save(input, "$base.pdf", "application/pdf", null, -1, Urls.host(t.url)) else b.toast(T.downloadPdfFailed)
         }
     }
 
@@ -53,11 +53,11 @@ class Downloads(private val b: Browser) {
         }
     }
 
-    private fun save(body: InputStream, name: String, mime: String, chosen: Uri?, total: Long) {
+    private fun save(body: InputStream, name: String, mime: String, chosen: Uri?, total: Long, source: String) {
         b.toast(T.downloadStarted(name = name))
         askNotifications()
         b.activity.lifecycleScope.launch {
-            val id = b.db.io { addDownload(name, mime) }
+            val id = b.db.io { addDownload(name, mime, source) }
             DownloadService.enqueue(b.activity, DownloadService.Task(id, name, mime, total, chosen, body))
             revision.intValue++
         }
@@ -96,6 +96,14 @@ class Downloads(private val b: Browser) {
 
         fun loading(e: Entry) = DownloadService.isActive(e.id)
 
-        private fun mime(e: Entry): String = e.extra?.split('|')?.getOrNull(1)?.ifEmpty { null } ?: "*/*"
+        fun mime(e: Entry): String = e.extra?.split('|')?.getOrNull(1)?.ifEmpty { null } ?: "*/*"
+
+        fun source(e: Entry): String = e.extra?.split('|')?.getOrNull(2) ?: ""
+
+        fun size(e: Entry): Long = e.extra?.split('|')?.getOrNull(3)?.toLongOrNull() ?: -1
+
+        fun done(e: Entry) = e.extra?.split('|')?.firstOrNull() == DownloadService.DONE && e.url != null
+
+        fun media(e: Entry) = mime(e).let { it.startsWith("image/") || it.startsWith("video/") }
     }
 }

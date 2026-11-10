@@ -34,3 +34,4 @@ action-share = Share
 action-copy-link = Copy link
 action-rename = Rename
 action-restore = Restore
+action-more = More
