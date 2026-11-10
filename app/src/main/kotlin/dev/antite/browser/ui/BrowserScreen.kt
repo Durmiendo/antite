@@ -7,6 +7,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
@@ -60,13 +62,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -78,6 +81,7 @@ import dev.antite.browser.Browser
 import dev.antite.browser.Overlay
 import dev.antite.browser.R
 import dev.antite.browser.Urls
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -334,21 +338,31 @@ private fun UrlText(url: String) {
         Text("Введите запрос или URL", color = p.textSecondary, fontSize = 16.sp, maxLines = 1)
         return
     }
+    val d = remember(url) { Urls.display(url) }
     val s = buildAnnotatedString {
-        when {
-            url.startsWith("https://") -> {
+        when (d.scheme) {
+            "https://" -> {
                 withStyle(SpanStyle(color = p.secure)) { append("https") }
                 withStyle(SpanStyle(color = p.textSecondary)) { append("://") }
-                withStyle(SpanStyle(color = p.text)) { append(url.substring(8)) }
             }
-            url.startsWith("http://") -> {
-                withStyle(SpanStyle(color = p.textSecondary)) { append("http://") }
-                withStyle(SpanStyle(color = p.text)) { append(url.substring(7)) }
-            }
-            else -> withStyle(SpanStyle(color = p.text)) { append(url) }
+            else -> withStyle(SpanStyle(color = p.textSecondary)) { append(d.scheme) }
         }
+        withStyle(SpanStyle(color = p.text)) { append(d.text.substring(0, d.hostEnd)) }
+        withStyle(SpanStyle(color = if (d.hostEnd > 0) p.textSecondary else p.text)) { append(d.text.substring(d.hostEnd)) }
     }
-    Text(s, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Clip)
+    // Like Chrome's scroll to TLD: when the address does not fit, it is moved left until the end of the host shows,
+    // so a.b.c.example.com is read as example.com and not cut off after its subdomains.
+    val style = TextStyle(fontSize = 16.sp)
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(Modifier.clipToBounds()) {
+        val width = constraints.maxWidth
+        val shift = remember(s, width) {
+            val layout = measurer.measure(s, style, softWrap = false, maxLines = 1)
+            (layout.getHorizontalPosition(d.scheme.length + d.hostEnd, usePrimaryDirection = true) - width).coerceAtLeast(0f)
+        }
+        Text(s, style = style, maxLines = 1, softWrap = false,
+            modifier = Modifier.wrapContentWidth(Alignment.Start, unbounded = true).offset { IntOffset(-shift.roundToInt(), 0) })
+    }
 }
 
 @Composable
