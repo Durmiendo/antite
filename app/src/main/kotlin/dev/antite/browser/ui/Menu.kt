@@ -1,6 +1,7 @@
 package dev.antite.browser.ui
 
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.ScrollState
@@ -143,12 +144,12 @@ fun BrowserMenu(b: Browser) {
 private fun MenuPopup(open: () -> Boolean, close: () -> Unit, scroll: ScrollState, top: List<TopIcon>, entries: List<MenuEntry>) {
     val isOpen = open()
     // Chrome's anchored popup: menu_enter.xml grows from the menu button, menu_exit.xml shrinks to half and fades.
-    // The dialog style is Android's Animation.Dialog (dialog_enter/exit.xml), which the first build gave its PopupWindow.
-    val dialog = Motion.dialogMenu
+    // The reveal style is the first build's PopupWindow: popup_window_enter/exit.xml under its Animation.Dialog.
+    val reveal = Motion.revealMenu
     val shown by animateFloatAsState(if (isOpen) 1f else 0f,
         when {
-            dialog && isOpen -> Motion.tween(Motion.DIALOG, Motion.DecelerateQuad)
-            dialog -> Motion.tween(Motion.DIALOG, Motion.AccelerateQuad)
+            reveal && isOpen -> Motion.tween(Motion.POPUP_ENTER, LinearEasing)
+            reveal -> Motion.tween(Motion.DIALOG_WINDOW, LinearEasing)
             !Motion.chrome -> snap()
             isOpen -> Motion.tween(Motion.MENU_ENTER, Motion.Emphasized)
             else -> Motion.tween(Motion.MENU_EXIT, Motion.Emphasized)
@@ -161,15 +162,12 @@ private fun MenuPopup(open: () -> Boolean, close: () -> Unit, scroll: ScrollStat
         layout(placeable.width, placeable.height) { if (isOpen || shown > 0f) placeable.place(0, 0) }
     }.then(if (isOpen) Modifier else Modifier.clearAndSetSemantics {})) {
         MenuBody(close, scroll, top, entries) {
-            val scale = when {
-                dialog -> 0.9f + 0.1f * shown
-                isOpen -> shown
-                else -> 0.5f + 0.5f * shown
-            }
+            if (reveal) return@MenuBody Motion.popupReveal(this, isOpen, shown)
+            val scale = if (isOpen) shown else 0.5f + 0.5f * shown
             scaleX = scale
             scaleY = scale
             alpha = shown
-            transformOrigin = if (dialog) TransformOrigin.Center else TransformOrigin(0.95f, 0.05f)
+            transformOrigin = TransformOrigin(0.95f, 0.05f)
         }
     }
 }
