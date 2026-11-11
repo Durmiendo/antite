@@ -110,8 +110,8 @@ fun BrowserMenu(b: Browser) {
             if (t.loading) s.stop() else s.reload()
         },
     ), listOfNotNull(
-        MenuEntry.Item(R.drawable.ic_add_box, T.tabNew) { b.newTabAndFocus(false) },
-        MenuEntry.Item(R.drawable.ic_incognito, T.menuNewIncognitoTab) { b.newTabAndFocus(true) },
+        MenuEntry.Item(R.drawable.ic_add_box, T.tabNew) { b.openTab("about:blank", false, null, true) },
+        MenuEntry.Item(R.drawable.ic_incognito, T.menuNewIncognitoTab) { b.openTab("about:blank", true, null, true) },
         MenuEntry.Line,
         MenuEntry.Item(R.drawable.ic_history, T.menuHistory) { b.showLibrary(LibraryKind.HISTORY) },
         MenuEntry.Item(R.drawable.ic_delete, T.menuClearData) { b.clearDataDialog() },
