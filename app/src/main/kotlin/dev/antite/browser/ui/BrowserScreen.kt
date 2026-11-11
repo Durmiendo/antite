@@ -76,6 +76,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -105,9 +106,11 @@ import dev.antite.browser.find
 import dev.antite.browser.hideFind
 import dev.antite.browser.l10n.T
 import dev.antite.browser.pageInfo
+import dev.antite.browser.pageRefresh
 import dev.antite.browser.translate
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -138,6 +141,13 @@ fun BrowserScreen(b: Browser) {
         if (imeWasVisible && imeInset == 0) b.dismissLoginOffer()
         imeWasVisible = imeInset > 0
     }
+    // Pull to refresh: the circle stays until the reload it started finishes and the finger is off the screen.
+    LaunchedEffect(t?.loading) {
+        if (t?.loading == false && b.pullRefreshing) {
+            snapshotFlow { b.toolbarMotion.touching }.first { !it }
+            b.pullRefreshing = false
+        }
+    }
 
     Box(
         Modifier.fillMaxSize().background(bar)
@@ -166,8 +176,22 @@ fun BrowserScreen(b: Browser) {
                 if (b.fullscreen) 0
                 else -(b.hidden.toInt() + if (keyboardUp) navMax else navMax - navBars.getBottom(density))
             }
+            // Pull to refresh, as in Chrome: on a loaded web page, while no interface is over it and the page is at
+            // the top. The circle follows the shell palette; it hides with the load started by the refresh itself.
+            val pullReady = t != null && !t.loading && !Urls.isBlank(t.url) && !b.urlFocused &&
+                b.overlay == Overlay.NONE && !b.fullscreen && !b.pip && !(t.incognito && b.incognitoLocked)
+            val pullRefreshing = b.pullRefreshing
             AndroidView(
-                factory = { view.view },
+                factory = { ctx ->
+                    PageRefreshLayout(ctx, { b.pageScrollY == 0 }, { b.pageRefresh() }).apply { setPage(view.view) }
+                },
+                update = { r ->
+                    r.isEnabled = pullReady
+                    r.setColorSchemeColors(p.accent.toArgb())
+                    r.setProgressBackgroundColorSchemeColor(
+                        (if (t?.incognito == true) p.toolbarIncognito else p.toolbar).toArgb())
+                    r.setRefreshing(pullRefreshing)
+                },
                 modifier = Modifier.fillMaxSize()
                     .padding(bottom = with(density) { bottomGap.toDp() })
                     .pointerInput(Unit) {

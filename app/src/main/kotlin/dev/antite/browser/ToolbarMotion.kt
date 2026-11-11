@@ -4,6 +4,9 @@ import android.animation.ValueAnimator
 import android.os.Handler
 import android.os.Looper
 import android.view.animation.LinearInterpolator
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import dev.antite.browser.ui.Motion
 import kotlin.math.abs
 
@@ -19,7 +22,10 @@ class ToolbarMotion(private val b: Browser) {
     }
 
     private val main = Handler(Looper.getMainLooper())
-    private var touching = false
+
+    // Observable, so the pull to refresh circle can wait for the finger to leave the screen.
+    var touching by mutableStateOf(false)
+        private set
     private var lastDelta = 0f
     private var animator: ValueAnimator? = null
     private val settle = Runnable { settle() }

@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -121,6 +122,11 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var ntpFrequent by mutableStateOf(emptyList<Site>())
     var extensionPopup by mutableStateOf<EngineTab?>(null)
 
+    // The scroll of the current tab's page: pull to refresh may start only when the page is at the top.
+    var pageScrollY by mutableIntStateOf(0)
+    // Pull to refresh started the reload; the spinner is shown until the page finishes loading.
+    var pullRefreshing by mutableStateOf(false)
+
     var engineView: EngineView? = null
     var toolbarHeightPx = 0f
     var navDeadZonePx = 0f
@@ -232,6 +238,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         engineView?.show(s)
         s.setActive(true)
         lastScrollY = -1
+        pageScrollY = 0
         setToolbarHidden(0f)
         hideFind()
         translateOffer = null
@@ -509,6 +516,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun onScroll(t: Tab, y: Int) {
         if (t !== current || urlFocused) return
+        pageScrollY = y
         if (lastScrollY < 0) {
             lastScrollY = y
             return
@@ -595,6 +603,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             if (url != t.httpsOnlyFailed) t.httpsOnlyFailed = null
             t.loading = true
             t.progress = 0
+            // A new page starts at the top; until Gecko reports a scroll, pull to refresh stays allowed.
+            if (t === current) pageScrollY = 0
             if (t === current) toolbarMotion.show()
         }
 

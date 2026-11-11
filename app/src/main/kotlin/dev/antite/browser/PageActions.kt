@@ -38,6 +38,13 @@ fun Browser.toggleDesktop(t: Tab) {
     scheduleSave()
 }
 
+// Pull to refresh: the reload is like the toolbar one (the cache is used); the spinner hides on page stop.
+fun Browser.pageRefresh() {
+    val t = current ?: return
+    pullRefreshing = true
+    ensureSession(t).reload()
+}
+
 fun Browser.toggleDark() {
     prefs.edit { putInt("theme", if (prefs.isDark()) 1 else 2) }
     applyEngineSettings()
