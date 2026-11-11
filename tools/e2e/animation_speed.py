@@ -25,12 +25,10 @@ def set_choice(d, row, label):
     d.tap("Меню", exact=True)
     d.scroll_to("Настройки")
     d.tap("Настройки", exact=True)
-    d.wait("Основные", exact=True)
+    d.wait("Поиск по настройкам", exact=True)
     time.sleep(1)
-    # The row sits just below the screen edge, where scroll_to already finds it but a tap would hit the nav bar.
-    d.shell("input swipe 540 1800 540 700 400")
+    d.tap("Внешний вид", exact=True)
     time.sleep(1)
-    d.tap("Специальные возможности", exact=True)
     d.tap(row, exact=True)
     d.tap(label, exact=True)
     for _ in range(3):

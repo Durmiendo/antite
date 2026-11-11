@@ -1,5 +1,6 @@
 package dev.antite.browser.ui
 
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -27,18 +28,6 @@ internal fun LanguagesPage(b: Browser, nav: Nav) {
         b.applyEngineSettings()
     }
     Screen(b, nav, T.settingsLanguages) {
-        item(key = "uiLanguage") {
-            val options = listOf("" to T.languagesSystem) + L10n.languages
-            fun current() = options.indexOfFirst { it.first == b.prefs.string(L10n.PREF, "") }.coerceAtLeast(0)
-            SettingRow(T.languagesInterface, options[current()].second, onClick = {
-                nav.push(T.languagesInterface) { n ->
-                    RadioPage(b, n, T.languagesInterface, options.map { it.second }, ::current) { i ->
-                        b.prefs.edit { putString(L10n.PREF, options[i].first) }
-                        L10n.init(b.activity)
-                    }
-                }
-            })
-        }
         section(T.languagesSites)
         note(T.languagesSitesNote)
         if (cur.isEmpty()) item { SettingRow(Urls.langName(Locale.getDefault().language), T.languagesSystem) }
@@ -119,6 +108,25 @@ internal fun NeverTranslatePage(b: Browser, nav: Nav) {
         if (sites.isEmpty()) note(T.neverTranslateEmpty)
         sites.forEach { s ->
             item(key = s) { SettingRow(s, T.neverTranslateRow, onClick = { tr.allowTranslateSite(s) { revision++ } }) }
+        }
+    }
+}
+
+// Shown under Appearance; the language of sites stays in Languages.
+internal fun LazyListScope.interfaceLanguage(b: Browser, nav: Nav) {
+    mark(T.languagesInterface, null, "uiLanguage", L10n.languages.joinToString(" ") { it.second })
+    item(key = "uiLanguage") {
+        val options = listOf("" to T.languagesSystem) + L10n.languages
+        fun current() = options.indexOfFirst { it.first == b.prefs.string(L10n.PREF, "") }.coerceAtLeast(0)
+        Marked("uiLanguage") {
+            SettingRow(T.languagesInterface, options[current()].second, onClick = {
+                nav.push(T.languagesInterface) { n ->
+                    RadioPage(b, n, T.languagesInterface, options.map { it.second }, ::current) { i ->
+                        b.prefs.edit { putString(L10n.PREF, options[i].first) }
+                        L10n.init(b.activity)
+                    }
+                }
+            })
         }
     }
 }

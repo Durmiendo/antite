@@ -34,8 +34,7 @@ def main():
 
     print("1. settings open at the top of their first page after being left scrolled and on a subpage")
     open_menu_item(d, "Настройки")
-    d.scroll_to("Специальные возможности")
-    d.tap("Специальные возможности", exact=True)
+    d.tap("Внешний вид", exact=True)
     d.wait("Скорость анимации", exact=True)
     d.shell("input keyevent BACK")
     time.sleep(1)
@@ -43,7 +42,7 @@ def main():
     time.sleep(1.5)
     d.wait("Меню", exact=True)
     open_menu_item(d, "Настройки")
-    if d.find("Основные", exact=True) is None or d.find("Поисковая система", exact=True) is None:
+    if d.find("Поиск по настройкам", exact=True) is None or d.find("Поиск и главная", exact=True) is None:
         d.fail("settings did not open at the top of their first page")
     d.shell("input keyevent BACK")
     time.sleep(1.5)
@@ -69,7 +68,7 @@ def main():
     d.shell("input keyevent BACK")
     time.sleep(1.5)
     top = d.top_activity()
-    if "dev.antite.browser" in top and d.find("Основные", exact=True) is not None:
+    if "dev.antite.browser" in top and d.find("Поиск по настройкам", exact=True) is not None:
         d.fail("Back opened or stayed in settings")
     print("OK")
 

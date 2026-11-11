@@ -31,7 +31,8 @@ def open_transfer_page(d):
     d.tap("Меню", exact=True)
     d.scroll_to("Настройки")
     d.tap("Настройки", exact=True)
-    d.scroll_to("Перенос данных")
+    d.scroll_to("Система")
+    d.tap("Система", exact=True)
     d.tap("Перенос данных", exact=True)
 
 

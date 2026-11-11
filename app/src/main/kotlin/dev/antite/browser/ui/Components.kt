@@ -57,7 +57,9 @@ fun IconBtn(@DrawableRes res: Int, description: String, enabled: Boolean = true,
 }
 
 @Composable
-fun PageScaffold(title: String, onBack: () -> Unit, actions: @Composable () -> Unit = {}, content: LazyListScope.() -> Unit) {
+fun PageScaffold(
+    title: String, onBack: () -> Unit, actions: @Composable () -> Unit = {}, scrollTo: Int = -1, content: LazyListScope.() -> Unit,
+) {
     val p = LocalPalette.current
     Column(Modifier.fillMaxSize().background(p.background)) {
         Row(
@@ -76,6 +78,8 @@ fun PageScaffold(title: String, onBack: () -> Unit, actions: @Composable () -> U
         val state = rememberLazyListState()
         val reset = LocalPageReset.current
         LaunchedEffect(reset) { state.scrollToItem(0) }
+        // A row opened from settings search is brought up with a little of the page above it.
+        if (scrollTo >= 0) LaunchedEffect(scrollTo) { state.scrollToItem((scrollTo - 2).coerceAtLeast(0)) }
         LazyColumn(Modifier.fillMaxSize(), state, contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp + navBar)) {
             content()
         }
@@ -85,7 +89,12 @@ fun PageScaffold(title: String, onBack: () -> Unit, actions: @Composable () -> U
 // Changed by a kept page when it closes, so it opens at the top again.
 val LocalPageReset = compositionLocalOf { 0 }
 
-fun LazyListScope.section(name: String) = item(key = "section:$name") {
+fun LazyListScope.section(name: String) {
+    (this as? SettingsIndex)?.section = name
+    sectionItem(name)
+}
+
+private fun LazyListScope.sectionItem(name: String) = item(key = "section:$name") {
     Text(
         name, color = LocalPalette.current.accent, fontSize = 14.sp, fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 8.dp),

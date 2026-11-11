@@ -91,7 +91,8 @@ def main():
     d.tap("Меню", exact=True)
     d.scroll_to("Настройки")
     d.tap("Настройки", exact=True)
-    d.scroll_to("Обновления")
+    d.scroll_to("О программе")
+    d.tap("О программе", exact=True)
     d.tap("Обновления", exact=True)
     d.tap("Обновить Antite", exact=True)
     rows = [n for n in d.nodes() if "Скачиваем" in (n.get("text") or "")]
@@ -131,7 +132,8 @@ def main():
     d.tap("Меню", exact=True)
     d.scroll_to("Настройки")
     d.tap("Настройки", exact=True)
-    d.scroll_to("Обновления")
+    d.scroll_to("О программе")
+    d.tap("О программе", exact=True)
     d.tap("Обновления", exact=True)
     d.wait(f"Сборка {new}", exact=True)
     if d.find("Обновить Antite", exact=True) is not None:

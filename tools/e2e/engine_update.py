@@ -74,7 +74,8 @@ def open_updates(d):
     d.tap("Меню", exact=True)
     d.scroll_to("Настройки")
     d.tap("Настройки", exact=True)
-    d.scroll_to("Обновления")
+    d.scroll_to("О программе")
+    d.tap("О программе", exact=True)
     d.tap("Обновления", exact=True)
 
 

@@ -21,7 +21,7 @@ def toggle_https_only(d):
     time.sleep(1)
     d.scroll_to("Настройки")
     d.tap("Настройки", exact=True)
-    d.wait("Основные", exact=True)
+    d.wait("Поиск по настройкам", exact=True)
     time.sleep(1)
     d.tap("Конфиденциальность и безопасность", exact=True)
     time.sleep(1)

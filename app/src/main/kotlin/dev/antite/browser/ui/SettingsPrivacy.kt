@@ -10,37 +10,35 @@ import dev.antite.browser.l10n.T
 import dev.antite.browser.openUboDashboard
 import dev.antite.engine.BackgroundService
 
-@Composable
-internal fun PrivacyPage(b: Browser, nav: Nav) {
+internal fun privacyPage(b: Browser) = SettingsPage(T.settingsPrivacy) { nav ->
     val doh = b.prefs.index("doh", Options.doh, 0)
-    Screen(b, nav, T.settingsPrivacy) {
-        item { SettingRow(T.menuClearData, T.privacyClearSummary, onClick = b::clearDataDialog) }
-        section(T.privacySecurity)
-        toggle(b, T.privacyHttpsOnly,
-            T.privacyHttpsOnlySummary, "httpsOnly", false, true)
-        b.engine.backgroundServices.firstOrNull { it.id == BackgroundService.SAFE_BROWSING }?.let { sb ->
-            toggle(b, T.privacySafeBrowsing,
-                T.privacySafeBrowsingSummary,
-                b.prefs.serviceKey(sb.id), sb.defaultEnabled, true)
-        }
-        nav(nav, T.privacySecureDns, Options.doh[doh].label) { DnsPage(b, it) }
-        section(T.privacyPrivacy)
-        choice(b, nav, T.privacyTracking, "tracking", Options.tracking, 0, true)
-        choice(b, nav, T.privacyCookies, "cookies", Options.cookies, 0, true)
-        choice(b, nav, T.privacyFingerprint, "fingerprint", Options.fingerprint, 0, true)
-        if (b.prefs.int("fingerprint", 0) == 2) {
-            note(T.privacyFingerprintMaximumNote)
-        }
-        choice(b, nav, "WebRTC", "webrtc", Options.webRtc, 1, true)
-        toggle(b, T.privacyDnt, null, "dnt", false, true)
-        toggle(b, "Global Privacy Control", T.privacyGpcSummary, "gpc", true, true)
-        toggle(b, T.privacyStrip, T.privacyStripSummary, "strip", true, true)
-        toggle(b, T.privacyPreload, T.privacyPreloadSummary,
-            "preload", false, true)
-        toggle(b, T.privacySuggest, T.privacySuggestSummary,
-            "searchSuggest", true, false)
-        nav(nav, T.privacyNetwork, T.privacyNetworkSummary) { NetworkPage(b, it) }
+    action(T.menuClearData, T.privacyClearSummary, "row:clearData", b::clearDataDialog)
+    section(T.privacySecurity)
+    toggle(b, T.privacyHttpsOnly,
+        T.privacyHttpsOnlySummary, "httpsOnly", false, true)
+    b.engine.backgroundServices.firstOrNull { it.id == BackgroundService.SAFE_BROWSING }?.let { sb ->
+        toggle(b, T.privacySafeBrowsing,
+            T.privacySafeBrowsingSummary,
+            b.prefs.serviceKey(sb.id), sb.defaultEnabled, true)
     }
+    nav(nav, T.privacySecureDns, Options.doh[doh].label) { DnsPage(b, it) }
+    section(T.privacyPrivacy)
+    choice(b, nav, T.privacyTracking, "tracking", Options.tracking, 0, true)
+    choice(b, nav, T.privacyCookies, "cookies", Options.cookies, 0, true)
+    choice(b, nav, T.privacyFingerprint, "fingerprint", Options.fingerprint, 0, true)
+    if (b.prefs.int("fingerprint", 0) == 2) {
+        note(T.privacyFingerprintMaximumNote)
+    }
+    choice(b, nav, "WebRTC", "webrtc", Options.webRtc, 1, true)
+    toggle(b, T.privacyDnt, null, "dnt", false, true)
+    toggle(b, "Global Privacy Control", T.privacyGpcSummary, "gpc", true, true)
+    toggle(b, T.privacyStrip, T.privacyStripSummary, "strip", true, true)
+    toggle(b, T.privacyPreload, T.privacyPreloadSummary,
+        "preload", false, true)
+    page(b, nav, networkPage(b), T.privacyNetworkSummary)
+    section(T.privacySites)
+    page(b, nav, siteSettingsPage(b), T.settingsSitesSummary)
+    action("uBlock Origin", T.settingsUboSummary, "row:ubo", b::openUboDashboard)
 }
 
 internal fun serviceSummary(s: BackgroundService, on: Boolean) = buildString {
@@ -48,8 +46,7 @@ internal fun serviceSummary(s: BackgroundService, on: Boolean) = buildString {
     if (!on && s.offEffect != null) append("\n").append(T.networkWhenOff(effect = s.offEffect))
 }
 
-@Composable
-internal fun NetworkPage(b: Browser, nav: Nav) = Screen(b, nav, T.privacyNetwork) {
+internal fun networkPage(b: Browser) = SettingsPage(T.privacyNetwork) { nav ->
     note(T.networkNote)
     section("Antite")
     nav(nav, T.settingsUpdates, T.networkUpdates(interval = updatesSummary(b).replaceFirstChar { it.uppercase() }) + "\n" +

@@ -19,8 +19,7 @@ import java.util.Locale
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 
-@Composable
-internal fun SiteSettingsPage(b: Browser, nav: Nav) = Screen(b, nav, T.settingsSites) {
+internal fun siteSettingsPage(b: Browser) = SettingsPage(T.settingsSites) { nav ->
     nav(nav, T.sitesAll, T.sitesAllSummary) { AllSitesPage(b, it) }
     section(T.sitesPermissions)
     SitePerms.ALL.forEach { c -> nav(nav, c.title, c.labels[b.perms.defaultIndex(c)]) { CategoryPage(b, it, c) } }

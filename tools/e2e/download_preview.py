@@ -73,10 +73,9 @@ def set_option(d, row, label):
     # A tap while the menu still flings only stops the fling.
     time.sleep(1)
     d.tap("Настройки", exact=True)
-    d.wait("Основные", exact=True)
+    d.wait("Поиск по настройкам", exact=True)
     time.sleep(1)
-    d.shell("input swipe 540 1800 540 700 400")
-    time.sleep(1)
+    d.scroll_to("Скачанные файлы")
     d.tap("Скачанные файлы", exact=True)
     # Pages slide in for 366 ms; a tap during the slide misses.
     time.sleep(1)

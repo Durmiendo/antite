@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
 
 
-def open_languages(d, menu, settings, languages):
+def open_appearance(d, menu, settings, languages):
     d.tap(menu, exact=True)
     d.scroll_to(settings)
     d.tap(settings, exact=True)
@@ -35,7 +35,7 @@ def main():
         time.sleep(0.5)
     if d.find("Menu", exact=True) is not None:
         print("0. left in English by an earlier run, back to Russian first")
-        open_languages(d, "Menu", "Settings", "Languages")
+        open_appearance(d, "Menu", "Settings", "Appearance")
         d.tap("Interface language", exact=True)
         d.tap("Русский", exact=True)
         d.wait("Язык интерфейса", exact=True)
@@ -45,7 +45,7 @@ def main():
     pid = d.shell(f"pidof {PACKAGE}", check=False).strip()
 
     print("1. Russian -> English")
-    open_languages(d, "Меню", "Настройки", "Языки")
+    open_appearance(d, "Меню", "Настройки", "Внешний вид")
     d.tap("Язык интерфейса", exact=True)
     d.tap("English", exact=True)
     d.wait("Interface language", exact=True)
@@ -67,7 +67,7 @@ def main():
     d.wait("Menu", timeout=30, exact=True)
 
     print("3. back to Russian")
-    open_languages(d, "Menu", "Settings", "Languages")
+    open_appearance(d, "Menu", "Settings", "Appearance")
     d.tap("Interface language", exact=True)
     d.tap("Русский", exact=True)
     d.wait("Язык интерфейса", exact=True)
