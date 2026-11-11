@@ -88,7 +88,7 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
     }
     LaunchedEffect(shown) {
         if (shown) return@LaunchedEffect
-        delay(Motion.ms(Motion.SHARED_AXIS).toLong())
+        delay(Motion.pageMs(Motion.SHARED_AXIS).toLong())
         filter = ""
         found = null
         closes++

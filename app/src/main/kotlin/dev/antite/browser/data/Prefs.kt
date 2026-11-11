@@ -86,6 +86,9 @@ object Options {
     // Indexes into Motion.speeds.
     val animationSpeeds get() = listOf(T.animationOff, T.animationSlow, T.animationNormal, T.animationFast, T.animationFaster)
         .mapIndexed { i, label -> Option(label, i) }
+    // Indexes are Motion.CHROME, INSTANT, DIALOG_MENU.
+    val animationStyles get() = listOf(T.animationStyleChrome, T.animationStyleInstant, T.animationStyleDialogMenu)
+        .mapIndexed { i, label -> Option(label, i) }
     val downloadLayouts get() = listOf(Option(T.dlLayoutList, 0), Option(T.dlLayoutBlocks, 1))
     val downloadPreviews get() = listOf(Option(T.dlPreviewShow, 0), Option(T.dlPreviewNone, 1), Option(T.dlPreviewBlur, 2))
     val tabLayouts get() = listOf(Option(T.tabLayoutGrid, 0), Option(T.tabLayoutList, 1))

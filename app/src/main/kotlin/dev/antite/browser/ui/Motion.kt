@@ -10,8 +10,12 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.snap
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import kotlin.math.roundToInt
 
 // Chrome's motion: durations and curves from Chromium (ui/android/java/res/anim, Interpolators.java,
@@ -29,12 +33,34 @@ object Motion {
         speed.floatValue = speeds[index.coerceIn(0, speeds.lastIndex)]
     }
 
+    // Styles offered in settings: Chrome's motion; full-screen pages, settings pages and the menu at once, as Antite was
+    // before Chrome's motion; the same with the menu zooming in like a system dialog, as in the first Java build.
+    const val STYLE_PREF = "animStyle"
+    const val CHROME = 0
+    const val INSTANT = 1
+    const val DIALOG_MENU = 2
+
+    private val style = mutableIntStateOf(CHROME)
+
+    fun setStyle(index: Int) {
+        style.intValue = index.coerceIn(CHROME, DIALOG_MENU)
+    }
+
+    val chrome: Boolean get() = style.intValue == CHROME
+    val dialogMenu: Boolean get() = style.intValue == DIALOG_MENU
+
     val off: Boolean get() = speed.floatValue <= 0f
 
     fun ms(base: Int): Int = speed.floatValue.let { if (it <= 0f) 0 else (base / it).roundToInt() }
 
     fun <T> tween(base: Int, easing: Easing, delay: Int = 0): FiniteAnimationSpec<T> =
         androidx.compose.animation.core.tween(ms(base), ms(delay), easing)
+
+    // Full-screen pages and settings pages move only in Chrome's style.
+    fun pageMs(base: Int): Int = if (chrome) ms(base) else 0
+
+    fun <T> pageTween(base: Int, easing: Easing, delay: Int = 0): FiniteAnimationSpec<T> =
+        if (chrome) tween(base, easing, delay) else snap()
 
     // ui/android/java/res/anim/emphasized.xml, also Material 3 emphasized.
     val Emphasized: Easing = PathInterpolator(Path().apply {
@@ -47,10 +73,13 @@ object Motion {
     val StandardAccelerate = CubicBezierEasing(0.3f, 0f, 1f, 1f)
     val LinearOutSlowIn = CubicBezierEasing(0f, 0f, 0.2f, 1f)
     val FastOutLinearIn = CubicBezierEasing(0.4f, 0f, 1f, 1f)
+    val DecelerateQuad = Easing { x -> 1f - (1f - x) * (1f - x) }
+    val AccelerateQuad = Easing { x -> x * x }
 
     // Chrome settings pages and activities (shared_x_axis_*.xml): the new page comes 25% from the side while the old one
     // fades out first and leaves the other way.
     fun sharedAxisX(forward: Boolean): ContentTransform {
+        if (!chrome) return EnterTransition.None togetherWith ExitTransition.None
         val sign = if (forward) 1 else -1
         return (slideInHorizontally(tween(SHARED_AXIS, Emphasized)) { sign * it / 4 } +
             fadeIn(tween(SHARED_AXIS_FADE_IN, StandardDecelerate, SHARED_AXIS_FADE_OUT))) togetherWith

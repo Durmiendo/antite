@@ -2,6 +2,7 @@ package dev.antite.browser.ui
 
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -142,8 +143,16 @@ fun BrowserMenu(b: Browser) {
 private fun MenuPopup(open: () -> Boolean, close: () -> Unit, scroll: ScrollState, top: List<TopIcon>, entries: List<MenuEntry>) {
     val isOpen = open()
     // Chrome's anchored popup: menu_enter.xml grows from the menu button, menu_exit.xml shrinks to half and fades.
+    // The dialog style is Android's Animation.Dialog (dialog_enter/exit.xml), which the first build gave its PopupWindow.
+    val dialog = Motion.dialogMenu
     val shown by animateFloatAsState(if (isOpen) 1f else 0f,
-        if (isOpen) Motion.tween(Motion.MENU_ENTER, Motion.Emphasized) else Motion.tween(Motion.MENU_EXIT, Motion.Emphasized),
+        when {
+            dialog && isOpen -> Motion.tween(Motion.DIALOG, Motion.DecelerateQuad)
+            dialog -> Motion.tween(Motion.DIALOG, Motion.AccelerateQuad)
+            !Motion.chrome -> snap()
+            isOpen -> Motion.tween(Motion.MENU_ENTER, Motion.Emphasized)
+            else -> Motion.tween(Motion.MENU_EXIT, Motion.Emphasized)
+        },
         label = "menu")
     // Drawn in the page window: a Popup window took a new window and focus on every opening.
     // Placement alone does not refresh accessibility, so the semantics switch with it.
@@ -152,11 +161,15 @@ private fun MenuPopup(open: () -> Boolean, close: () -> Unit, scroll: ScrollStat
         layout(placeable.width, placeable.height) { if (isOpen || shown > 0f) placeable.place(0, 0) }
     }.then(if (isOpen) Modifier else Modifier.clearAndSetSemantics {})) {
         MenuBody(close, scroll, top, entries) {
-            val scale = if (isOpen) shown else 0.5f + 0.5f * shown
+            val scale = when {
+                dialog -> 0.9f + 0.1f * shown
+                isOpen -> shown
+                else -> 0.5f + 0.5f * shown
+            }
             scaleX = scale
             scaleY = scale
             alpha = shown
-            transformOrigin = TransformOrigin(0.95f, 0.05f)
+            transformOrigin = if (dialog) TransformOrigin.Center else TransformOrigin(0.95f, 0.05f)
         }
     }
 }

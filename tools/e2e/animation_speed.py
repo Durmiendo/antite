@@ -18,6 +18,10 @@ from keyboard_frames import frames  # noqa: E402
 
 
 def set_speed(d, label):
+    set_choice(d, "Скорость анимации", label)
+
+
+def set_choice(d, row, label):
     d.tap("Меню", exact=True)
     d.scroll_to("Настройки")
     d.tap("Настройки", exact=True)
@@ -27,7 +31,7 @@ def set_speed(d, label):
     d.shell("input swipe 540 1800 540 700 400")
     time.sleep(1)
     d.tap("Специальные возможности", exact=True)
-    d.tap("Скорость анимации", exact=True)
+    d.tap(row, exact=True)
     d.tap(label, exact=True)
     for _ in range(3):
         d.shell("input keyevent BACK")

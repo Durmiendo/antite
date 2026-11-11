@@ -120,6 +120,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     init {
         Motion.setSpeed(prefs.int(Motion.PREF, Motion.DEFAULT_SPEED))
+        Motion.setStyle(prefs.int(Motion.STYLE_PREF, Motion.CHROME))
         Auth.onUnavailable = ::toast
         perms.wipeLegacyOnce()
         applyEngineSettings()

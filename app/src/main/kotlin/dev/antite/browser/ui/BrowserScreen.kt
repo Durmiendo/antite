@@ -262,13 +262,13 @@ private fun KeptOverlay(motion: Transition<Overlay>, o: Overlay, warm: Boolean, 
     val page = o != Overlay.SWITCHER
     val alpha = motion.animateFloat({
         when {
-            targetState == o && page -> Motion.tween(Motion.SHARED_AXIS_FADE_IN, Motion.StandardDecelerate, Motion.SHARED_AXIS_FADE_OUT)
-            targetState == o -> Motion.tween(Motion.HUB_FADE, Motion.LinearOutSlowIn)
-            page -> Motion.tween(Motion.SHARED_AXIS_FADE_OUT, Motion.StandardAccelerate)
-            else -> Motion.tween(Motion.HUB_FADE, Motion.FastOutLinearIn)
+            targetState == o && page -> Motion.pageTween(Motion.SHARED_AXIS_FADE_IN, Motion.StandardDecelerate, Motion.SHARED_AXIS_FADE_OUT)
+            targetState == o -> Motion.pageTween(Motion.HUB_FADE, Motion.LinearOutSlowIn)
+            page -> Motion.pageTween(Motion.SHARED_AXIS_FADE_OUT, Motion.StandardAccelerate)
+            else -> Motion.pageTween(Motion.HUB_FADE, Motion.FastOutLinearIn)
         }
     }, label = "alpha") { if (it == o) 1f else 0f }
-    val slide = motion.animateFloat({ Motion.tween(Motion.SHARED_AXIS, Motion.Emphasized) }, label = "slide") {
+    val slide = motion.animateFloat({ Motion.pageTween(Motion.SHARED_AXIS, Motion.Emphasized) }, label = "slide") {
         if (it == o || !page) 1f else 0f
     }
     Box(

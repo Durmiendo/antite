@@ -61,7 +61,7 @@ fun SettingsScreen(b: Browser, shown: Boolean) {
     // Kept composed between openings, so after closing it goes back to its first page, scrolled to the top.
     LaunchedEffect(shown) {
         if (shown) return@LaunchedEffect
-        delay(Motion.ms(Motion.SHARED_AXIS).toLong())
+        delay(Motion.pageMs(Motion.SHARED_AXIS).toLong())
         if (stack.size != 1 || stack[0] !== root) {
             stack.clear()
             stack += root
@@ -280,6 +280,9 @@ internal fun AccessibilityPage(b: Browser, nav: Nav) = Screen(b, nav, T.settings
     choice(b, nav, T.a11yFont, "font", Options.fonts, 2, true)
     choice(b, nav, T.a11yAnimationSpeed, Motion.PREF, Options.animationSpeeds, Motion.DEFAULT_SPEED, false) {
         Motion.setSpeed(b.prefs.int(Motion.PREF, Motion.DEFAULT_SPEED))
+    }
+    choice(b, nav, T.a11yAnimationStyle, Motion.STYLE_PREF, Options.animationStyles, Motion.CHROME, false) {
+        Motion.setStyle(b.prefs.int(Motion.STYLE_PREF, Motion.CHROME))
     }
     toggle(b, T.a11yForceZoom, T.a11yForceZoomSummary,
         "forceZoom", false, true)
