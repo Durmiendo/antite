@@ -3,6 +3,7 @@ package dev.antite.browser.ui
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import dev.antite.browser.Browser
+import dev.antite.browser.R
 import dev.antite.browser.clearDataDialog
 import dev.antite.browser.data.Options
 import dev.antite.browser.engine.Sources
@@ -21,6 +22,7 @@ internal fun privacyPage(b: Browser) = SettingsPage(T.settingsPrivacy) { nav ->
             T.privacySafeBrowsingSummary,
             b.prefs.serviceKey(sb.id), sb.defaultEnabled, true)
     }
+    page(b, nav, vaultSettingsPage(b), vaultSummary(b), R.drawable.ic_shield_lock)
     nav(nav, T.privacySecureDns, Options.doh[doh].label) { DnsPage(b, it) }
     section(T.privacyPrivacy)
     choice(b, nav, T.privacyTracking, "tracking", Options.tracking, 0, true)
@@ -39,6 +41,11 @@ internal fun privacyPage(b: Browser) = SettingsPage(T.settingsPrivacy) { nav ->
     section(T.privacySites)
     page(b, nav, siteSettingsPage(b), T.settingsSitesSummary)
     action("uBlock Origin", T.settingsUboSummary, "row:ubo", b::openUboDashboard)
+}
+
+internal fun vaultSummary(b: Browser): String = when (val n = b.mediaVault.items.size) {
+    0 -> T.vaultSettingsEmpty
+    else -> T.vaultItemsCount(count = n)
 }
 
 internal fun serviceSummary(s: BackgroundService, on: Boolean) = buildString {

@@ -2,6 +2,7 @@ package dev.antite.browser
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
+import android.app.KeyguardManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -19,6 +20,7 @@ import dev.antite.browser.data.Db
 import dev.antite.browser.data.Entry
 import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.data.IconCache
+import dev.antite.browser.data.MediaVault
 import dev.antite.browser.data.Options
 import dev.antite.browser.data.Prefs
 import dev.antite.browser.data.Site
@@ -53,7 +55,7 @@ import dev.antite.engine.TabOptions
 import dev.antite.engine.TranslationState
 import kotlinx.coroutines.launch
 
-enum class Overlay { NONE, SWITCHER, SETTINGS, LIBRARY }
+enum class Overlay { NONE, SWITCHER, SETTINGS, LIBRARY, VAULT }
 
 enum class LibraryKind { HISTORY, BOOKMARKS, CLOSED, DOWNLOADS }
 
@@ -82,6 +84,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     val tabs = mutableStateListOf<Tab>()
     var current by mutableStateOf<Tab?>(null)
         private set
+    val mediaVault = MediaVault(activity)
 
     var overlay by mutableStateOf(Overlay.NONE)
     var libraryKind by mutableStateOf(LibraryKind.HISTORY)
@@ -92,6 +95,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var switcherPage by mutableStateOf(Categories.ALL)
     // Incognito tabs behind "unlock to enter" stay hidden until this is set; leaving the app clears it.
     var incognitoUnlocked by mutableStateOf(false)
+    // The secure storage asks for the device unlock on open; the same lock settings govern when it closes back.
+    var vaultUnlocked by mutableStateOf(false)
+    private var vaultLeftAt = 0L
 
     // Where a full-screen page comes from in the window animation style: the last touch in the browser's own interface
     // and the tab card picked in the switcher. Read once when a page starts opening or closing, so not state.
@@ -355,6 +361,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     fun onStop() {
         if (prefs.bool("closeIncognito", false)) tabs.filter { it.incognito }.forEach(::closeTab)
         incognitoUnlocked = false
+        vaultLeftAt = System.currentTimeMillis()
+        if (prefs.int("vaultLock", 0) == 0) vaultUnlocked = false
     }
 
     val incognitoLocked: Boolean get() = prefs.bool("incognitoLock", false) && !incognitoUnlocked
@@ -501,6 +509,42 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         libraryKind = kind
         overlay = Overlay.LIBRARY
         setToolbarHidden(0f)
+    }
+
+    fun showVault() {
+        vaultRelock()
+        overlay = Overlay.VAULT
+        setToolbarHidden(0f)
+    }
+
+    // The vault is closed when the app leaves (or the setting keeps it open); "after 5 minutes" locks it back when
+    // the page is shown again after the pause.
+    fun vaultRelock() {
+        if (!vaultUnlocked) return
+        when (prefs.int("vaultLock", 0)) {
+            0 -> vaultUnlocked = false
+            1 -> if (System.currentTimeMillis() - vaultLeftAt > 5L * 60 * 1000) vaultUnlocked = false
+        }
+    }
+
+    // A device without a screen lock has nothing to authenticate against; the vault opens and the pages warn about it.
+    fun unlockVault(then: () -> Unit = {}) {
+        if (vaultUnlocked) return then()
+        val km = activity.getSystemService(KeyguardManager::class.java)
+        if (!prefs.bool("vaultAuth", true) || km == null || !km.isDeviceSecure) {
+            vaultUnlocked = true
+            return then()
+        }
+        Auth.require(activity, T.vaultUnlockReason, { vaultUnlocked = true; then() }, {})
+    }
+
+    // A finished download moves in: the file is copied into the app's private folder, the original is dropped.
+    fun vaultAdd(e: Entry) {
+        if (!Downloads.done(e) || !Downloads.media(e)) return
+        mediaVault.add(e, prefs.bool("vaultDeleteOriginal", true)) { ok ->
+            downloads.revision.intValue++
+            toast(if (ok) T.vaultMovedIn else T.vaultMoveFailed)
+        }
     }
 
     fun setToolbarHidden(h: Float) {

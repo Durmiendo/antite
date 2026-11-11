@@ -116,6 +116,7 @@ fun BrowserMenu(b: Browser) {
         MenuEntry.Item(R.drawable.ic_history, T.menuHistory) { b.showLibrary(LibraryKind.HISTORY) },
         MenuEntry.Item(R.drawable.ic_delete, T.menuClearData) { b.clearDataDialog() },
         MenuEntry.Line,
+        if (b.prefs.bool("vaultInMenu", true)) MenuEntry.Item(R.drawable.ic_shield_lock, T.menuVault) { b.showVault() } else null,
         MenuEntry.Item(R.drawable.ic_download_done, T.menuDownloads) { b.showLibrary(LibraryKind.DOWNLOADS) },
         MenuEntry.Item(R.drawable.ic_star, T.menuBookmarks) { b.showLibrary(LibraryKind.BOOKMARKS) },
         MenuEntry.Item(R.drawable.ic_folder, T.menuBookmarkAll) { b.bookmarkAllTabs() },

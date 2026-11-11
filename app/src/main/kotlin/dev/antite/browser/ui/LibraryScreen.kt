@@ -156,11 +156,12 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
             )
             LibraryKind.DOWNLOADS -> if (Downloads.loading(e)) listOf(
                 DialogButton(T.libraryCancelDownload) { b.downloads.cancel(e) },
-            ) else listOf(
-                DialogButton(T.actionOpen) { b.downloads.open(e) },
-                DialogButton(T.actionShare) { b.downloads.share(e) },
-                DialogButton(T.libraryDropFromList) { change { deleteDownload(e.id) } },
-            )
+            ) else buildList {
+                add(DialogButton(T.actionOpen) { b.downloads.open(e) })
+                add(DialogButton(T.actionShare) { b.downloads.share(e) })
+                if (Downloads.done(e) && Downloads.media(e)) add(DialogButton(T.vaultMoveIn) { b.vaultAdd(e) })
+                add(DialogButton(T.libraryDropFromList) { change { deleteDownload(e.id) } })
+            }
         }
         b.show(UiDialog.Items(name, list))
     }

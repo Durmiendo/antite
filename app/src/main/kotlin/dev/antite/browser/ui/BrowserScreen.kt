@@ -289,10 +289,12 @@ fun BrowserScreen(b: Browser) {
                         Overlay.SWITCHER -> TabSwitcher(b, shown)
                         Overlay.SETTINGS -> SettingsScreen(b, shown)
                         Overlay.LIBRARY -> LibraryScreen(b, shown)
-                        Overlay.NONE -> {}
+                        Overlay.NONE, Overlay.VAULT -> {}
                     }
                 }
             }
+            // The vault is composed on its first open, not warmed ahead of start: its content waits for the unlock.
+            KeptOverlay(b, overlayMotion, Overlay.VAULT, warm = false) { shown -> VaultScreen(b, shown) }
             BrowserMenu(b)
             b.extensionPopup?.let { ExtensionPopup(b, it) }
             DialogHost(b)
