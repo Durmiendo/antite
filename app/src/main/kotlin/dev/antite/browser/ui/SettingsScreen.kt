@@ -2,6 +2,7 @@ package dev.antite.browser.ui
 
 import android.content.Intent
 import android.provider.DocumentsContract
+import androidx.annotation.DrawableRes
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.lazy.LazyListScope
@@ -21,6 +22,7 @@ import dev.antite.browser.Browser
 import dev.antite.browser.DialogButton
 import dev.antite.browser.FormField
 import dev.antite.browser.Overlay
+import dev.antite.browser.R
 import dev.antite.browser.UiDialog
 import dev.antite.browser.data.Option
 import dev.antite.browser.data.Options
@@ -120,9 +122,13 @@ internal fun LazyListScope.toggle(b: Browser, title: String, summary: String?, k
     }
 }
 
-internal fun LazyListScope.nav(nav: Nav, title: String, summary: String?, content: @Composable (Nav) -> Unit) {
+internal fun LazyListScope.nav(
+    nav: Nav, title: String, summary: String?, @DrawableRes icon: Int? = null, content: @Composable (Nav) -> Unit,
+) {
     mark(title, summary, "nav:$title")
-    item(key = "nav:$title") { Marked("nav:$title") { SettingRow(title, summary, onClick = { nav.push(title, content) }) } }
+    item(key = "nav:$title") {
+        Marked("nav:$title") { SettingRow(title, summary, onClick = { nav.push(title, content) }, leading = icon?.let { { Ico(it) } }) }
+    }
 }
 
 // A row that only runs an action, such as opening a system screen.
@@ -157,16 +163,17 @@ internal fun MainPage(b: Browser, nav: Nav, query: MutableState<String>) {
 }
 
 internal fun LazyListScope.categories(b: Browser, nav: Nav) {
-    page(b, nav, searchHomePage(b), T.settingsCatSearchSummary)
-    page(b, nav, appearancePage(b), T.settingsCatAppearanceSummary)
-    page(b, nav, tabsPage(b), T.settingsTabsSummary)
-    page(b, nav, privacyPage(b), T.settingsPrivacySummary)
-    page(b, nav, autofillPage(b), T.settingsCatAutofillSummary)
-    nav(nav, T.settingsLanguages, T.settingsLanguagesSummary) { LanguagesPage(b, it) }
-    page(b, nav, downloadsPage(b), if (b.prefs.bool("dlAsk", false)) T.settingsDownloadsAsk else T.settingsDownloadsDefault)
-    page(b, nav, accessibilityPage(b), T.settingsAccessibilitySummary)
-    page(b, nav, systemPage(b), T.settingsCatSystemSummary)
-    page(b, nav, aboutPage(b), T.settingsAboutSummary)
+    page(b, nav, searchHomePage(b), T.settingsCatSearchSummary, R.drawable.ic_search)
+    page(b, nav, appearancePage(b), T.settingsCatAppearanceSummary, R.drawable.ic_palette)
+    page(b, nav, tabsPage(b), T.settingsTabsSummary, R.drawable.ic_tab)
+    page(b, nav, privacyPage(b), T.settingsPrivacySummary, R.drawable.ic_shield_lock)
+    page(b, nav, autofillPage(b), T.settingsCatAutofillSummary, R.drawable.ic_key)
+    nav(nav, T.settingsLanguages, T.settingsLanguagesSummary, R.drawable.ic_translate) { LanguagesPage(b, it) }
+    page(b, nav, downloadsPage(b), if (b.prefs.bool("dlAsk", false)) T.settingsDownloadsAsk else T.settingsDownloadsDefault,
+        R.drawable.ic_download)
+    page(b, nav, accessibilityPage(b), T.settingsAccessibilitySummary, R.drawable.ic_accessibility_new)
+    page(b, nav, systemPage(b), T.settingsCatSystemSummary, R.drawable.ic_devices)
+    page(b, nav, aboutPage(b), T.settingsAboutSummary, R.drawable.ic_info)
 }
 
 internal fun searchHomePage(b: Browser) = SettingsPage(T.settingsCatSearch) { nav ->

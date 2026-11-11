@@ -1,5 +1,6 @@
 package dev.antite.browser.ui
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -42,10 +43,15 @@ internal class SettingsPage(val title: String, val build: LazyListScope.(Nav) ->
 internal fun Screen(b: Browser, nav: Nav, page: SettingsPage) = Screen(b, nav, page.title) { page.build(this, nav) }
 
 // A row that opens another settings page; search goes into that page too.
-internal fun LazyListScope.page(b: Browser, nav: Nav, page: SettingsPage, summary: String?) {
+internal fun LazyListScope.page(b: Browser, nav: Nav, page: SettingsPage, summary: String?, @DrawableRes icon: Int? = null) {
     val key = "page:${page.title}"
     (this as? SettingsIndex)?.page(page, summary, key, nav)
-    item(key = key) { Marked(key) { SettingRow(page.title, summary, onClick = { nav.push(page.title) { n -> Screen(b, n, page) } }) } }
+    item(key = key) {
+        Marked(key) {
+            SettingRow(page.title, summary, onClick = { nav.push(page.title) { n -> Screen(b, n, page) } },
+                leading = icon?.let { { Ico(it) } })
+        }
+    }
 }
 
 // Lets search find a row that is drawn by hand; call it right before the row's item.
