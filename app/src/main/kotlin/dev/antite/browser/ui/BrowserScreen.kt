@@ -1,5 +1,6 @@
 package dev.antite.browser.ui
 
+import dev.antite.browser.data.Categories
 import android.os.SystemClock
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.isSpecified
@@ -206,6 +207,13 @@ fun BrowserScreen(b: Browser) {
         // The page under a full-screen page stays drawn until that page covers it, so it does not vanish when the page
         // starts coming in and is there at once when it starts leaving.
         val overlayMotion = updateTransition(b.overlay, label = "overlay")
+        // Incognito stays out of screenshots, screen recordings and the recent apps preview.
+        val secure = b.prefs.bool("incognitoSecure", true) &&
+            (t?.incognito == true || (b.overlay == Overlay.SWITCHER && b.switcherPage == Categories.INCOGNITO))
+        LaunchedEffect(secure) {
+            val flag = android.view.WindowManager.LayoutParams.FLAG_SECURE
+            if (secure) b.activity.window.addFlags(flag) else b.activity.window.clearFlags(flag)
+        }
         val covered = overlayMotion.currentState != Overlay.NONE && overlayMotion.targetState != Overlay.NONE
         // The picture-in-picture window shows the video alone.
         if (!b.pip) Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.only(WindowInsetsSides.Bottom))) {
@@ -224,6 +232,11 @@ fun BrowserScreen(b: Browser) {
                 }
                 if (b.urlFocused) Suggestions(b, Modifier.padding(top = 56.dp).fillMaxSize().background(bar))
                 if (b.findVisible) FindBar(b)
+            }
+            // A locked incognito tab shows neither its page nor its address until the device is unlocked.
+            if (t != null && t.incognito && b.incognitoLocked && !covered) {
+                IncognitoLock(b, Modifier.fillMaxSize().background(p.background)
+                    .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }, showTabs = true)
             }
             // The navigation bar is transparent with edge-to-edge; while it is shown the page must not show through it.
             // It stays at the screen bottom under the keyboard: hidden while the keyboard inset was not zero, the page

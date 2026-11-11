@@ -37,6 +37,7 @@ class TabStore(context: Context) {
                     title = o.optString("title")
                     state = if (o.has("state")) o.getString("state") else null
                     desktop = o.optBoolean("desktop")
+                    category = o.optString("category").ifEmpty { null }
                     lastUsed = o.optLong("lastUsed")
                 }
             }
@@ -57,6 +58,7 @@ class TabStore(context: Context) {
                 put("title", t.title)
                 t.state?.let { put("state", it) }
                 put("desktop", t.desktop)
+                t.category?.let { put("category", it) }
                 put("lastUsed", t.lastUsed)
             })
         }

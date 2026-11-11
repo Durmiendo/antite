@@ -14,7 +14,7 @@ data class Entry(val id: Long, val url: String?, val title: String?, val time: L
 
 data class Site(val host: String, val url: String, val title: String?)
 
-class Db private constructor(context: Context) : SQLiteOpenHelper(context, "antite.db", null, 3) {
+class Db private constructor(context: Context) : SQLiteOpenHelper(context, "antite.db", null, 4) {
     companion object {
         private const val HISTORY_KEEP_MS = 90L * 24 * 3600 * 1000
 
@@ -40,7 +40,7 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "anti
         db.execSQL("CREATE TABLE bookmarks (id INTEGER PRIMARY KEY, url TEXT UNIQUE NOT NULL, title TEXT, created INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE downloads (id INTEGER PRIMARY KEY, name TEXT NOT NULL, uri TEXT, mime TEXT, created INTEGER NOT NULL, status TEXT NOT NULL)")
         db.execSQL("CREATE TABLE closed (id INTEGER PRIMARY KEY, url TEXT NOT NULL, title TEXT, state TEXT, closed INTEGER NOT NULL)")
-        onUpgrade(db, 1, 3)
+        onUpgrade(db, 1, 4)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldV: Int, newV: Int) {
@@ -52,6 +52,7 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "anti
             db.execSQL("ALTER TABLE downloads ADD COLUMN source TEXT")
             db.execSQL("ALTER TABLE downloads ADD COLUMN size INTEGER")
         }
+        if (oldV < 4) db.execSQL("ALTER TABLE pins ADD COLUMN category TEXT")
     }
 
     private fun Cursor.entries(): List<Entry> = use {
@@ -60,16 +61,18 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "anti
         }
     }
 
+    // Entry.extra is the pin's tab category id.
     fun pins(): List<Entry> =
-        readableDatabase.rawQuery("SELECT id, url, title, pos, NULL FROM pins ORDER BY pos", null).entries()
+        readableDatabase.rawQuery("SELECT id, url, title, pos, category FROM pins ORDER BY pos", null).entries()
 
-    fun addPin(url: String, title: String) {
+    fun addPin(url: String, title: String, category: String? = null) {
         val db = writableDatabase
         val pos = db.rawQuery("SELECT IFNULL(MAX(pos), -1) + 1 FROM pins", null).use { it.moveToFirst(); it.getLong(0) }
         db.insert("pins", null, ContentValues().apply {
             put("url", url)
             put("title", title)
             put("pos", pos)
+            put("category", category)
         })
     }
 
@@ -78,6 +81,15 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "anti
             put("url", url)
             put("title", title)
         }, "id=?", arrayOf(id.toString()))
+    }
+
+    fun setPinCategory(id: Long, category: String?) {
+        writableDatabase.update("pins", ContentValues().apply { put("category", category) }, "id=?", arrayOf(id.toString()))
+    }
+
+    // Pins of a deleted category open in "All" again.
+    fun clearPinCategory(category: String) {
+        writableDatabase.update("pins", ContentValues().apply { putNull("category") }, "category=?", arrayOf(category))
     }
 
     fun deletePin(id: Long) {

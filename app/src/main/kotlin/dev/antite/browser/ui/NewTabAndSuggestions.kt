@@ -110,10 +110,15 @@ fun NewTabPage(b: Browser, modifier: Modifier) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 8.dp)) {
             Header(T.ntpPinned)
             TileGrid(cols, pins.map { pin ->
-                TileData(pin.title ?: Urls.host(pin.url), pin.url ?: "", { b.load(pin.url ?: return@TileData, false) }, menu = {
+                TileData(pin.title ?: Urls.host(pin.url), pin.url ?: "", { b.openPin(pin.url ?: return@TileData, pin.extra, false) }, menu = {
                     b.show(UiDialog.Items(pin.title?.ifEmpty { null } ?: Urls.host(pin.url), listOf(
-                        DialogButton(T.openInNewTab) { b.load(pin.url ?: "", true) },
+                        DialogButton(T.openInNewTab) { b.openPin(pin.url ?: "", pin.extra, true) },
                         DialogButton(T.actionEdit) { editPin(pin) },
+                        DialogButton(T.ntpPinCategory(name = b.categories.byId(pin.extra)?.name ?: T.tabsAll)) {
+                            b.show(UiDialog.Items(T.ntpPinCategory(name = b.categories.byId(pin.extra)?.name ?: T.tabsAll),
+                                listOf(DialogButton(T.tabsAll) { change { setPinCategory(pin.id, null) } }) +
+                                    b.categories.list.map { c -> DialogButton(c.name) { change { setPinCategory(pin.id, c.id) } } }))
+                        },
                         DialogButton(T.ntpMoveLeft) { change { movePin(pin.id, -1) } },
                         DialogButton(T.ntpMoveRight) { change { movePin(pin.id, 1) } },
                         DialogButton(T.ntpUnpin) { change { deletePin(pin.id) } },

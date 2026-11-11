@@ -1,5 +1,20 @@
 package dev.antite.browser.ui
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.graphics.ImageBitmap
+import dev.antite.browser.data.Categories
+import dev.antite.browser.data.TabCategory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.remember
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -11,7 +26,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,7 +33,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -28,10 +41,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -54,36 +64,126 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyGridState
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
+private class SwitcherPage(val key: String, val label: String, val category: TabCategory?)
+
 @Composable
 fun TabSwitcher(b: Browser, open: Boolean) {
     val p = LocalPalette.current
-    val inc = b.switcherIncognito
-    val shown = b.tabs.filter { it.incognito == inc }
+    val pages = buildList {
+        add(SwitcherPage(Categories.ALL, T.tabsAll, null))
+        b.categories.list.forEach { add(SwitcherPage(it.id, it.name, it)) }
+        add(SwitcherPage(Categories.INCOGNITO, T.tabsIncognito, null))
+    }
+    val keys by rememberUpdatedState(pages.map { it.key })
+    val index = keys.indexOf(b.switcherPage).coerceAtLeast(0)
+    val pager = rememberPagerState(index) { keys.size }
+    // The strip and Browser.switcherPage lead; a swipe that settles on another page reports back.
+    LaunchedEffect(index, open) {
+        if (pager.currentPage != index) if (open) pager.animateScrollToPage(index) else pager.scrollToPage(index)
+    }
+    LaunchedEffect(pager) {
+        snapshotFlow { pager.settledPage }.collect { i -> keys.getOrNull(i)?.let { if (it != b.switcherPage) b.switcherPage = it } }
+    }
+    LaunchedEffect(b.switcherPage, open) {
+        if (open && b.switcherPage == Categories.INCOGNITO && b.incognitoLocked) b.unlockIncognito()
+    }
+    fun count(key: String) = when (key) {
+        Categories.ALL -> b.tabs.count { !it.incognito }
+        Categories.INCOGNITO -> b.tabs.count { it.incognito }
+        else -> b.tabs.count { !it.incognito && it.category == key }
+    }
     Column(Modifier.fillMaxSize().background(p.background)) {
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.background(p.pill, RoundedCornerShape(20.dp)).padding(4.dp)) {
-                val normal = b.incognitoCount(false)
-                Box(
-                    Modifier.height(32.dp).background(if (!inc) p.accent else Color.Transparent, RoundedCornerShape(16.dp))
-                        .clickable { b.switcherIncognito = false }.padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(if (normal >= 100) ":D" else normal.toString(), color = if (!inc) p.onAccent else p.icon,
-                        fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            val strip = rememberLazyListState()
+            LaunchedEffect(index) { strip.animateScrollToItem(maxOf(0, index - 1)) }
+            val each = b.prefs.bool("tabCountEach", false)
+            LazyRow(Modifier.weight(1f), strip, contentPadding = PaddingValues(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                itemsIndexed(pages, key = { _, pg -> pg.key }) { i, pg ->
+                    CategoryChip(b, pg, i == index, if (each) count(pg.key) else null) { b.switcherPage = pg.key }
                 }
-                Box(
-                    Modifier.width(52.dp).height(32.dp).background(if (inc) p.accent else Color.Transparent, RoundedCornerShape(16.dp))
-                        .clickable { b.switcherIncognito = true },
-                    contentAlignment = Alignment.Center,
-                ) { Ico(R.drawable.ic_incognito, if (inc) p.onAccent else p.icon) }
             }
-            Spacer(Modifier.weight(1f))
+            if (b.prefs.bool("tabCountTotal", true)) {
+                val n = b.tabs.size
+                Text(if (n >= 100) ":D" else n.toString(), color = p.textSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 8.dp, end = 4.dp))
+            }
             IconBtn(R.drawable.ic_add, T.tabNew) {
+                val key = b.switcherPage
                 b.overlay = dev.antite.browser.Overlay.NONE
-                b.newTabAndFocus(inc)
+                b.newTabAndFocus(key == Categories.INCOGNITO, key.takeIf { it != Categories.ALL && it != Categories.INCOGNITO })
             }
         }
-        if (b.prefs.int("tabLayout", 0) == 1) TabList(b, shown, open) else TabGrid(b, shown, open)
+        HorizontalPager(pager, Modifier.fillMaxSize(), key = { keys.getOrElse(it) { "" } }) { i ->
+            val key = keys.getOrElse(i) { Categories.ALL }
+            val shown = when (key) {
+                Categories.ALL -> b.tabs.filter { !it.incognito }
+                Categories.INCOGNITO -> b.tabs.filter { it.incognito }
+                else -> b.tabs.filter { !it.incognito && it.category == key }
+            }
+            when {
+                key == Categories.INCOGNITO && b.incognitoLocked -> IncognitoLock(b, Modifier.fillMaxSize(), showTabs = false)
+                shown.isEmpty() -> Centered { Text(T.tabsEmpty, color = p.textSecondary, fontSize = 15.sp) }
+                b.prefs.int("tabLayout", 0) == 1 -> TabList(b, shown, open)
+                else -> TabGrid(b, shown, open)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryChip(b: Browser, pg: SwitcherPage, selected: Boolean, count: Int?, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    val fill = when {
+        !selected -> Color.Transparent
+        pg.category != null -> Color(pg.category.color)
+        pg.key == Categories.INCOGNITO -> p.toolbarIncognito
+        else -> p.accent
+    }
+    val text = if (!selected) p.text else if (fill.luminance() > 0.5f) Color(0xDE000000) else Color.White
+    Row(
+        Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(fill)
+            .then(if (selected) Modifier else Modifier.border(1.dp, p.divider, RoundedCornerShape(17.dp)))
+            .clickable(onClick = onClick).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        when {
+            pg.category != null -> CategoryIcon(b, pg.category, 18, Modifier.padding(end = 6.dp))
+            pg.key == Categories.INCOGNITO -> Ico(R.drawable.ic_incognito, text, 18, Modifier.padding(end = 6.dp))
+        }
+        Text(pg.label, color = text, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+        if (count != null) {
+            Text(if (count >= 100) ":D" else count.toString(), color = text.copy(alpha = 0.7f), fontSize = 13.sp,
+                modifier = Modifier.padding(start = 6.dp))
+        }
+    }
+}
+
+// The category's picture, if it has one; decoded once and kept.
+@Composable
+internal fun CategoryIcon(b: Browser, c: TabCategory, size: Int, modifier: Modifier = Modifier) {
+    val file = b.categories.iconFile(c) ?: return
+    val bmp by produceState<ImageBitmap?>(null, file.path) {
+        value = withContext(Dispatchers.IO) { b.categories.bitmap(file)?.asImageBitmap() }
+    }
+    bmp?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = modifier.size(size.dp).clip(RoundedCornerShape(4.dp))) }
+}
+
+// Shown instead of incognito tabs while they are locked: in the switcher and over an incognito page.
+@Composable
+internal fun IncognitoLock(b: Browser, modifier: Modifier, showTabs: Boolean) {
+    val p = LocalPalette.current
+    Column(modifier, verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Ico(R.drawable.ic_incognito, size = 48)
+        Text(T.incognitoLocked, color = p.text, fontSize = 16.sp, modifier = Modifier.padding(top = 16.dp, bottom = 24.dp))
+        Text(T.incognitoUnlock, color = p.onAccent, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(p.accent).clickable { b.unlockIncognito() }
+                .padding(horizontal = 24.dp, vertical = 10.dp))
+        if (showTabs) {
+            Text(T.incognitoShowTabs, color = p.accent, fontSize = 15.sp,
+                modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(20.dp)).clickable { b.showSwitcher() }
+                    .padding(horizontal = 24.dp, vertical = 10.dp))
+        }
     }
 }
 
@@ -101,15 +201,6 @@ private fun Browser.select(t: Tab) {
 }
 
 @Composable
-private fun Dismissible(b: Browser, t: Tab, content: @Composable () -> Unit) {
-    val state = rememberSwipeToDismissBoxState()
-    LaunchedEffect(state.currentValue) {
-        if (state.currentValue != SwipeToDismissBoxValue.Settled) b.closeTab(t)
-    }
-    SwipeToDismissBox(state, backgroundContent = {}) { content() }
-}
-
-@Composable
 private fun TabGrid(b: Browser, shown: List<Tab>, open: Boolean) {
     val p = LocalPalette.current
     val gridState = rememberLazyGridState(maxOf(0, shown.indexOf(b.current)))
@@ -119,7 +210,7 @@ private fun TabGrid(b: Browser, shown: List<Tab>, open: Boolean) {
     LazyVerticalGrid(GridCells.Fixed(2), state = gridState, contentPadding = PaddingValues(8.dp), modifier = Modifier.fillMaxSize()) {
         items(shown, key = { it.id }) { t ->
             ReorderableItem(reorder, key = t.id) { dragging ->
-                Dismissible(b, t) {
+                run {
                     val selected = t === b.current
                     val card = remember { arrayOfNulls<LayoutCoordinates>(1) }
                     Column(
@@ -168,7 +259,7 @@ private fun TabList(b: Browser, shown: List<Tab>, open: Boolean) {
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(shown, key = { it.id }) { t ->
             ReorderableItem(reorder, key = t.id) { _ ->
-                Dismissible(b, t) {
+                run {
                     val raw = if (t.incognito) 0 else b.icons.color(Urls.host(t.url))
                     val color = if (raw == 0) (if (t.incognito) p.toolbarIncognito else p.card) else Color(raw)
                     val light = color.luminance() > 0.55f

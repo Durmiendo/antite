@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import dev.antite.browser.data.Categories
 import dev.antite.browser.data.Db
 import dev.antite.browser.data.Entry
 import dev.antite.browser.engine.EngineUpdates
@@ -22,6 +23,7 @@ import dev.antite.browser.data.Prefs
 import dev.antite.browser.data.Site
 import dev.antite.browser.data.SitePerms
 import dev.antite.browser.data.Tab
+import dev.antite.browser.data.TabCategory
 import dev.antite.browser.data.TabStore
 import dev.antite.browser.data.Vault
 import dev.antite.browser.l10n.T
@@ -84,7 +86,11 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var libraryKind by mutableStateOf(LibraryKind.HISTORY)
     var settingsSite by mutableStateOf<String?>(null)
     var settingsOpenCount by mutableStateOf(0)
-    var switcherIncognito by mutableStateOf(false)
+    val categories = Categories(activity, prefs)
+    // The switcher's page: Categories.ALL, Categories.INCOGNITO or a category id.
+    var switcherPage by mutableStateOf(Categories.ALL)
+    // Incognito tabs behind "unlock to enter" stay hidden until this is set; leaving the app clears it.
+    var incognitoUnlocked by mutableStateOf(false)
 
     // Where a full-screen page comes from in the window animation style: the last touch in the browser's own interface
     // and the tab card picked in the switcher. Read once when a page starts opening or closing, so not state.
@@ -183,14 +189,16 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun incognitoCount(incognito: Boolean) = tabs.count { it.incognito == incognito }
 
-    fun newTabAndFocus(incognito: Boolean) {
-        openTab("about:blank", incognito, null, true)
+    fun newTabAndFocus(incognito: Boolean, category: String? = if (incognito) null else current?.category) {
+        openTab("about:blank", incognito, null, true, category)
         urlFocused = true
     }
 
-    fun openTab(url: String, incognito: Boolean, parent: Tab?, select: Boolean): Tab {
+    fun openTab(url: String, incognito: Boolean, parent: Tab?, select: Boolean,
+                category: String? = parent?.category?.takeIf { !incognito }): Tab {
         val t = Tab.create(incognito)
         t.url = url
+        t.category = category?.takeIf { !incognito && categories.byId(it) != null }
         t.desktop = prefs.bool("desktopDefault", false)
         if (parent != null) t.parentId = parent.id
         val idx = if (parent != null) tabs.indexOf(parent) + 1 else tabs.size
@@ -339,6 +347,49 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun onStop() {
         if (prefs.bool("closeIncognito", false)) tabs.filter { it.incognito }.forEach(::closeTab)
+        incognitoUnlocked = false
+    }
+
+    val incognitoLocked: Boolean get() = prefs.bool("incognitoLock", false) && !incognitoUnlocked
+
+    fun unlockIncognito(then: () -> Unit = {}, cancelled: () -> Unit = {}) {
+        if (!incognitoLocked) return then()
+        Auth.require(activity, T.incognitoUnlockReason, {
+            incognitoUnlocked = true
+            then()
+        }, cancelled)
+    }
+
+    // A pin opens in its category: the blank tab showing the pin takes the category, otherwise a new tab is opened in it.
+    fun openPin(url: String, category: String?, newTab: Boolean) {
+        val t = current
+        val c = category?.takeIf { categories.byId(it) != null }
+        if (!newTab && t != null && !t.incognito && Urls.isBlank(t.url)) {
+            t.category = c
+            ensureSession(t).load(url)
+            urlFocused = false
+            scheduleSave()
+        } else {
+            openTab(url, false, null, true, c)
+            urlFocused = false
+        }
+    }
+
+    fun moveToCategory(t: Tab, category: String?) {
+        if (t.incognito) return
+        t.category = category
+        scheduleSave()
+    }
+
+    fun deleteCategory(c: TabCategory) {
+        tabs.filter { it.category == c.id }.forEach { it.category = null }
+        categories.delete(c)
+        if (switcherPage == c.id) switcherPage = Categories.ALL
+        scheduleSave()
+        activity.lifecycleScope.launch {
+            db.io { clearPinCategory(c.id) }
+            ntpRevision++
+        }
     }
 
     // ---------------------------------------------------------------- navigation
@@ -421,7 +472,12 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     fun showSwitcher() {
         captureThumb(current)
         main.postDelayed({
-            switcherIncognito = current?.incognito == true
+            val c = current
+            switcherPage = when {
+                c?.incognito == true -> Categories.INCOGNITO
+                c?.category != null && categories.byId(c.category) != null -> c.category!!
+                else -> Categories.ALL
+            }
             overlay = Overlay.SWITCHER
             setToolbarHidden(0f)
         }, 60)

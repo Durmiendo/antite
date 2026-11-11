@@ -338,10 +338,14 @@ internal fun HomePage(b: Browser, nav: Nav) {
 internal fun tabsPage(b: Browser) = SettingsPage(T.settingsTabs) { nav ->
     choice(b, nav, T.tabsStartup, "startup", Options.startup, 0, false)
     choice(b, nav, T.tabsExternal, "external", Options.external, 0, false)
-    toggle(b, T.tabsCloseIncognito, null, "closeIncognito", false, false)
     toggle(b, T.tabsDesktopDefault, T.tabsDesktopDefaultSummary, "desktopDefault", false, false)
     choice(b, nav, T.tabsLive, "liveTabs", Options.liveTabs, 2, false)
     note(T.tabsLiveNote)
+    section(T.settingsCategories)
+    page(b, nav, categoriesPage(b), T.categoriesSummary(count = b.categories.list.size))
+    page(b, nav, incognitoPage(b), T.incognitoSummary)
+    toggle(b, T.tabsCountTotal, null, "tabCountTotal", true, false)
+    toggle(b, T.tabsCountEach, null, "tabCountEach", false, false)
 }
 
 internal fun accessibilityPage(b: Browser) = SettingsPage(T.settingsAccessibility) {

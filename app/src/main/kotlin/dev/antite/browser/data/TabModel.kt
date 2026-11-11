@@ -35,6 +35,8 @@ class Tab(val id: Long, val incognito: Boolean) {
     var issuer by mutableStateOf("")
     var httpsOnlyFailed by mutableStateOf<String?>(null)
     var desktop by mutableStateOf(false)
+    // A user category id from Categories; null means only "All".
+    var category by mutableStateOf<String?>(null)
     var docLang: String? = null
     var translated by mutableStateOf(false)
     var bookmarked by mutableStateOf(false)
