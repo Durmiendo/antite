@@ -64,7 +64,7 @@ fun SettingsScreen(b: Browser, shown: Boolean) {
     // Kept composed between openings, so after closing it goes back to its first page, scrolled to the top.
     LaunchedEffect(shown) {
         if (shown) return@LaunchedEffect
-        delay(Motion.pageMs(Motion.SHARED_AXIS).toLong())
+        delay(Motion.closeMs().toLong())
         if (stack.size != 1 || stack[0] !== root) {
             stack.clear()
             stack += root

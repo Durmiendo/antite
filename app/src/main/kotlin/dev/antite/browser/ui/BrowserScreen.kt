@@ -2,7 +2,10 @@ package dev.antite.browser.ui
 
 import androidx.compose.animation.core.Transition
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.updateTransition
+import androidx.compose.foundation.shape.GenericShape
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -271,6 +274,10 @@ private fun KeptOverlay(motion: Transition<Overlay>, o: Overlay, warm: Boolean, 
     val slide = motion.animateFloat({ Motion.pageTween(Motion.SHARED_AXIS, Motion.Emphasized) }, label = "slide") {
         if (it == o || !page) 1f else 0f
     }
+    // The window style: shown through a window growing from the top left corner, only to and from the page itself.
+    val window = motion.animateFloat({
+        if (initialState != Overlay.NONE && targetState != Overlay.NONE) snap() else Motion.windowSpec()
+    }, label = "window") { if (it == o) 1f else 0f }
     Box(
         Modifier.fillMaxSize().layout { m, c ->
             val placeable = m.measure(c)
@@ -278,6 +285,9 @@ private fun KeptOverlay(motion: Transition<Overlay>, o: Overlay, warm: Boolean, 
                 if (shown || alpha.value > 0f) placeable.placeWithLayer(0, 0) {
                     this.alpha = alpha.value
                     translationX = (1f - slide.value) * placeable.width / 4
+                    val w = if (Motion.window) window.value.coerceAtLeast(0f) else 1f
+                    clip = w < 1f
+                    if (clip) shape = GenericShape { size, _ -> addRect(Rect(0f, 0f, size.width * w, size.height * w)) }
                 }
             }
         }.then(

@@ -1,5 +1,5 @@
 """Animation style setting: in Chrome's style the menu grows for about 250 ms, in the instant style it is a single
-change, in the reveal style it unfolds from its center for about 250 ms. Settings slide in only in Chrome's style. Counted in recorded
+change, in the window style it moves as in Chrome. Settings slide in only in the Chrome and window styles. Counted in recorded
 frames.
 
 Usage: python3 -I tools/e2e/animation_style.py --serial SERIAL
@@ -17,7 +17,7 @@ from device import Device  # noqa: E402
 from keyboard_frames import frames  # noqa: E402
 import subprocess  # noqa: E402
 
-STYLES = (("chrome", "Как в Chrome"), ("instant", "Сразу, без движения"), ("reveal", "Сразу, меню раскрывается"))
+STYLES = (("chrome", "Как в Chrome"), ("instant", "Сразу, без движения"), ("window", "Окно из угла"))
 
 
 def settings_frames(d, serial, out, name):
@@ -64,9 +64,9 @@ def main():
         settings[name] = settings_frames(d, a.serial, a.out, name)
         print(f"{name}: menu {menu[name]} frames, settings {settings[name]} frames")
     set_choice(d, "Стиль анимации", "Как в Chrome")
-    if not (menu["instant"] < menu["reveal"] and menu["instant"] < menu["chrome"]):
+    if not (menu["instant"] < menu["window"] and menu["instant"] < menu["chrome"]):
         d.fail(f"menu frame counts do not follow the style: {menu}")
-    if not (settings["instant"] < settings["chrome"] and settings["reveal"] < settings["chrome"]):
+    if not (settings["instant"] < settings["chrome"] and settings["instant"] < settings["window"]):
         d.fail(f"settings frame counts do not follow the style: {settings}")
     print("OK")
 
