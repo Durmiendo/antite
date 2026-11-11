@@ -1,5 +1,12 @@
 package dev.antite.browser.ui
 
+import android.os.SystemClock
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.animation.core.Transition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.snap
@@ -133,7 +140,19 @@ fun BrowserScreen(b: Browser) {
 
     Box(
         Modifier.fillMaxSize().background(bar)
-            .then(if (b.fullscreen) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top))),
+            .then(if (b.fullscreen) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top)))
+            // Watched by the common parent of the page and the interface, so neither loses touches; positions match
+            // the full-screen pages, which start at the same corner.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial).changes.forEach {
+                            if (it.pressed && !it.previousPressed) b.lastTap = it.position
+                            if (it.pressed != it.previousPressed) b.lastTapAt = SystemClock.uptimeMillis()
+                        }
+                    }
+                }
+            },
     ) {
         val view = b.engineView
         if (view != null) {
@@ -228,7 +247,7 @@ fun BrowserScreen(b: Browser) {
                 }
             }
             KEPT.forEachIndexed { i, o ->
-                KeptOverlay(overlayMotion, o, warm > i) { shown ->
+                KeptOverlay(b, overlayMotion, o, warm > i) { shown ->
                     when (o) {
                         Overlay.SWITCHER -> TabSwitcher(b, shown)
                         Overlay.SETTINGS -> SettingsScreen(b, shown)
@@ -251,12 +270,33 @@ fun BrowserScreen(b: Browser) {
 
 private val KEPT = listOf(Overlay.SETTINGS, Overlay.LIBRARY, Overlay.SWITCHER)
 
+// Where a kept page's window opens from and closes to: the touch that opened or closed it, or, without a fresh touch
+// (system Back, a link from another app), the point it opened from; a tab card when the switcher closes on a picked tab.
+private class WindowSource {
+    var coords: LayoutCoordinates? = null
+    var point = Offset.Zero
+    var hole: Rect? = null
+
+    fun start(b: Browser, shown: Boolean, switcher: Boolean) {
+        val fresh = b.lastTap.isSpecified && SystemClock.uptimeMillis() - b.lastTapAt < FRESH_TAP_MS
+        if (fresh) point = b.lastTap else if (shown) point = Offset.Zero
+        val card = b.pickedCard
+        b.pickedCard = null
+        val here = coords
+        hole = if (!shown && switcher && card != null && card.isAttached && here != null && here.isAttached) {
+            here.localBoundingBoxOf(card)
+        } else null
+    }
+}
+
+private const val FRESH_TAP_MS = 800L
+
 // A full-screen page that stays composed once it was needed or warmed up: opening it only places and animates it.
 // Settings and the library come like Chrome's settings activity (shared axis X), the tab switcher fades like Chrome's
 // Hub when it does not shrink the tab into the grid. Hidden, it is not placed, so it is neither drawn nor hit nor seen
 // by accessibility.
 @Composable
-private fun KeptOverlay(motion: Transition<Overlay>, o: Overlay, warm: Boolean, content: @Composable (shown: Boolean) -> Unit) {
+private fun KeptOverlay(b: Browser, motion: Transition<Overlay>, o: Overlay, warm: Boolean, content: @Composable (shown: Boolean) -> Unit) {
     val shown = motion.targetState == o
     val active = shown || motion.currentState == o
     var kept by remember { mutableStateOf(false) }
@@ -274,23 +314,38 @@ private fun KeptOverlay(motion: Transition<Overlay>, o: Overlay, warm: Boolean, 
     val slide = motion.animateFloat({ Motion.pageTween(Motion.SHARED_AXIS, Motion.Emphasized) }, label = "slide") {
         if (it == o || !page) 1f else 0f
     }
-    // The window style: shown through a window growing from the top left corner, only to and from the page itself.
+    // The window style: shown through a window growing from where it was opened, only to and from the page itself.
     val window = motion.animateFloat({
         if (initialState != Overlay.NONE && targetState != Overlay.NONE) snap() else Motion.windowSpec()
     }, label = "window") { if (it == o) 1f else 0f }
+    val box = remember { WindowSource() }
+    remember(shown) { box.start(b, shown, o == Overlay.SWITCHER) }
+    val into = box.hole != null && !shown && Motion.window
     Box(
         Modifier.fillMaxSize().layout { m, c ->
             val placeable = m.measure(c)
             layout(placeable.width, placeable.height) {
-                if (shown || alpha.value > 0f) placeable.placeWithLayer(0, 0) {
-                    this.alpha = alpha.value
+                if (shown || alpha.value > 0f || (into && window.value > 0f)) placeable.placeWithLayer(0, 0) {
+                    this.alpha = if (into) 1f else alpha.value
                     translationX = (1f - slide.value) * placeable.width / 4
-                    val w = if (Motion.window) window.value.coerceAtLeast(0f) else 1f
+                    val w = if (Motion.window) window.value.coerceIn(0f, 1f) else 1f
+                    val hole = box.hole
                     clip = w < 1f
-                    if (clip) shape = GenericShape { size, _ -> addRect(Rect(0f, 0f, size.width * w, size.height * w)) }
+                    if (!clip) return@placeWithLayer
+                    shape = if (into && hole != null) {
+                        // A tab picked in the switcher: its page opens out of the card, through a hole in the switcher.
+                        GenericShape { size, _ ->
+                            val full = Rect(Offset.Zero, size)
+                            fillType = PathFillType.EvenOdd
+                            addRect(full)
+                            addRect(lerp(hole, full, 1f - w))
+                        }
+                    } else {
+                        GenericShape { size, _ -> addRect(lerp(Rect(box.point, box.point), Rect(Offset.Zero, size), w)) }
+                    }
                 }
             }
-        }.then(
+        }.onGloballyPositioned { box.coords = it }.then(
             // Being hit is enough to keep touches from the page below; consuming them would break scrolling.
             if (shown) Modifier.pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
             else Modifier.clearAndSetSemantics {},

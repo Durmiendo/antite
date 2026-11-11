@@ -1,5 +1,7 @@
 package dev.antite.browser
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.LayoutCoordinates
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -83,6 +85,12 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var settingsSite by mutableStateOf<String?>(null)
     var settingsOpenCount by mutableStateOf(0)
     var switcherIncognito by mutableStateOf(false)
+
+    // Where a full-screen page comes from in the window animation style: the last touch in the browser's own interface
+    // and the tab card picked in the switcher. Read once when a page starts opening or closing, so not state.
+    var lastTap = Offset.Unspecified
+    var lastTapAt = 0L
+    var pickedCard: LayoutCoordinates? = null
 
     val dialogs = mutableStateListOf<UiDialog>()
     val messages = mutableStateListOf<String>()

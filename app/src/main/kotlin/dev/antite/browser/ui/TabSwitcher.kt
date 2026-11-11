@@ -1,5 +1,8 @@
 package dev.antite.browser.ui
 
+import androidx.compose.runtime.remember
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -118,11 +121,13 @@ private fun TabGrid(b: Browser, shown: List<Tab>, open: Boolean) {
             ReorderableItem(reorder, key = t.id) { dragging ->
                 Dismissible(b, t) {
                     val selected = t === b.current
+                    val card = remember { arrayOfNulls<LayoutCoordinates>(1) }
                     Column(
                         Modifier.padding(6.dp).aspectRatio(0.8f).longPressDraggableHandle()
+                            .onGloballyPositioned { card[0] = it }
                             .clip(RoundedCornerShape(16.dp)).background(p.card)
                             .then(if (selected) Modifier.border(3.dp, p.accent, RoundedCornerShape(16.dp)) else Modifier)
-                            .clickable { b.select(t) },
+                            .clickable { b.pickedCard = card[0]; b.select(t) },
                     ) {
                         Row(Modifier.fillMaxWidth().height(36.dp).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                             val icon = b.icons.get(Urls.host(t.url))
@@ -169,7 +174,9 @@ private fun TabList(b: Browser, shown: List<Tab>, open: Boolean) {
                     val light = color.luminance() > 0.55f
                     val text = if (light) Color(0xDE000000) else Color.White
                     val sub = if (light) Color(0x8A000000) else Color(0xB3FFFFFF)
-                    Box(Modifier.fillMaxWidth().height(124.dp).longPressDraggableHandle().background(color).clickable { b.select(t) }) {
+                    val card = remember { arrayOfNulls<LayoutCoordinates>(1) }
+                    Box(Modifier.fillMaxWidth().height(124.dp).longPressDraggableHandle().onGloballyPositioned { card[0] = it }
+                        .background(color).clickable { b.pickedCard = card[0]; b.select(t) }) {
                         Row(Modifier.fillMaxSize().padding(start = 16.dp, end = 40.dp, top = 12.dp, bottom = 12.dp)) {
                             Thumb(b, t, Modifier.weight(0.42f).fillMaxHeight().clip(RoundedCornerShape(4.dp)).background(Color.White))
                             Column(Modifier.weight(0.58f).fillMaxHeight().padding(start = 16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
