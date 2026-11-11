@@ -1,12 +1,8 @@
 package dev.antite.browser.ui
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Transition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +20,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.ime
@@ -50,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -182,13 +181,22 @@ fun BrowserScreen(b: Browser) {
                 onDispose { view.view.removeOnLayoutChangeListener(listener) }
             }
         }
+        // The page under a full-screen page stays drawn until that page covers it, so it does not vanish when the page
+        // starts coming in and is there at once when it starts leaving.
+        val overlayMotion = updateTransition(b.overlay, label = "overlay")
+        val covered = overlayMotion.currentState != Overlay.NONE && overlayMotion.targetState != Overlay.NONE
         // The picture-in-picture window shows the video alone.
         if (!b.pip) Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.only(WindowInsetsSides.Bottom))) {
-            if (t != null && Urls.isBlank(t.url) && b.overlay == Overlay.NONE) {
-                NewTabPage(b, Modifier.padding(top = 56.dp).fillMaxSize().background(p.background))
+            // Under a full-screen page it stays composed but is not placed, so closing that page shows it at once.
+            if (t != null && Urls.isBlank(t.url)) {
+                NewTabPage(b, Modifier.layout { m, c ->
+                    val placeable = m.measure(c)
+                    layout(placeable.width, placeable.height) { if (!covered) placeable.place(0, 0) }
+                }.then(if (covered) Modifier.clearAndSetSemantics {} else Modifier)
+                    .padding(top = 56.dp).fillMaxSize().background(p.background))
             }
             // Full-screen pages cover the toolbar, so it must not stay focusable or tappable under them.
-            if (!b.fullscreen && b.overlay == Overlay.NONE) {
+            if (!b.fullscreen && !covered) {
                 Box(Modifier.fillMaxWidth().clipToBounds()) {
                     Toolbar(b, Modifier.offset { IntOffset(0, -b.hidden.toInt()) })
                 }
@@ -208,16 +216,21 @@ fun BrowserScreen(b: Browser) {
             if (b.defaultBrowserOffer && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
                 DefaultBrowserBar(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() }))
             }
-            AnimatedContent(b.overlay, transitionSpec = { overlayTransition(initialState, targetState) }, label = "overlay") { o ->
-                if (o != Overlay.NONE) {
-                    // Being hit is enough to keep touches from the page below; consuming them would break scrolling.
-                    Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }) {
-                        when (o) {
-                            Overlay.SWITCHER -> TabSwitcher(b)
-                            Overlay.SETTINGS -> SettingsScreen(b)
-                            Overlay.LIBRARY -> LibraryScreen(b)
-                            Overlay.NONE -> {}
-                        }
+            // Composed ahead, a little after start, so opening one only shows it.
+            var warm by remember { mutableIntStateOf(0) }
+            LaunchedEffect(Unit) {
+                repeat(KEPT.size) {
+                    delay(700)
+                    warm++
+                }
+            }
+            KEPT.forEachIndexed { i, o ->
+                KeptOverlay(overlayMotion, o, warm > i) { shown ->
+                    when (o) {
+                        Overlay.SWITCHER -> TabSwitcher(b, shown)
+                        Overlay.SETTINGS -> SettingsScreen(b, shown)
+                        Overlay.LIBRARY -> LibraryScreen(b, shown)
+                        Overlay.NONE -> {}
                     }
                 }
             }
@@ -233,15 +246,46 @@ fun BrowserScreen(b: Browser) {
     }
 }
 
-// Settings and the library open like Chrome's settings activity; the tab switcher fades like Chrome's Hub when it does not
-// shrink the tab into the grid.
-private fun overlayTransition(from: Overlay, to: Overlay): ContentTransform {
-    val pages = setOf(Overlay.SETTINGS, Overlay.LIBRARY)
-    if (to in pages && from == Overlay.NONE) return Motion.sharedAxisX(forward = true)
-    if (from in pages && to == Overlay.NONE) return Motion.sharedAxisX(forward = false)
-    val enter = if (to == Overlay.NONE) EnterTransition.None else fadeIn(Motion.tween(Motion.HUB_FADE, Motion.LinearOutSlowIn))
-    val exit = if (from == Overlay.NONE) ExitTransition.None else fadeOut(Motion.tween(Motion.HUB_FADE, Motion.FastOutLinearIn))
-    return enter togetherWith exit
+private val KEPT = listOf(Overlay.SETTINGS, Overlay.LIBRARY, Overlay.SWITCHER)
+
+// A full-screen page that stays composed once it was needed or warmed up: opening it only places and animates it.
+// Settings and the library come like Chrome's settings activity (shared axis X), the tab switcher fades like Chrome's
+// Hub when it does not shrink the tab into the grid. Hidden, it is not placed, so it is neither drawn nor hit nor seen
+// by accessibility.
+@Composable
+private fun KeptOverlay(motion: Transition<Overlay>, o: Overlay, warm: Boolean, content: @Composable (shown: Boolean) -> Unit) {
+    val shown = motion.targetState == o
+    val active = shown || motion.currentState == o
+    var kept by remember { mutableStateOf(false) }
+    SideEffect { if (active) kept = true }
+    if (!warm && !kept && !active) return
+    val page = o != Overlay.SWITCHER
+    val alpha = motion.animateFloat({
+        when {
+            targetState == o && page -> Motion.tween(Motion.SHARED_AXIS_FADE_IN, Motion.StandardDecelerate, Motion.SHARED_AXIS_FADE_OUT)
+            targetState == o -> Motion.tween(Motion.HUB_FADE, Motion.LinearOutSlowIn)
+            page -> Motion.tween(Motion.SHARED_AXIS_FADE_OUT, Motion.StandardAccelerate)
+            else -> Motion.tween(Motion.HUB_FADE, Motion.FastOutLinearIn)
+        }
+    }, label = "alpha") { if (it == o) 1f else 0f }
+    val slide = motion.animateFloat({ Motion.tween(Motion.SHARED_AXIS, Motion.Emphasized) }, label = "slide") {
+        if (it == o || !page) 1f else 0f
+    }
+    Box(
+        Modifier.fillMaxSize().layout { m, c ->
+            val placeable = m.measure(c)
+            layout(placeable.width, placeable.height) {
+                if (shown || alpha.value > 0f) placeable.placeWithLayer(0, 0) {
+                    this.alpha = alpha.value
+                    translationX = (1f - slide.value) * placeable.width / 4
+                }
+            }
+        }.then(
+            // Being hit is enough to keep touches from the page below; consuming them would break scrolling.
+            if (shown) Modifier.pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
+            else Modifier.clearAndSetSemantics {},
+        ),
+    ) { content(shown) }
 }
 
 @Composable

@@ -6,8 +6,13 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.Auth
 import dev.antite.browser.Browser
@@ -22,6 +27,7 @@ import dev.antite.browser.openUboDashboard
 import dev.antite.browser.transfer.BackupCipher
 import dev.antite.browser.transfer.WrongPasswordException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -42,18 +48,32 @@ class Nav internal constructor(private val stack: MutableList<Any>) {
 }
 
 @Composable
-fun SettingsScreen(b: Browser) {
-    val stack = remember(b.settingsOpenCount) {
-        val site = b.settingsSite
-        mutableStateListOf<Any>(
-            if (site != null) Page(site) { SitePage(b, it, site) } else Page(T.settingsTitle) { MainPage(b, it) },
-        )
-    }
+fun SettingsScreen(b: Browser, shown: Boolean) {
+    val root = remember { Page(T.settingsTitle) { MainPage(b, it) } }
+    val stack = remember { mutableStateListOf<Any>(root) }
     val nav = remember(stack) { Nav(stack) }
-    BackHandler(enabled = stack.size > 1) { nav.back() }
-    AnimatedContent(stack.size to stack.last() as Page,
-        transitionSpec = { Motion.sharedAxisX(forward = targetState.first > initialState.first) }, label = "settings") { (_, page) ->
-        page.content(nav)
+    var closes by remember { mutableIntStateOf(0) }
+    LaunchedEffect(b.settingsOpenCount) {
+        val site = b.settingsSite ?: return@LaunchedEffect
+        stack.clear()
+        stack += Page(site) { SitePage(b, it, site) }
+    }
+    // Kept composed between openings, so after closing it goes back to its first page, scrolled to the top.
+    LaunchedEffect(shown) {
+        if (shown) return@LaunchedEffect
+        delay(Motion.ms(Motion.SHARED_AXIS).toLong())
+        if (stack.size != 1 || stack[0] !== root) {
+            stack.clear()
+            stack += root
+        }
+        closes++
+    }
+    BackHandler(enabled = shown && stack.size > 1) { nav.back() }
+    CompositionLocalProvider(LocalPageReset provides closes) {
+        AnimatedContent(stack.size to stack.last() as Page,
+            transitionSpec = { Motion.sharedAxisX(forward = targetState.first > initialState.first) }, label = "settings") { (_, page) ->
+            page.content(nav)
+        }
     }
 }
 
@@ -112,7 +132,8 @@ internal fun MainPage(b: Browser, nav: Nav) {
         }
         choice(b, nav, T.settingsTheme, "theme", Options.themes, 2, true)
         item {
-            val isDefault = b.activity.isDefaultBrowser()
+            // Settings stay composed between openings; the default browser may have been changed in Android meanwhile.
+            val isDefault = remember(b.settingsOpenCount) { b.activity.isDefaultBrowser() }
             SettingRow(T.settingsDefaultBrowser, if (isDefault) T.appName else T.settingsDefaultBrowserOther, onClick = {
                 if (isDefault) b.activity.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
                 else b.makeDefaultBrowser()

@@ -12,10 +12,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.data.Db
+import dev.antite.browser.data.Entry
 import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.data.IconCache
 import dev.antite.browser.data.Options
 import dev.antite.browser.data.Prefs
+import dev.antite.browser.data.Site
 import dev.antite.browser.data.SitePerms
 import dev.antite.browser.data.Tab
 import dev.antite.browser.data.TabStore
@@ -100,6 +102,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var suggestQuery by mutableStateOf("")
     var suggestFill by mutableStateOf<String?>(null)
     var ntpRevision by mutableStateOf(0)
+    // Kept here, so the new tab page shows its tiles from its first frame and only refreshes them.
+    var ntpPins by mutableStateOf(emptyList<Entry>())
+    var ntpFrequent by mutableStateOf(emptyList<Site>())
     var extensionPopup by mutableStateOf<EngineTab?>(null)
 
     var engineView: EngineView? = null
@@ -119,6 +124,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         perms.wipeLegacyOnce()
         applyEngineSettings()
         EngineUpdates.schedule(activity)
+        activity.lifecycleScope.launch { loadNtp() }
         engine.setAutofillStore(AutofillBridge(vault, activity.lifecycleScope))
         engine.setNotificationHandler(WebNotifications(activity))
         engine.extensions?.let { ext ->
@@ -130,6 +136,17 @@ class Browser(val activity: MainActivity, val engine: Engine) {
                 extensionPopup = tab
             }
         }
+    }
+
+    suspend fun loadNtp() {
+        val hidden = prefs.stringSet("hiddenHosts")
+        val count = Options.frequentSites[prefs.index("ntpFrequent", Options.frequentSites, 3)].value
+        val (pins, frequent) = db.io {
+            val list = pins()
+            list to frequent(hidden + list.map { Urls.host(it.url) }, count)
+        }
+        ntpPins = pins
+        ntpFrequent = frequent
     }
 
     fun applyEngineSettings() = engine.applySettings(prefs.engineSettings(perms, engine.backgroundServices))

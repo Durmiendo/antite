@@ -17,9 +17,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,6 +45,7 @@ import dev.antite.browser.data.Entry
 import dev.antite.browser.l10n.T
 import dev.antite.browser.restoreClosed
 import dev.antite.browser.service.Downloads
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 fun ago(time: Long): String {
@@ -52,25 +55,46 @@ fun ago(time: Long): String {
 }
 
 @Composable
-fun LibraryScreen(b: Browser) {
+fun LibraryScreen(b: Browser, shown: Boolean) {
     val p = LocalPalette.current
     val kind = b.libraryKind
-    var filter by remember(kind) { mutableStateOf("") }
-    var items by remember(kind) { mutableStateOf(emptyList<Entry>()) }
-    var loaded by remember(kind) { mutableStateOf(false) }
+    var filter by remember { mutableStateOf("") }
+    // Each list is kept from its last load, so a page opens with it at once and only refreshes it.
+    val lists = remember { mutableStateMapOf<LibraryKind, List<Entry>>() }
+    var found by remember { mutableStateOf<Pair<LibraryKind, List<Entry>>?>(null) }
     var reload by remember { mutableIntStateOf(0) }
+    var closes by remember { mutableIntStateOf(0) }
     val downloadsRevision = b.downloads.revision.intValue
-    LaunchedEffect(kind, filter, reload, downloadsRevision) {
-        items = b.db.io {
-            when (kind) {
-                LibraryKind.HISTORY -> history(filter, 2000)
-                LibraryKind.BOOKMARKS -> bookmarks(filter)
-                LibraryKind.CLOSED -> closed(filter)
-                LibraryKind.DOWNLOADS -> downloads(filter)
-            }
+    suspend fun load(k: LibraryKind, f: String) = b.db.io {
+        when (k) {
+            LibraryKind.HISTORY -> history(f, 2000)
+            LibraryKind.BOOKMARKS -> bookmarks(f)
+            LibraryKind.CLOSED -> closed(f)
+            LibraryKind.DOWNLOADS -> downloads(f)
         }
-        loaded = true
     }
+    LaunchedEffect(Unit) {
+        for (k in LibraryKind.entries) if (k !in lists) lists[k] = load(k, "")
+    }
+    LaunchedEffect(kind, filter, reload, downloadsRevision, shown) {
+        if (!shown && kind in lists) return@LaunchedEffect
+        if (filter.isEmpty()) {
+            lists[kind] = load(kind, "")
+        } else {
+            // Typing in the search box: one query when the typing pauses, not one per letter.
+            delay(150)
+            found = kind to load(kind, filter)
+        }
+    }
+    LaunchedEffect(shown) {
+        if (shown) return@LaunchedEffect
+        delay(Motion.ms(Motion.SHARED_AXIS).toLong())
+        filter = ""
+        found = null
+        closes++
+    }
+    val items = if (filter.isEmpty()) lists[kind].orEmpty() else found?.takeIf { it.first == kind }?.second.orEmpty()
+    val loaded = if (filter.isEmpty()) kind in lists else found?.first == kind
     fun change(write: Db.() -> Unit) {
         b.activity.lifecycleScope.launch {
             b.db.io(write)
@@ -150,52 +174,54 @@ fun LibraryScreen(b: Browser) {
         LibraryKind.BOOKMARKS -> {}
     }
 
-    PageScaffold(title, { b.overlay = dev.antite.browser.Overlay.NONE }, actions = {
-        if (kind != LibraryKind.BOOKMARKS) TextButton(onClick = ::clearAll) { Text(T.actionClear, color = p.accent) }
-    }) {
-        item {
-            Row(
-                Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().height(44.dp)
-                    .background(p.pill, RoundedCornerShape(22.dp)).padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Ico(R.drawable.ic_search, size = 20)
-                BasicTextField(filter, { filter = it }, singleLine = true, cursorBrush = SolidColor(p.accent),
-                    textStyle = TextStyle(color = p.text, fontSize = 16.sp),
-                    modifier = Modifier.weight(1f).padding(start = 10.dp),
-                    decorationBox = { inner ->
-                        Box(contentAlignment = Alignment.CenterStart) {
-                            if (filter.isEmpty()) Text(T.librarySearch, color = p.textSecondary, fontSize = 16.sp)
-                            inner()
+    CompositionLocalProvider(LocalPageReset provides closes) {
+        PageScaffold(title, { b.overlay = dev.antite.browser.Overlay.NONE }, actions = {
+            if (kind != LibraryKind.BOOKMARKS) TextButton(onClick = ::clearAll) { Text(T.actionClear, color = p.accent) }
+        }) {
+            item {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().height(44.dp)
+                        .background(p.pill, RoundedCornerShape(22.dp)).padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Ico(R.drawable.ic_search, size = 20)
+                    BasicTextField(filter, { filter = it }, singleLine = true, cursorBrush = SolidColor(p.accent),
+                        textStyle = TextStyle(color = p.text, fontSize = 16.sp),
+                        modifier = Modifier.weight(1f).padding(start = 10.dp),
+                        decorationBox = { inner ->
+                            Box(contentAlignment = Alignment.CenterStart) {
+                                if (filter.isEmpty()) Text(T.librarySearch, color = p.textSecondary, fontSize = 16.sp)
+                                inner()
+                            }
+                        })
+                }
+            }
+            if (loaded && items.isEmpty()) note(empty)
+            if (kind == LibraryKind.DOWNLOADS && b.prefs.int("dlLayout", 0) == 1) {
+                downloadBlocks(b, items, { open(it, false) }, ::actions)
+                return@PageScaffold
+            }
+            items(items, key = { it.id }) { e ->
+                val host = Urls.host(e.url)
+                val sub = when (kind) {
+                    LibraryKind.HISTORY -> "$host · ${ago(e.time)}"
+                    LibraryKind.BOOKMARKS -> e.url
+                    LibraryKind.CLOSED -> T.libraryClosedAt(host = host, ago = ago(e.time))
+                    LibraryKind.DOWNLOADS -> "${Downloads.status(e)} · ${ago(e.time)}"
+                }
+                SettingRow(
+                    e.title?.ifEmpty { null } ?: e.url ?: "", sub,
+                    onClick = { open(e, false) }, onLongClick = { actions(e) },
+                    leading = {
+                        if (kind == LibraryKind.DOWNLOADS) Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                            MediaThumb(b, e, Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)), 80) { Ico(icon) }
+                        } else {
+                            val bmp = b.icons.get(host)
+                            if (bmp != null) SiteIcon(bmp, host, 24) else Ico(icon)
                         }
-                    })
+                    },
+                )
             }
-        }
-        if (loaded && items.isEmpty()) note(empty)
-        if (kind == LibraryKind.DOWNLOADS && b.prefs.int("dlLayout", 0) == 1) {
-            downloadBlocks(b, items, { open(it, false) }, ::actions)
-            return@PageScaffold
-        }
-        items(items, key = { it.id }) { e ->
-            val host = Urls.host(e.url)
-            val sub = when (kind) {
-                LibraryKind.HISTORY -> "$host · ${ago(e.time)}"
-                LibraryKind.BOOKMARKS -> e.url
-                LibraryKind.CLOSED -> T.libraryClosedAt(host = host, ago = ago(e.time))
-                LibraryKind.DOWNLOADS -> "${Downloads.status(e)} · ${ago(e.time)}"
-            }
-            SettingRow(
-                e.title?.ifEmpty { null } ?: e.url ?: "", sub,
-                onClick = { open(e, false) }, onLongClick = { actions(e) },
-                leading = {
-                    if (kind == LibraryKind.DOWNLOADS) Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                        MediaThumb(b, e, Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)), 80) { Ico(icon) }
-                    } else {
-                        val bmp = b.icons.get(host)
-                        if (bmp != null) SiteIcon(bmp, host, 24) else Ico(icon)
-                    }
-                },
-            )
         }
     }
 }

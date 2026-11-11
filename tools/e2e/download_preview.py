@@ -70,6 +70,8 @@ def set_preview(d, label):
 def set_option(d, row, label):
     d.tap("Меню", exact=True)
     d.scroll_to("Настройки")
+    # A tap while the menu still flings only stops the fling.
+    time.sleep(1)
     d.tap("Настройки", exact=True)
     d.wait("Основные", exact=True)
     time.sleep(1)
@@ -90,6 +92,7 @@ def set_option(d, row, label):
 def open_downloads(d):
     d.tap("Меню", exact=True)
     d.scroll_to("Скачанные файлы")
+    time.sleep(1)
     d.tap("Скачанные файлы", exact=True)
     time.sleep(2)
 

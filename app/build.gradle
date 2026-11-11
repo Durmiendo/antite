@@ -49,6 +49,13 @@ android {
             if (keysDir) signingConfig signingConfigs.release
             matchingFallbacks = ['debug']
         }
+        // Release code (R8, not debuggable) signed with the debug key, so it installs over a debug build in Waydroid
+        // without losing data; for frame time measurements (tools/e2e/ui_perf.py).
+        perf {
+            initWith release
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+        }
     }
 
     compileOptions {

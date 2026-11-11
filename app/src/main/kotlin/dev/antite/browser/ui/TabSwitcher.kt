@@ -52,7 +52,7 @@ import sh.calvin.reorderable.rememberReorderableLazyGridState
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
-fun TabSwitcher(b: Browser) {
+fun TabSwitcher(b: Browser, open: Boolean) {
     val p = LocalPalette.current
     val inc = b.switcherIncognito
     val shown = b.tabs.filter { it.incognito == inc }
@@ -80,7 +80,7 @@ fun TabSwitcher(b: Browser) {
                 b.newTabAndFocus(inc)
             }
         }
-        if (b.prefs.int("tabLayout", 0) == 1) TabList(b, shown) else TabGrid(b, shown)
+        if (b.prefs.int("tabLayout", 0) == 1) TabList(b, shown, open) else TabGrid(b, shown, open)
     }
 }
 
@@ -107,9 +107,11 @@ private fun Dismissible(b: Browser, t: Tab, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun TabGrid(b: Browser, shown: List<Tab>) {
+private fun TabGrid(b: Browser, shown: List<Tab>, open: Boolean) {
     val p = LocalPalette.current
     val gridState = rememberLazyGridState(maxOf(0, shown.indexOf(b.current)))
+    // Kept composed between openings, so each opening starts at the current tab again.
+    LaunchedEffect(open) { if (open) gridState.requestScrollToItem(maxOf(0, shown.indexOf(b.current))) }
     val reorder = rememberReorderableLazyGridState(gridState) { from, to -> b.reorder(shown, from.index, to.index) }
     LazyVerticalGrid(GridCells.Fixed(2), state = gridState, contentPadding = PaddingValues(8.dp), modifier = Modifier.fillMaxSize()) {
         items(shown, key = { it.id }) { t ->
@@ -153,9 +155,10 @@ private fun Thumb(b: Browser, t: Tab, modifier: Modifier) {
 }
 
 @Composable
-private fun TabList(b: Browser, shown: List<Tab>) {
+private fun TabList(b: Browser, shown: List<Tab>, open: Boolean) {
     val p = LocalPalette.current
     val listState = rememberLazyListState(maxOf(0, shown.indexOf(b.current)))
+    LaunchedEffect(open) { if (open) listState.requestScrollToItem(maxOf(0, shown.indexOf(b.current))) }
     val reorder = rememberReorderableLazyListState(listState) { from, to -> b.reorder(shown, from.index, to.index) }
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(shown, key = { it.id }) { t ->

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.RadioButton
@@ -29,6 +30,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -70,11 +73,17 @@ fun PageScaffold(title: String, onBack: () -> Unit, actions: @Composable () -> U
         }
         // The page runs under the navigation bar, so the last rows must be able to scroll above it.
         val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp + navBar)) {
+        val state = rememberLazyListState()
+        val reset = LocalPageReset.current
+        LaunchedEffect(reset) { state.scrollToItem(0) }
+        LazyColumn(Modifier.fillMaxSize(), state, contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp + navBar)) {
             content()
         }
     }
 }
+
+// Changed by a kept page when it closes, so it opens at the top again.
+val LocalPageReset = compositionLocalOf { 0 }
 
 fun LazyListScope.section(name: String) = item(key = "section:$name") {
     Text(
