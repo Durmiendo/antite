@@ -520,7 +520,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     }
 
     // The vault is closed when the app leaves (or the setting keeps it open); "after 5 minutes" locks it back when
-    // the page is shown again after the pause.
+    // the app or the page is shown again after the pause.
     fun vaultRelock() {
         if (!vaultUnlocked) return
         when (prefs.int("vaultLock", 0)) {

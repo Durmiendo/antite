@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import dev.antite.browser.service.DownloadService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -29,7 +30,9 @@ class MediaVault(private val context: Context) {
 
     data class Item(val id: Long, val name: String, val mime: String, val size: Long, val time: Long, val source: String)
 
-    private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // One worker: every operation rewrites the whole index, so two at once would lose each other's entries.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private val main = Handler(Looper.getMainLooper())
     private val dir = File(context.filesDir, "vault").apply { mkdirs() }
     private val index = File(dir, "index.json")
@@ -64,7 +67,8 @@ class MediaVault(private val context: Context) {
         main.post { revision.intValue++ }
     }
 
-    // A download entry moves in: the file is copied, the original (if asked) and the downloads row go away.
+    // A download entry moves in: the file is copied and indexed, only then the original (if asked) goes away
+    // together with its downloads row.
     fun add(e: Entry, deleteOriginal: Boolean, done: (Boolean) -> Unit) {
         val uri = e.url ?: return done(false)
         val item = Item(nextId++, sanitize(e.title ?: "file"), e.extra?.split('|')?.getOrNull(1)?.ifEmpty { null }
@@ -76,11 +80,14 @@ class MediaVault(private val context: Context) {
                 }
                 val size = file(item).length()
                 if (size <= 0) throw java.io.IOException("empty file")
-                if (deleteOriginal) runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) }
                 items = items + item.copy(size = size)
                 save()
             }.isSuccess
             if (!ok) file(item).delete()
+            else if (deleteOriginal) {
+                runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) }
+                Db.get(context).io { deleteDownload(e.id) }
+            }
             main.post { done(ok) }
             refresh()
         }
@@ -108,9 +115,10 @@ class MediaVault(private val context: Context) {
                 target
             }.getOrNull()
             if (uri != null) {
-                val db = Db.get(context)
-                val id = db.addDownload(item.name, item.mime, item.source)
-                db.finishDownload(id, uri.toString(), DownloadService.DONE, item.size)
+                Db.get(context).io {
+                    val id = addDownload(item.name, item.mime, item.source)
+                    finishDownload(id, uri.toString(), DownloadService.DONE, item.size)
+                }
                 remove(item)
             }
             main.post { done(uri != null) }
@@ -120,15 +128,16 @@ class MediaVault(private val context: Context) {
 
     fun delete(item: Item, done: () -> Unit = {}) {
         io.launch {
-            file(item).delete()
             remove(item)
             main.post(done)
             refresh()
         }
     }
 
+    // The private copy goes with the entry: nothing hidden stays behind after a restore or a delete.
     private fun remove(item: Item) {
         items = items.filter { it.id != item.id }
         save()
+        file(item).delete()
     }
 }

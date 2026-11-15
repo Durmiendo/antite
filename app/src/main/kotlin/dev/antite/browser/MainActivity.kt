@@ -129,6 +129,7 @@ class MainActivity : ComponentActivity() {
         if (::browser.isInitialized) {
             browser.engineNews.onResume()
             browser.checkDefaultBrowserOffer()
+            browser.vaultRelock()
         }
     }
 
