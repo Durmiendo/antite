@@ -142,7 +142,7 @@ fun BrowserScreen(b: Browser) {
         imeWasVisible = imeInset > 0
     }
     // Pull to refresh: the circle stays until the reload it started finishes and the finger is off the screen.
-    LaunchedEffect(t?.loading) {
+    LaunchedEffect(t, b.pageStops) {
         if (t?.loading == false && b.pullRefreshing) {
             snapshotFlow { b.toolbarMotion.touching }.first { !it }
             b.pullRefreshing = false
@@ -186,7 +186,8 @@ fun BrowserScreen(b: Browser) {
                     PageRefreshLayout(ctx, { b.pageScrollY == 0 }, { b.pageRefresh() }).apply { setPage(view.view) }
                 },
                 update = { r ->
-                    r.isEnabled = pullReady
+                    // Disabling the layout resets the circle, so it stays enabled while its own reload is running.
+                    r.isEnabled = pullReady || pullRefreshing
                     r.setColorSchemeColors(p.accent.toArgb())
                     r.setProgressBackgroundColorSchemeColor(
                         (if (t?.incognito == true) p.toolbarIncognito else p.toolbar).toArgb())

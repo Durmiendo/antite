@@ -130,8 +130,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     // The scroll of the current tab's page: pull to refresh may start only when the page is at the top.
     var pageScrollY by mutableIntStateOf(0)
-    // Pull to refresh started the reload; the spinner is shown until the page finishes loading.
+    // Pull to refresh started the reload; the spinner is shown until the page finishes loading. Page stops are
+    // counted because a failed load starts and stops within one frame, so `loading` alone never changes value.
     var pullRefreshing by mutableStateOf(false)
+    var pageStops by mutableIntStateOf(0)
 
     var engineView: EngineView? = null
     var toolbarHeightPx = 0f
@@ -559,8 +561,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     }
 
     fun onScroll(t: Tab, y: Int) {
-        if (t !== current || urlFocused) return
+        if (t !== current) return
         pageScrollY = y
+        if (urlFocused) return
         if (lastScrollY < 0) {
             lastScrollY = y
             return
@@ -655,6 +658,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         override fun onPageStop(success: Boolean) {
             if (initialBlank) return
             t.loading = false
+            if (t === current) pageStops++
             captureSoon(t, 1000, true)
         }
 
