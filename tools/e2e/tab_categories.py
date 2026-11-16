@@ -47,7 +47,7 @@ def to_browser(d):
 
 
 def open_switcher(d):
-    count = [n for n in d.nodes() if (n.get("text") or "").isdigit() and d.bounds(n)[1] < 230]
+    count = [n for n in d.nodes() if ((t := n.get("text") or "").isdigit() or t == ":D") and d.bounds(n)[1] < 230]
     if not count:
         d.fail("no tab count in the toolbar")
     x, y = d.center(count[0])

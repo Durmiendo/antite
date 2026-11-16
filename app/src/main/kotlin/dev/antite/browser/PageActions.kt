@@ -41,7 +41,7 @@ fun Browser.toggleDesktop(t: Tab) {
 // Pull to refresh: the reload is like the toolbar one (the cache is used); the spinner hides on page stop.
 fun Browser.pageRefresh() {
     val t = current ?: return
-    pullRefreshing = true
+    pullRefreshTab = t
     ensureSession(t).reload()
 }
 

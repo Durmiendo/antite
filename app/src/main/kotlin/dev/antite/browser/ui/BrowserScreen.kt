@@ -143,9 +143,9 @@ fun BrowserScreen(b: Browser) {
     }
     // Pull to refresh: the circle stays until the reload it started finishes and the finger is off the screen.
     LaunchedEffect(t, b.pageStops) {
-        if (t?.loading == false && b.pullRefreshing) {
+        if (t?.loading == false && b.pullRefreshTab === t) {
             snapshotFlow { b.toolbarMotion.touching }.first { !it }
-            b.pullRefreshing = false
+            if (b.pullRefreshTab === t) b.pullRefreshTab = null
         }
     }
 
@@ -180,7 +180,7 @@ fun BrowserScreen(b: Browser) {
             // the top. The circle follows the shell palette; it hides with the load started by the refresh itself.
             val pullReady = t != null && !t.loading && !Urls.isBlank(t.url) && !b.urlFocused &&
                 b.overlay == Overlay.NONE && !b.fullscreen && !b.pip && !(t.incognito && b.incognitoLocked)
-            val pullRefreshing = b.pullRefreshing
+            val pullRefreshing = t != null && b.pullRefreshTab === t
             AndroidView(
                 factory = { ctx ->
                     PageRefreshLayout(ctx, { b.pageScrollY == 0 }, { b.pageRefresh() }).apply { setPage(view.view) }
