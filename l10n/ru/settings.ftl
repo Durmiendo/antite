@@ -50,6 +50,7 @@ transfer-password-of-file = Пароль от файла
 action-next = Далее
 transfer-wrong-password = Неверный пароль
 transfer-not-a-backup = Это не файл переноса данных { -brand }
+transfer-newer-backup = файл сделан более новой версией Antite, сначала обновите браузер
 transfer-replace-title = Заменить все данные?
 transfer-replace-text = Вкладки, история, закладки, пароли и входы на сайты будут заменены данными из файла. Браузер перезапустится.
 transfer-import-action = Импортировать

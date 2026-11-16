@@ -50,6 +50,7 @@ transfer-password-of-file = Password of the file
 action-next = Next
 transfer-wrong-password = Wrong password
 transfer-not-a-backup = This is not an { -brand } data transfer file
+transfer-newer-backup = the file was made by a newer Antite, update the browser first
 transfer-replace-title = Replace all data?
 transfer-replace-text = Tabs, history, bookmarks, passwords and site sign-ins will be replaced with the data from the file. The browser restarts.
 transfer-import-action = Import

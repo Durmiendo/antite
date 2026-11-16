@@ -129,6 +129,16 @@ class DataTransferTest {
     }
 
     @Test
+    fun backupWithNewerDatabaseChangesNothing() {
+        File(src, "databases").mkdirs()
+        SQLiteDatabase.openOrCreateDatabase(File(src, "databases/antite.db"), null).use { it.version = 99 }
+        val backup = export("secret")
+        assertThrows(java.io.IOException::class.java) { import(backup, "secret") }
+        assertEquals("old", File(dst, "files/old.txt").readText())
+        assertFalse(File(dst, "files/tabs.json").exists())
+    }
+
+    @Test
     fun exportLeavesSourceUntouched() {
         val before = column(File(src, "databases/vault.db"), "logins", "password")
         export("secret")

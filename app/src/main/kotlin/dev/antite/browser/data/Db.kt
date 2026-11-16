@@ -14,8 +14,9 @@ data class Entry(val id: Long, val url: String?, val title: String?, val time: L
 
 data class Site(val host: String, val url: String, val title: String?)
 
-class Db private constructor(context: Context) : SQLiteOpenHelper(context, "antite.db", null, 4) {
+class Db private constructor(context: Context) : SQLiteOpenHelper(context, "antite.db", null, VERSION) {
     companion object {
+        const val VERSION = 4
         private const val HISTORY_KEEP_MS = 90L * 24 * 3600 * 1000
 
         @Volatile

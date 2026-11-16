@@ -27,8 +27,9 @@ data class SavedCard(val guid: String, val name: String?, val last4: String, val
     val label: String get() = "•••• $last4" + if (month.isNullOrEmpty()) "" else "  $month/$year"
 }
 
-class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "vault.db", null, 1) {
+class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "vault.db", null, VERSION) {
     companion object {
+        const val VERSION = 1
         @Volatile
         private var instance: Vault? = null
 

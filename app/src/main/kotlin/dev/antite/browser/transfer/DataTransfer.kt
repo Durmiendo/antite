@@ -3,6 +3,9 @@ package dev.antite.browser.transfer
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import dev.antite.browser.data.Crypto
+import dev.antite.browser.data.Db
+import dev.antite.browser.data.Vault
+import dev.antite.browser.l10n.T
 import org.json.JSONObject
 import java.io.File
 import java.io.FilterInputStream
@@ -29,6 +32,8 @@ object DataTransfer {
     private val DEVICE_ONLY = listOf("files/engines", "shared_prefs/engines.xml")
     private const val SETTINGS = "shared_prefs/antite.xml"
     private val DEBUG_INSTALL = Regex("""\s*<boolean name="debugInstall" value="[^"]*" />""")
+    // A database from a newer Antite cannot be opened by this one (no downgrade), so such a backup is refused.
+    private val SCHEMAS = listOf("databases/antite.db" to Db.VERSION, VAULT to Vault.VERSION)
     private val SECRET_COLUMNS = listOf("logins" to "password", "addresses" to "data", "cards" to "number")
 
     fun export(context: Context, root: File, out: OutputStream, password: CharArray, progress: (Progress) -> Unit) {
@@ -109,6 +114,11 @@ object DataTransfer {
                 }
                 val buf = ByteArray(64 * 1024)
                 while (plain.read(buf) >= 0) Unit
+            }
+            for ((rel, version) in SCHEMAS) {
+                val f = File(stage, rel).takeIf { it.exists() } ?: continue
+                val found = SQLiteDatabase.openDatabase(f.path, null, SQLiteDatabase.OPEN_READONLY).use { it.version }
+                if (found > version) throw IOException(T.transferNewerBackup)
             }
             File(stage, VAULT).takeIf { it.exists() }?.let { v ->
                 rewriteSecrets(v) { Crypto.encrypt(it) }
