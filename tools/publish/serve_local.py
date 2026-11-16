@@ -4,6 +4,7 @@ Usage: python3 -I tools/publish/serve_local.py [--port 8790] [--serial SERIAL] [
 
 Builds the engine adapter (and with --shell the release shell), and serves an unsigned engines.json next to them
 on all interfaces. The engine version gets a time suffix, so every run is newer than the installed one.
+Anyone in the same network can download that unsigned build while it runs: use it only for debugging.
 --serial also forwards the port to that device over adb, so http://localhost:PORT works there without Wi-Fi.
 Runs until Ctrl+C.
 """

@@ -34,7 +34,11 @@ class IconCache(context: Context, private val engine: Engine, private val downlo
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
 
-    private fun file(host: String) = File(dir, host.replace(Regex("[^a-zA-Z0-9.-]"), "_") + ".png")
+    // A file name is limited to 255 bytes; a longer host keeps its start and gets a hash of the whole.
+    private fun file(host: String): File {
+        val name = host.replace(Regex("[^a-zA-Z0-9.-]"), "_")
+        return File(dir, (if (name.length > 200) name.take(150) + "_" + Integer.toHexString(host.hashCode()) else name) + ".png")
+    }
 
     private fun changed() {
         version.intValue++

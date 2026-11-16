@@ -256,7 +256,10 @@ class MainActivity : ComponentActivity() {
         if (sm == null || !sm.isRequestPinShortcutSupported) return browser.toast(T.shortcutUnsupported)
         val host = Urls.host(t.url)
         val label = t.title.ifEmpty { host }
-        sm.requestPinShortcut(ShortcutInfo.Builder(this, "site-" + t.url.hashCode())
+        // The id names the address: two sites must not share one, or pinning the second replaces the first.
+        val id = java.security.MessageDigest.getInstance("SHA-256").digest(t.url.toByteArray())
+            .take(16).joinToString("") { "%02x".format(it) }
+        sm.requestPinShortcut(ShortcutInfo.Builder(this, "site-$id")
             .setShortLabel(label.take(24))
             .setLongLabel(label)
             .setIcon(Icon.createWithBitmap(icon ?: letterIcon(host)))

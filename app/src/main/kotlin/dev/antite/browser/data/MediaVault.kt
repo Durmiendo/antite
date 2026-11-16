@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.antite.browser.service.DownloadService
+import dev.antite.browser.service.Downloads
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -72,8 +73,8 @@ class MediaVault(private val context: Context) {
     // together with its downloads row.
     fun add(e: Entry, deleteOriginal: Boolean, done: (Boolean) -> Unit) {
         val uri = e.url ?: return done(false)
-        val item = Item(nextId++, sanitize(e.title ?: "file"), e.extra?.split('|')?.getOrNull(1)?.ifEmpty { null }
-            ?: "application/octet-stream", 0, System.currentTimeMillis(), e.extra?.split('|')?.getOrNull(2) ?: "")
+        val mime = Downloads.mime(e).takeIf { it != "*/*" } ?: "application/octet-stream"
+        val item = Item(nextId++, sanitize(e.title ?: "file"), mime, 0, System.currentTimeMillis(), Downloads.source(e))
         io.launch {
             val ok = runCatching {
                 context.contentResolver.openInputStream(Uri.parse(uri))!!.use { input ->
