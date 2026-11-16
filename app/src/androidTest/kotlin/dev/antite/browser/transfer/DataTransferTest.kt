@@ -115,6 +115,20 @@ class DataTransferTest {
     }
 
     @Test
+    fun updateSourcesAndDebugInstallAreNotImported() {
+        write(src, "shared_prefs/engines.xml", "<map><string name=\"updateSource\">evil</string></map>".toByteArray())
+        write(src, "shared_prefs/antite.xml", ("<map>\n    <boolean name=\"debugInstall\" value=\"true\" />\n" +
+            "    <boolean name=\"homeButton\" value=\"true\" />\n</map>").toByteArray())
+        write(dst, "shared_prefs/engines.xml", "<map><string name=\"updateSource\">builtin</string></map>".toByteArray())
+        import(export("secret"), "secret")
+        assertEquals("<map><string name=\"updateSource\">builtin</string></map>",
+            File(dst, "shared_prefs/engines.xml").readText())
+        val settings = File(dst, "shared_prefs/antite.xml").readText()
+        assertFalse(settings.contains("debugInstall"))
+        assertTrue(settings.contains("homeButton"))
+    }
+
+    @Test
     fun exportLeavesSourceUntouched() {
         val before = column(File(src, "databases/vault.db"), "logins", "password")
         export("secret")

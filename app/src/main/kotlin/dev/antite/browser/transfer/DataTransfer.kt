@@ -24,7 +24,11 @@ object DataTransfer {
     private const val IN_DIR = "transfer-in"
     private const val OLD_DIR = "transfer-old"
     private val SKIPPED = setOf("cache", "code_cache", "lib", OUT_DIR, IN_DIR, OLD_DIR)
-    private const val ENGINES = "files/engines"
+    // The engine and whom it trusts for updates (sources, keys) stay this device's: a backup must not bring in another
+    // update source, or a backup file from someone else would install their engine.
+    private val DEVICE_ONLY = listOf("files/engines", "shared_prefs/engines.xml")
+    private const val SETTINGS = "shared_prefs/antite.xml"
+    private val DEBUG_INSTALL = Regex("""\s*<boolean name="debugInstall" value="[^"]*" />""")
     private val SECRET_COLUMNS = listOf("logins" to "password", "addresses" to "data", "cards" to "number")
 
     fun export(context: Context, root: File, out: OutputStream, password: CharArray, progress: (Progress) -> Unit) {
@@ -109,6 +113,7 @@ object DataTransfer {
             File(stage, VAULT).takeIf { it.exists() }?.let { v ->
                 rewriteSecrets(v) { Crypto.encrypt(it) }
             }
+            File(stage, SETTINGS).takeIf { it.exists() }?.let { f -> f.writeText(f.readText().replace(DEBUG_INSTALL, "")) }
             replace(root, stage)
             File(root, "cache").listFiles()?.forEach { it.deleteRecursively() }
         } finally {
@@ -131,16 +136,16 @@ object DataTransfer {
             old.listFiles()?.forEach { it.renameTo(File(root, it.name)) }
             throw e
         }
-        val engines = File(old, ENGINES)
-        if (engines.exists()) {
-            File(root, ENGINES).apply { parentFile?.mkdirs(); deleteRecursively() }
-            if (!engines.renameTo(File(root, ENGINES))) throw IOException("cannot keep the engine")
+        for (rel in DEVICE_ONLY) {
+            val kept = File(old, rel)
+            if (!kept.exists()) continue
+            File(root, rel).apply { parentFile?.mkdirs(); deleteRecursively() }
+            if (!kept.renameTo(File(root, rel))) throw IOException("cannot keep $rel")
         }
         old.deleteRecursively()
     }
 
-    // The engine is downloaded, not part of the user's data, and stays with the current install.
-    private fun isEngine(rel: String) = rel == ENGINES || rel.startsWith("$ENGINES/")
+    private fun isEngine(rel: String) = DEVICE_ONLY.any { rel == it || rel.startsWith("$it/") }
 
     private fun collect(root: File): List<Pair<String, File>> {
         val out = mutableListOf<Pair<String, File>>()
