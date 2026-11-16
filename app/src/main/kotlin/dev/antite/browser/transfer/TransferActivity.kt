@@ -13,7 +13,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.antite.browser.MainActivity
+import dev.antite.browser.data.Prefs
 import dev.antite.browser.l10n.T
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.LocalPalette
@@ -65,7 +65,7 @@ class TransferActivity : ComponentActivity() {
             }
         })
         setContent {
-            AntiteTheme(isSystemInDarkTheme()) {
+            AntiteTheme(Prefs(this).isDark()) {
                 val p = LocalPalette.current
                 Column(
                     Modifier.fillMaxSize().background(p.background).padding(32.dp),
