@@ -1,5 +1,6 @@
 package dev.antite.browser.engine
 
+import android.app.ActivityManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -46,7 +47,11 @@ class ShellInstallReceiver : BroadcastReceiver() {
         when (val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirm = intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java) ?: return
-                context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                // Android 10+ silently blocks starting the system confirmation while the browser is not on screen.
+                val shown = ActivityManager.RunningAppProcessInfo().also { ActivityManager.getMyMemoryState(it) }
+                    .importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+                if (shown) context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                else EngineUpdates.notify(context, EngineUpdates.NOTIFY_SHELL, T.updatesShellReady, T.updatesShellReadyText, confirm)
             }
             PackageInstaller.STATUS_SUCCESS -> Unit
             else -> {

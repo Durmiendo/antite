@@ -211,16 +211,17 @@ object EngineUpdates {
     const val NOTIFY_ENGINE = 0
     const val NOTIFY_SHELL = 1
 
-    fun notify(context: Context, id: Int, title: String, text: String) {
+    fun notify(context: Context, id: Int, title: String, text: String, tap: Intent? = null) {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, T.updatesChannel, NotificationManager.IMPORTANCE_LOW))
-        val open = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val open = (tap ?: Intent(context, MainActivity::class.java)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val n = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_public)
             .setContentTitle(title)
             .setContentText(text)
             .setAutoCancel(true)
-            .setContentIntent(PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE))
+            .setContentIntent(PendingIntent.getActivity(context, id, open,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
             .build()
         try {
             nm.notify(CHANNEL, id, n)
