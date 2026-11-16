@@ -46,3 +46,16 @@ category-unlock-reason = Open category "{ $name }"
 category-lock-change-reason = Change the protection of category "{ $name }"
 category-protect-downloads = Protect downloaded files
 category-protect-downloads-summary = Files from these tabs go straight to the secure storage and do not show in downloads
+containers-title = Containers
+containers-summary = { $count ->
+    [0] Separate cookies and site logins
+   *[other] Containers: { $count }
+}
+containers-add = Add a container
+containers-note = Tabs of one container share cookies and site data only with each other: in different containers one site can be signed in under different names. A page opens in a container from the menu, "Open in container…", or through a category that has one chosen. Passwords, history and site permissions are common.
+container-none = No container
+container-in = Container "{ $name }"
+container-delete = Delete container
+container-delete-confirm = Delete container "{ $name }"? Its tabs are closed, and its cookies and site data are wiped.
+category-container = Container for new tabs
+menu-open-in-container = Open in container…

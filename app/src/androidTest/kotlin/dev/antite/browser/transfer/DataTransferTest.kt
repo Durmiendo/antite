@@ -4,6 +4,7 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.antite.browser.data.Crypto
+import dev.antite.browser.data.VaultFile
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -100,6 +101,22 @@ class DataTransferTest {
         assertEquals("pw-alice", Crypto.decrypt(logins["a"]))
         assertEquals("{\"name\":\"Ivan\"}", Crypto.decrypt(column(v, "addresses", "data")["h"]))
         assertEquals("4111111111111111", Crypto.decrypt(column(v, "cards", "number")["c"]))
+    }
+
+    @Test
+    fun secureStorageFileSurvivesTheTransfer() {
+        val photo = Random(9).nextBytes(2 * VaultFile.CHUNK + 77)
+        File(src, "files/vault").mkdirs()
+        VaultFile.writer(File(src, "files/vault/7.enc").outputStream(), Crypto.fileKeys).use { it.write(photo) }
+        val stored = File(src, "files/vault/7.enc").readBytes()
+        import(export("secret"), "secret")
+        val moved = File(dst, "files/vault/7.enc")
+        assertArrayEquals(photo, VaultFile.Reader(moved, Crypto.fileKeys).stream().use { it.readBytes() })
+        assertArrayEquals("the source file keeps its wrapped key", stored, File(src, "files/vault/7.enc").readBytes())
+        // Wrapped again for this installation: the header differs, the encrypted chunks are the same.
+        val now = moved.readBytes()
+        assertFalse(stored.copyOf(VaultFile.HEADER).contentEquals(now.copyOf(VaultFile.HEADER)))
+        assertArrayEquals(stored.copyOfRange(VaultFile.HEADER, stored.size), now.copyOfRange(VaultFile.HEADER, now.size))
     }
 
     @Test

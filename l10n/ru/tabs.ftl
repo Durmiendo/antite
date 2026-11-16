@@ -48,3 +48,16 @@ category-unlock-reason = Открыть категорию «{ $name }»
 category-lock-change-reason = Изменить защиту категории «{ $name }»
 category-protect-downloads = Защищать скачанные файлы
 category-protect-downloads-summary = Файлы из этих вкладок сразу попадают в защищённое хранилище и не видны в загрузках
+containers-title = Контейнеры
+containers-summary = { $count ->
+    [0] Отдельные cookie и входы на сайты
+   *[other] Контейнеров: { $count }
+}
+containers-add = Добавить контейнер
+containers-note = Вкладки одного контейнера делят cookie и данные сайтов только между собой: в разных контейнерах можно войти на один сайт под разными именами. Страница открывается в контейнере пунктом меню «Открыть в контейнере…» или через категорию, у которой он выбран. Пароли, история и разрешения сайтов общие.
+container-none = Без контейнера
+container-in = Контейнер «{ $name }»
+container-delete = Удалить контейнер
+container-delete-confirm = Удалить контейнер «{ $name }»? Его вкладки закроются, а cookie и данные сайтов из него сотрутся.
+category-container = Контейнер для новых вкладок
+menu-open-in-container = Открыть в контейнере…

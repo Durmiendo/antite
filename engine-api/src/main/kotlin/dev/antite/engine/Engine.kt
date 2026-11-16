@@ -61,6 +61,8 @@ interface StorageCleaner {
     fun clear(what: Set<DataKind>, done: (Boolean) -> Unit)
 
     fun clearSite(host: String, done: (Boolean) -> Unit)
+
+    fun clearContainer(id: String, done: (Boolean) -> Unit)
 }
 
 enum class DataKind { CACHE, COOKIES_AND_SITE_DATA, PERMISSIONS }

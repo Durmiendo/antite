@@ -418,6 +418,11 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
             runtime.storageController.clearDataFromBaseDomain(host, StorageController.ClearFlags.ALL)
                 .accept({ done(true) }, { done(false) })
         }
+
+        override fun clearContainer(id: String, done: (Boolean) -> Unit) {
+            runtime.storageController.clearDataForSessionContext(id)
+            done(true)
+        }
     }
 
     override val permissions = object : PermissionStore {

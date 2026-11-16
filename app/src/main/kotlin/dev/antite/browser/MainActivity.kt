@@ -71,6 +71,11 @@ class MainActivity : ComponentActivity() {
         openResult?.invoke(uri)
         openResult = null
     }
+    private var openManyResult: ((List<Uri>) -> Unit)? = null
+    private val openMany = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        openManyResult?.invoke(uris)
+        openManyResult = null
+    }
     private val requestRole = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         roleResult?.invoke(r.resultCode == RESULT_OK)
         roleResult = null
@@ -183,6 +188,11 @@ class MainActivity : ComponentActivity() {
     fun openDocument(mimeTypes: List<String>, done: (Uri?) -> Unit) {
         openResult = done
         open.launch(arrayOf("*/*") + mimeTypes)
+    }
+
+    fun openDocuments(done: (List<Uri>) -> Unit) {
+        openManyResult = done
+        openMany.launch(arrayOf("*/*"))
     }
 
     fun requestPermissions(list: List<String>, done: (Boolean) -> Unit) {

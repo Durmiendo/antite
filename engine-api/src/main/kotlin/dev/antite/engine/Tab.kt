@@ -9,6 +9,8 @@ data class TabOptions(
     val javascript: Boolean,
     val state: String? = null,
     val url: String? = null,
+    // Tabs with the same id share cookies and site data with each other only; null is the common storage.
+    val container: String? = null,
 )
 
 interface EngineTab {

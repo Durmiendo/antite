@@ -98,12 +98,11 @@ class Downloads(private val b: Browser) {
     private fun toVault(body: InputStream, name: String, mime: String, total: Long, source: String) {
         val vault = b.mediaVault
         val item = vault.reserve(name, mime, source)
-        val file = vault.file(item)
+        var done = 0L
         val task = DownloadService.job(T.dlVaultJob) { t ->
             body.use { input ->
-                file.outputStream().use { out ->
+                vault.output(item).use { out ->
                     val buf = ByteArray(64 * 1024)
-                    var done = 0L
                     while (true) {
                         val n = input.read(buf)
                         if (n < 0) break
@@ -117,10 +116,10 @@ class Downloads(private val b: Browser) {
         task.total = total
         task.onDone = { status, _ ->
             if (status == DownloadService.DONE) {
-                vault.receive(item, file.length())
+                vault.receive(item, done)
                 b.toast(T.dlVaultDone)
             } else {
-                file.delete()
+                vault.discard(item)
                 if (status == DownloadService.FAILED) b.toast(T.downloadFailed)
             }
         }

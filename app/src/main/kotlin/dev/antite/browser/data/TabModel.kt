@@ -38,6 +38,8 @@ class Tab(val id: Long, val incognito: Boolean) {
     var desktop by mutableStateOf(false)
     // A user category id from Categories; null means only "All".
     var category by mutableStateOf<String?>(null)
+    // A container id from Containers, fixed when the tab is made; null is the common storage.
+    var container: String? = null
     var docLang: String? = null
     var translated by mutableStateOf(false)
     var bookmarked by mutableStateOf(false)

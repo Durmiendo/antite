@@ -1,5 +1,8 @@
 package dev.antite.browser.ui
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
@@ -454,7 +457,14 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
         b.suggestFill = null
     }
 
-    Column(modifier.fillMaxWidth().height(56.dp).background(if (inc) p.toolbarIncognito else p.toolbar)) {
+    val container = t?.let { b.containers.byId(it.container) }
+    Column(modifier.fillMaxWidth().height(56.dp).background(if (inc) p.toolbarIncognito else p.toolbar)
+        // A tab of a container carries its color along the bottom edge of the toolbar.
+        .drawWithContent {
+            drawContent()
+            if (container != null) drawRect(Color(container.color), Offset(0f, size.height - 3.dp.toPx()), Size(size.width, 3.dp.toPx()))
+        }
+        .then(if (container != null) Modifier.semantics { contentDescription = T.containerIn(name = container.name) } else Modifier)) {
         Row(Modifier.fillMaxWidth().weight(1f).padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (b.prefs.bool("homeButton", false) && !b.urlFocused) IconBtn(R.drawable.ic_home, T.toolbarHome) { b.goHome() }
             Row(

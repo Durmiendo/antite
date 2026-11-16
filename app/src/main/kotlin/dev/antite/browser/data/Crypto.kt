@@ -36,6 +36,26 @@ object Crypto {
         return k
     }
 
+    // For the keys of secure storage files: length of the IV, the IV, the sealed bytes.
+    fun seal(plain: ByteArray): ByteArray {
+        val c = Cipher.getInstance(MODE)
+        c.init(Cipher.ENCRYPT_MODE, key())
+        val iv = c.iv
+        val body = c.doFinal(plain)
+        return ByteBuffer.allocate(1 + iv.size + body.size).put(iv.size.toByte()).put(iv).put(body).array()
+    }
+
+    fun open(sealed: ByteArray): ByteArray {
+        val input = ByteBuffer.wrap(sealed)
+        val iv = ByteArray(input.get().toInt()).also { input.get(it) }
+        val body = ByteArray(input.remaining()).also { input.get(it) }
+        val c = Cipher.getInstance(MODE)
+        c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
+        return c.doFinal(body)
+    }
+
+    val fileKeys = VaultFile.Keys(::seal, ::open)
+
     fun encrypt(plain: String): String {
         val c = Cipher.getInstance(MODE)
         c.init(Cipher.ENCRYPT_MODE, key())

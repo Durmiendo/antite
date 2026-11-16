@@ -28,7 +28,9 @@ import dev.antite.browser.data.Prefs
 import dev.antite.browser.data.Site
 import dev.antite.browser.data.SitePerms
 import dev.antite.browser.data.Tab
+import dev.antite.browser.data.Containers
 import dev.antite.browser.data.TabCategory
+import dev.antite.browser.data.TabContainer
 import dev.antite.browser.data.TabStore
 import dev.antite.browser.data.Vault
 import dev.antite.browser.l10n.T
@@ -39,6 +41,7 @@ import dev.antite.browser.service.WebNotifications
 import dev.antite.browser.transfer.TransferActivity
 import dev.antite.browser.ui.Motion
 import dev.antite.browser.ui.paletteOf
+import dev.antite.browser.ui.vaultImported
 import dev.antite.engine.AndroidPermissionRequest
 import dev.antite.engine.ContentPermissionRequest
 import dev.antite.engine.ContextInfo
@@ -88,6 +91,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var current by mutableStateOf<Tab?>(null)
         private set
     val mediaVault = MediaVault(activity)
+    val containers = Containers(prefs)
 
     var overlay by mutableStateOf(Overlay.NONE)
     var libraryKind by mutableStateOf(LibraryKind.HISTORY)
@@ -220,11 +224,15 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         urlFocused = true
     }
 
+    // Without a word about the container, a tab opened from a page stays in that page's container and a new tab of a
+    // category takes the category's one.
     fun openTab(url: String, incognito: Boolean, parent: Tab?, select: Boolean,
-                category: String? = parent?.category?.takeIf { !incognito }): Tab {
+                category: String? = parent?.category?.takeIf { !incognito },
+                container: String? = if (parent != null) parent.container else categories.byId(category)?.container): Tab {
         val t = Tab.create(incognito)
         t.url = url
         t.category = category?.takeIf { !incognito && categories.byId(it) != null }
+        t.container = container?.takeIf { !incognito && containers.byId(it) != null }
         t.desktop = prefs.bool("desktopDefault", false)
         if (parent != null) t.parentId = parent.id
         val idx = if (parent != null) tabs.indexOf(parent) + 1 else tabs.size
@@ -243,6 +251,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         javascript = perms.decide(SitePerms.JS, Urls.siteHost(t.url)) == SitePerms.ALLOW,
         state = if (withState) t.state else null,
         url = t.url,
+        container = t.container?.takeIf { !t.incognito },
     )
 
     fun ensureSession(t: Tab): EngineTab =
@@ -455,6 +464,21 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         scheduleSave()
     }
 
+    // The page of the current tab in a new tab of another container (null: of none).
+    fun openInContainer(c: TabContainer?) {
+        val t = current ?: return
+        openTab(t.url, false, t, true, t.category, c?.id)
+    }
+
+    // Its tabs are closed and its site data is wiped: nothing of the container is left.
+    fun deleteContainer(c: TabContainer) {
+        tabs.filter { it.container == c.id }.forEach(::closeTab)
+        categories.list.filter { it.container == c.id }.forEach { it.container = null }
+        categories.save()
+        containers.delete(c)
+        engine.storage.clearContainer(c.id) {}
+    }
+
     fun deleteCategory(c: TabCategory) {
         tabs.filter { it.category == c.id }.forEach { it.category = null }
         categories.delete(c)
@@ -498,6 +522,11 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         if (intent?.action == WebNotifications.ACTION_CLICK) {
             WebNotifications.click(intent)
             if (!needTab) return
+        }
+        if (intent?.action == Intent.ACTION_SEND || intent?.action == Intent.ACTION_SEND_MULTIPLE) {
+            vaultShared(intent)
+            if (needTab) newTabAndFocus(false)
+            return
         }
         val data = intent?.data
         // An explicit intent passes any scheme past the filter; javascript: would run in the open page.
@@ -607,6 +636,24 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             downloads.revision.intValue++
             toast(if (ok) T.vaultMovedIn else T.vaultMoveFailed)
         }
+    }
+
+    // Files shared by another app go into the secure storage. Only content: addresses: a file: one could name the
+    // browser's own files.
+    private fun vaultShared(intent: Intent) {
+        val clip = intent.clipData
+        // The typed getters need Android 13; one file comes as a single value, several as a list.
+        @Suppress("DEPRECATION")
+        val extra = when (val v = intent.extras?.get(Intent.EXTRA_STREAM)) {
+            is android.net.Uri -> listOf(v)
+            is List<*> -> v.filterIsInstance<android.net.Uri>()
+            else -> emptyList()
+        }
+        val uris = ((0 until (clip?.itemCount ?: 0)).mapNotNull { clip?.getItemAt(it)?.uri } + extra)
+            .filter { it.scheme == "content" }.distinct()
+        if (uris.isEmpty()) return toast(T.vaultNothingShared)
+        toast(T.vaultAdding(count = uris.size))
+        mediaVault.import(uris, null, false) { added, failed -> vaultImported(added, failed) }
     }
 
     fun setToolbarHidden(h: Float) {
@@ -769,6 +816,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             val child = Tab.create(t.incognito)
             child.url = url
             child.parentId = t.id
+            // The engine requires the same storage for a window a page opens.
+            child.container = t.container
             child.desktop = prefs.bool("desktopDefault", false)
             tabs.add(tabs.indexOf(t) + 1, child)
             val tab = create(options(child, false), TabSession(child))

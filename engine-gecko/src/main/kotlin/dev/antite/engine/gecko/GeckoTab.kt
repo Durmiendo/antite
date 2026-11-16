@@ -53,6 +53,7 @@ internal class GeckoTab(
             b.userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_DESKTOP)
                 .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_DESKTOP)
         }
+        options.container?.takeIf { !options.privateMode }?.let { b.contextId(it) }
         session = GeckoSession(b.build())
         attach()
         engine.register(this)

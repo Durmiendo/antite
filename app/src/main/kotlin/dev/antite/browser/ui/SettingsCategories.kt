@@ -29,6 +29,7 @@ import dev.antite.browser.UiDialog
 import dev.antite.browser.data.Categories
 import dev.antite.browser.Auth
 import dev.antite.browser.data.TabCategory
+import dev.antite.browser.data.TabContainer
 import dev.antite.browser.l10n.T
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -55,6 +56,76 @@ internal fun categoriesPage(b: Browser) = SettingsPage(T.categoriesMine) { nav -
     }
     note(T.categoriesNote)
 }
+
+internal fun containersPage(b: Browser) = SettingsPage(T.containersTitle) { nav ->
+    b.containers.list.forEach { c ->
+        mark(c.name, null, "container:${c.id}")
+        item(key = "container:${c.id}") {
+            Marked("container:${c.id}") {
+                SettingRow(c.name, T.categoryTabs(count = b.tabs.count { it.container == c.id }),
+                    onClick = { nav.push(c.name) { n -> ContainerPage(b, n, c) } },
+                    leading = { Box(Modifier.size(32.dp).clip(CircleShape).background(Color(c.color))) })
+            }
+        }
+    }
+    action(T.containersAdd, null, "row:addContainer") {
+        b.show(UiDialog.Form(T.containersAdd, null, listOf(FormField(T.categoryName, "", FormField.Kind.NAME)), onConfirm = { v ->
+            val name = v[0].trim()
+            if (name.isEmpty()) return@Form false
+            val c = b.containers.add(name)
+            nav.push(c.name) { n -> ContainerPage(b, n, c) }
+            true
+        }))
+    }
+    note(T.containersNote)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun ContainerPage(b: Browser, nav: Nav, c: TabContainer) {
+    val p = LocalPalette.current
+    Screen(b, nav, c.name) {
+        item(key = "name") {
+            SettingRow(T.categoryName, c.name, onClick = {
+                b.show(UiDialog.Form(T.categoryName, null, listOf(FormField(T.categoryName, c.name, FormField.Kind.NAME)), onConfirm = { v ->
+                    val name = v[0].trim()
+                    if (name.isEmpty()) return@Form false
+                    c.name = name
+                    b.containers.save()
+                    true
+                }))
+            })
+        }
+        section(T.categoryColor)
+        item(key = "colors") {
+            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Categories.COLORS.forEach { col ->
+                    Box(Modifier.size(40.dp).clip(CircleShape).background(Color(col))
+                        .then(if (col == c.color) Modifier.border(3.dp, p.text, CircleShape) else Modifier)
+                        .clickable {
+                            c.color = col
+                            b.containers.save()
+                        })
+                }
+            }
+        }
+        item(key = "delete") {
+            SettingRow(T.containerDelete, onClick = {
+                b.confirm(T.containerDeleteConfirm(name = c.name), T.actionDelete) {
+                    b.deleteContainer(c)
+                    nav.back()
+                }
+            })
+        }
+    }
+}
+
+// Picks one of the containers or none; shared by the menu and the category page.
+internal fun Browser.pickContainer(title: String, done: (TabContainer?) -> Unit) = show(UiDialog.Items(title,
+    listOf(DialogButton(T.containerNone) { done(null) }) + containers.list.map { c -> DialogButton(c.name) { done(c) } }))
+
+fun Browser.openInContainerDialog() = pickContainer(T.menuOpenInContainer) { openInContainer(it) }
 
 internal fun incognitoPage(b: Browser) = SettingsPage(T.tabsIncognito) {
     toggle(b, T.incognitoSecure, T.incognitoSecureSummary, "incognitoSecure", true, false)
@@ -124,6 +195,14 @@ internal fun CategoryPage(b: Browser, nav: Nav, c: TabCategory) {
                 c.protectDownloads = on
                 b.categories.save()
             }
+        }
+        if (b.containers.list.isNotEmpty() || c.container != null) item(key = "container") {
+            SettingRow(T.categoryContainer, b.containers.byId(c.container)?.name ?: T.containerNone, onClick = {
+                b.pickContainer(T.categoryContainer) {
+                    c.container = it?.id
+                    b.categories.save()
+                }
+            })
         }
         item(key = "lock") {
             // Both ways need the unlock: turning it on proves the device has a screen lock, turning it off opens the tabs.

@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import dev.antite.browser.data.Crypto
 import dev.antite.browser.data.Db
 import dev.antite.browser.data.Vault
+import dev.antite.browser.data.VaultFile
 import dev.antite.browser.l10n.T
 import org.json.JSONObject
 import java.io.File
@@ -23,6 +24,7 @@ object DataTransfer {
     private const val FORMAT = 1
     private const val MANIFEST = "manifest.json"
     private const val VAULT = "databases/vault.db"
+    private const val MEDIA_VAULT = "files/vault"
     private const val OUT_DIR = "transfer-out"
     private const val IN_DIR = "transfer-in"
     private const val OLD_DIR = "transfer-old"
@@ -66,7 +68,8 @@ object DataTransfer {
                         zip.putNextEntry(ZipEntry("$rel/"))
                     } else {
                         zip.putNextEntry(ZipEntry(rel))
-                        file.inputStream().use { input ->
+                        // The key of a secure storage file is wrapped by this device's key; the copy carries it open.
+                        (if (isVaultFile(rel)) VaultFile.forBackup(file, Crypto.fileKeys) else file.inputStream()).use { input ->
                             val buf = ByteArray(64 * 1024)
                             while (true) {
                                 val n = input.read(buf)
@@ -123,6 +126,8 @@ object DataTransfer {
             File(stage, VAULT).takeIf { it.exists() }?.let { v ->
                 rewriteSecrets(v) { Crypto.encrypt(it) }
             }
+            File(stage, MEDIA_VAULT).listFiles()?.filter { isVaultFile("$MEDIA_VAULT/${it.name}") }
+                ?.forEach { VaultFile.adopt(it, Crypto.fileKeys) }
             File(stage, SETTINGS).takeIf { it.exists() }?.let { f -> f.writeText(f.readText().replace(DEBUG_INSTALL, "")) }
             replace(root, stage)
             File(root, "cache").listFiles()?.forEach { it.deleteRecursively() }
@@ -154,6 +159,8 @@ object DataTransfer {
         }
         old.deleteRecursively()
     }
+
+    private fun isVaultFile(rel: String) = rel.startsWith("$MEDIA_VAULT/") && rel.endsWith(".enc")
 
     private fun isEngine(rel: String) = DEVICE_ONLY.any { rel == it || rel.startsWith("$it/") }
 

@@ -27,6 +27,8 @@ class TabCategory(val id: String, name: String, color: Int, icon: String?, prote
     var protectDownloads by mutableStateOf(protectDownloads)
     // Its tabs show only after the device unlock, like locked incognito tabs.
     var locked by mutableStateOf(locked)
+    // A container id: new tabs of the category open in it.
+    var container by mutableStateOf<String?>(null)
 }
 
 // The user's tab categories, in strip order. "All" and incognito are not stored: they always exist.
@@ -52,6 +54,7 @@ class Categories(private val context: Context, private val prefs: Prefs) {
                 val o = arr.getJSONObject(i)
                 list += TabCategory(o.getString("id"), o.optString("name"), o.optInt("color", COLORS[0]),
                     o.optString("icon").ifEmpty { null }, o.optBoolean("protect"), o.optBoolean("lock"))
+                    .apply { container = o.optString("container").ifEmpty { null } }
             }
         }.onFailure { Log.w("Antite", "tab categories unreadable", it) }
     }
@@ -62,7 +65,8 @@ class Categories(private val context: Context, private val prefs: Prefs) {
         val arr = JSONArray()
         list.forEach { c ->
             arr.put(JSONObject().put("id", c.id).put("name", c.name).put("color", c.color).put("protect", c.protectDownloads).put("lock", c.locked)
-                .apply { c.icon?.let { put("icon", it) } })
+                .apply { c.icon?.let { put("icon", it) } }
+                .apply { c.container?.let { put("container", it) } })
         }
         prefs.edit { putString(PREF, arr.toString()) }
     }

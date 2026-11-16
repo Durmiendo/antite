@@ -361,6 +361,7 @@ internal fun tabsPage(b: Browser) = SettingsPage(T.settingsTabs) { nav ->
     section(T.settingsCategories)
     page(b, nav, categoriesPage(b), T.categoriesSummary(count = b.categories.list.size))
     page(b, nav, incognitoPage(b), T.incognitoSummary)
+    page(b, nav, containersPage(b), T.containersSummary(count = b.containers.list.size))
     toggle(b, T.tabsCountTotal, null, "tabCountTotal", true, false)
     toggle(b, T.tabsCountEach, null, "tabCountEach", false, false)
 }
