@@ -64,4 +64,12 @@ class BackupCipherTest {
     fun foreignFileIsRejected() {
         assertThrows(IOException::class.java) { open("PK\u0003\u0004 not a backup at all".toByteArray(), "p") }
     }
+
+    @Test
+    fun hugeIterationCountIsRefusedBeforeDerivingTheKey() {
+        val sealed = seal(byteArrayOf(1, 2, 3), "p")
+        java.nio.ByteBuffer.wrap(sealed).putInt(9, 10_000_000)
+        val e = assertThrows(IOException::class.java) { open(sealed, "p") }
+        org.junit.Assert.assertEquals("bad header", e.message)
+    }
 }

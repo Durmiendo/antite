@@ -23,6 +23,9 @@ object BackupCipher {
     const val CHUNK = 1 shl 20
     var iterations = 600_000
 
+    // A crafted file could ask for so many rounds that checking the password takes minutes.
+    private const val MAX_ITERATIONS = 2_000_000
+
     private fun key(password: CharArray, salt: ByteArray, iterations: Int): SecretKeySpec {
         val spec = PBEKeySpec(password, salt, iterations, 256)
         val bytes = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
@@ -53,7 +56,7 @@ object BackupCipher {
         val version = b.get()
         if (version != VERSION) throw IOException("unsupported backup version $version")
         val iterations = b.getInt()
-        if (iterations !in 1..10_000_000) throw IOException("bad header")
+        if (iterations !in 1..MAX_ITERATIONS) throw IOException("bad header")
         val salt = ByteArray(16).also { b.get(it) }
         val nonceBase = ByteArray(8).also { b.get(it) }
         return ChunkReader(data, key(password, salt, iterations), header, nonceBase)
