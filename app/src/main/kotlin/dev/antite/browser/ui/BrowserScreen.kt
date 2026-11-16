@@ -157,10 +157,12 @@ fun BrowserScreen(b: Browser) {
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
-                        awaitPointerEvent(PointerEventPass.Initial).changes.forEach {
+                        val changes = awaitPointerEvent(PointerEventPass.Initial).changes
+                        changes.forEach {
                             if (it.pressed && !it.previousPressed) b.lastTap = it.position
                             if (it.pressed != it.previousPressed) b.lastTapAt = SystemClock.uptimeMillis()
                         }
+                        b.toolbarMotion.onFinger(changes.filter { it.pressed }.singleOrNull()?.position?.y)
                     }
                 }
             },

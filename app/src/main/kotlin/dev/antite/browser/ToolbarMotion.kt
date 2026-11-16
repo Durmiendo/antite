@@ -12,6 +12,8 @@ import kotlin.math.abs
 
 // Chrome's browser controls (cc/input/browser_controls_offset_manager.cc): the toolbar follows the scroll; when the
 // gesture and its fling are over, a partly shown toolbar finishes showing or hiding, whichever is nearer.
+// Under the finger the toolbar follows the finger itself, not the page scroll: the page view moves with the toolbar,
+// so a toolbar moved by the scroll takes only half of the finger's travel.
 class ToolbarMotion(private val b: Browser) {
     companion object {
         private const val SHOW_THRESHOLD = 0.5f
@@ -30,16 +32,41 @@ class ToolbarMotion(private val b: Browser) {
     private var animator: ValueAnimator? = null
     private val settle = Runnable { settle() }
 
+    // The finger's position in the window while one finger is down, and whether this touch moves the toolbar.
+    private var fingerY: Float? = null
+    private var following = false
+
     fun onTouch(down: Boolean) {
         if (down == touching) return
         touching = down
-        if (down) stop() else schedule()
+        if (down) stop() else {
+            following = false
+            schedule()
+        }
     }
 
-    fun onScrolled(dy: Float) {
+    // Every pointer event over the window; y is null when no finger or more than one is down.
+    fun onFinger(y: Float?) {
+        val last = fingerY
+        fingerY = y
+        if (y == null) {
+            following = false
+            return
+        }
+        if (!following || !touching || last == null || y == last) return
+        lastDelta = last - y
+        b.moveToolbar(b.hidden + (last - y))
+    }
+
+    // False when the scroll must not move the toolbar: the finger does. A touch starts moving the toolbar once it
+    // scrolls the page itself, so a swipe over a carousel or an inner list leaves the toolbar alone.
+    fun onScrolled(dy: Float): Boolean {
         if (dy != 0f) lastDelta = dy
         stop()
         schedule()
+        if (!touching || fingerY == null) return true
+        if (dy != 0f) following = true
+        return false
     }
 
     fun show() = animateTo(0f)

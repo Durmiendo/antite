@@ -62,7 +62,7 @@ def main():
     # Gecko starts to pan after apz.touch_start_tolerance, 0.1 inch; a little more for the time the swipe is short of its end.
     slop = density * 12 // 100
     failed = []
-    for name, share, expect in (("short", 0.3, "shown"), ("long", 0.95, "hidden")):
+    for name, share, expect in (("short", 0.3, "shown"), ("long", 0.75, "hidden")):
         d.stop()
         d.launch(f"http://localhost:{PORT}/{name}")
         d.wait("Меню", timeout=30, exact=True)
@@ -70,8 +70,8 @@ def main():
         shown = toolbar_bottom(d)
         hidden = shown - bar
         # A slow swipe has no fling; the screenshot in its middle sees the finger still down and the toolbar half way.
-        # The page view moves up with the toolbar, so the finger travels about twice the distance the toolbar hides.
-        dy = int(2 * bar * share) + slop
+        # Under the finger the toolbar follows the finger itself, one to one, once the pan has started.
+        dy = int(bar * share) + slop
         swipe = threading.Thread(target=d.shell, args=(f"input swipe {w // 2} {h // 2} {w // 2} {h // 2 - dy} 4000",))
         swipe.start()
         time.sleep(3.8)

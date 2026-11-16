@@ -590,8 +590,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val dy = y - lastScrollY
         lastScrollY = y
         if (!prefs.bool("toolbarHide", true)) return
-        toolbarMotion.onScrolled(dy.toFloat())
-        moveToolbar(if (y <= 0) 0f else hidden + dy)
+        val byScroll = toolbarMotion.onScrolled(dy.toFloat())
+        if (y <= 0) moveToolbar(0f) else if (byScroll) moveToolbar(hidden + dy)
     }
 
     // Once per start: offer to become the default browser, unless refused for good or postponed.
