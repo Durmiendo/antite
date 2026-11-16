@@ -89,6 +89,8 @@ object Options {
     // Indexes are Motion.CHROME, INSTANT, WINDOW.
     val animationStyles get() = listOf(T.animationStyleChrome, T.animationStyleInstant, T.animationStyleWindow)
         .mapIndexed { i, label -> Option(label, i) }
+    // Where a download goes: indexes match Downloads.TARGET_*.
+    val downloadTargets get() = listOf(Option(T.dlTargetDownloads, 0), Option(T.dlTargetVault, 1), Option(T.dlTargetAsk, 2))
     val downloadLayouts get() = listOf(Option(T.dlLayoutList, 0), Option(T.dlLayoutBlocks, 1))
     val downloadPreviews get() = listOf(Option(T.dlPreviewShow, 0), Option(T.dlPreviewNone, 1), Option(T.dlPreviewBlur, 2))
     val vaultLocks get() = listOf(Option(T.vaultLockExit, 0), Option(T.vaultLock5min, 1), Option(T.vaultLockNever, 2))

@@ -59,6 +59,7 @@ internal fun incognitoPage(b: Browser) = SettingsPage(T.tabsIncognito) {
     toggle(b, T.incognitoSecure, T.incognitoSecureSummary, "incognitoSecure", true, false)
     toggle(b, T.tabsCloseIncognito, null, "closeIncognito", false, false)
     toggle(b, T.incognitoLock, T.incognitoLockSummary, "incognitoLock", false, false)
+    toggle(b, T.categoryProtectDownloads, T.categoryProtectDownloadsSummary, "incognitoProtectDownloads", false, false)
 }
 
 // A round badge in the category's color with its picture, or its first letter.
@@ -117,6 +118,12 @@ internal fun CategoryPage(b: Browser, nav: Nav, c: TabCategory) {
             SettingRow(if (c.icon == null) T.categoryIconPick else T.categoryIconReplace, T.categoryIconFormats, onClick = ::pickIcon)
         }
         if (c.icon != null) item(key = "iconRemove") { SettingRow(T.categoryIconRemove, onClick = { b.categories.removeIcon(c) }) }
+        item(key = "protect") {
+            SwitchRow(T.categoryProtectDownloads, T.categoryProtectDownloadsSummary, c.protectDownloads) { on ->
+                c.protectDownloads = on
+                b.categories.save()
+            }
+        }
         section(T.categoryPlace)
         item(key = "left") { SettingRow(T.ntpMoveLeft, onClick = { b.categories.move(c, -1) }) }
         item(key = "right") { SettingRow(T.ntpMoveRight, onClick = { b.categories.move(c, 1) }) }

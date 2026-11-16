@@ -38,3 +38,5 @@ incognito-unlock = Unlock
 incognito-unlock-reason = Open incognito tabs
 incognito-show-tabs = Open the tab list
 ntp-pin-category = Category: { $name }
+category-protect-downloads = Protect downloaded files
+category-protect-downloads-summary = Files from these tabs go straight to the secure storage and do not show in downloads

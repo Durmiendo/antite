@@ -150,7 +150,7 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
             ) else buildList {
                 add(DialogButton(T.actionOpen) { b.downloads.open(e) })
                 add(DialogButton(T.actionShare) { b.downloads.share(e) })
-                if (Downloads.done(e) && Downloads.media(e)) add(DialogButton(T.vaultMoveIn) { b.vaultAdd(e) })
+                if (Downloads.done(e)) add(DialogButton(T.vaultMoveIn) { b.vaultAdd(e) })
                 add(DialogButton(T.libraryDropFromList) { change { deleteDownload(e.id) } })
             }
         }

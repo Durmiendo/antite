@@ -40,3 +40,5 @@ incognito-unlock = Разблокировать
 incognito-unlock-reason = Открыть вкладки инкогнито
 incognito-show-tabs = Открыть список вкладок
 ntp-pin-category = Категория: { $name }
+category-protect-downloads = Защищать скачанные файлы
+category-protect-downloads-summary = Файлы из этих вкладок сразу попадают в защищённое хранилище и не видны в загрузках

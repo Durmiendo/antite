@@ -22,8 +22,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-// Pictures and videos taken out of the downloads list: the file is copied into the app's private folder and the
-// public one is deleted, so other apps and the gallery no longer see it. The index is a small JSON file next to the
+// Files taken out of the downloads list or downloaded straight into it: the file lives in the app's private folder,
+// so other apps and the gallery do not see it. The index is a small JSON file next to the
 // files; names and metadata live there, the file itself is named after its id.
 class MediaVault(private val context: Context) {
     companion object {
@@ -45,6 +45,19 @@ class MediaVault(private val context: Context) {
     private var nextId = (items.maxOfOrNull { it.id } ?: 0) + 1
 
     fun file(item: Item) = File(dir, item.id.toString())
+
+    // A download straight into the vault: the entry is made up front, its file is written by the download and the
+    // entry joins the index only once the file is complete.
+    fun reserve(name: String, mime: String, source: String) =
+        Item(nextId++, sanitize(name), mime, 0, System.currentTimeMillis(), source)
+
+    fun receive(item: Item, size: Long) {
+        io.launch {
+            items = items + item.copy(size = size)
+            save()
+            refresh()
+        }
+    }
 
     private fun load(): List<Item> = runCatching {
         val a = JSONArray(index.readText())

@@ -9,6 +9,8 @@ import android.webkit.URLUtil
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.Browser
+import dev.antite.browser.DialogButton
+import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
 import dev.antite.browser.data.Entry
 import dev.antite.browser.data.Tab
@@ -30,21 +32,101 @@ class Downloads(private val b: Browser) {
     }
 
     // A file from incognito stays in the list, as in Chrome, but without the site it came from.
-    fun start(r: DownloadRequest, askTarget: Boolean, incognito: Boolean) {
+    fun start(r: DownloadRequest, t: Tab) {
         val name = URLUtil.guessFileName(r.url, r.contentDisposition, r.contentType)
         val mime = r.contentType?.substringBefore(';')?.trim()?.ifEmpty { null } ?: "application/octet-stream"
-        val source = if (incognito) "" else Urls.host(r.url)
-        if (!askTarget) return save(r.body, name, mime, null, r.contentLength, source)
-        b.activity.createDocument(name, mime) { uri ->
-            if (uri == null) runCatching { r.body.close() } else save(r.body, name, mime, uri, r.contentLength, source)
+        val source = if (t.incognito) "" else Urls.host(r.url)
+        whereTo(t, name) { vault ->
+            when (vault) {
+                null -> runCatching { r.body.close() }
+                true -> toVault(r.body, name, mime, r.contentLength, source)
+                false -> toDownloads(r.body, name, mime, r.contentLength, source)
+            }
         }
     }
 
     fun savePdf(t: Tab) {
         val base = (t.title.ifEmpty { Urls.host(t.url) }).replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80)
         b.ensureSession(t).saveAsPdf { input ->
-            if (input != null) save(input, "$base.pdf", "application/pdf", null, -1, if (t.incognito) "" else Urls.host(t.url)) else b.toast(T.downloadPdfFailed)
+            if (input == null) return@saveAsPdf b.toast(T.downloadPdfFailed)
+            val source = if (t.incognito) "" else Urls.host(t.url)
+            whereTo(t, "$base.pdf") { vault ->
+                when (vault) {
+                    null -> runCatching { input.close() }
+                    true -> toVault(input, "$base.pdf", "application/pdf", -1, source)
+                    false -> save(input, "$base.pdf", "application/pdf", null, -1, source)
+                }
+            }
         }
+    }
+
+    // A protected category (or incognito, if asked) always sends files to the secure storage, without asking.
+    fun protects(t: Tab): Boolean =
+        if (t.incognito) b.prefs.bool("incognitoProtectDownloads", false)
+        else b.categories.byId(t.category)?.protectDownloads == true
+
+    // true: the secure storage, false: downloads, null: the user dismissed the question.
+    private fun whereTo(t: Tab, name: String, done: (Boolean?) -> Unit) {
+        if (protects(t)) return done(true)
+        when (b.prefs.int("dlTarget", 0)) {
+            TARGET_VAULT -> done(true)
+            TARGET_ASK -> {
+                // The dialog reports a dismissal after an item too, so only the first answer counts.
+                var answered = false
+                fun answer(v: Boolean?) {
+                    if (answered) return
+                    answered = true
+                    done(v)
+                }
+                b.show(UiDialog.Items(T.dlTargetQuestion(name = name), listOf(
+                    DialogButton(T.dlToDownloads) { answer(false) },
+                    DialogButton(T.dlToVault) { answer(true) },
+                ), onDismiss = { answer(null) }))
+            }
+            else -> done(false)
+        }
+    }
+
+    private fun toDownloads(body: InputStream, name: String, mime: String, total: Long, source: String) {
+        if (!b.prefs.bool("dlAsk", false)) return save(body, name, mime, null, total, source)
+        b.activity.createDocument(name, mime) { uri ->
+            if (uri == null) runCatching { body.close() } else save(body, name, mime, uri, total, source)
+        }
+    }
+
+    // Straight into the secure storage: no row in downloads, and the notification does not name the file.
+    private fun toVault(body: InputStream, name: String, mime: String, total: Long, source: String) {
+        val vault = b.mediaVault
+        val item = vault.reserve(name, mime, source)
+        val file = vault.file(item)
+        val task = DownloadService.job(T.dlVaultJob) { t ->
+            body.use { input ->
+                file.outputStream().use { out ->
+                    val buf = ByteArray(64 * 1024)
+                    var done = 0L
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        done += n
+                        t.report(done, total)
+                    }
+                }
+            }
+        }
+        task.total = total
+        task.onDone = { status, _ ->
+            if (status == DownloadService.DONE) {
+                vault.receive(item, file.length())
+                b.toast(T.dlVaultDone)
+            } else {
+                file.delete()
+                if (status == DownloadService.FAILED) b.toast(T.downloadFailed)
+            }
+        }
+        b.toast(T.dlVaultStarted)
+        askNotifications()
+        DownloadService.enqueue(b.activity, task)
     }
 
     private fun askNotifications() {
@@ -110,6 +192,9 @@ class Downloads(private val b: Browser) {
         fun size(e: Entry): Long = e.extra?.split('|')?.getOrNull(3)?.toLongOrNull() ?: -1
 
         fun done(e: Entry) = e.extra?.split('|')?.firstOrNull() == DownloadService.DONE && e.url != null
+
+        const val TARGET_VAULT = 1
+        const val TARGET_ASK = 2
 
         fun media(e: Entry) = mime(e).let { it.startsWith("image/") || it.startsWith("video/") }
     }

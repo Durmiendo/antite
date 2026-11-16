@@ -1,14 +1,13 @@
 menu-vault = Secure storage
 vault-title = Secure storage
-vault-settings-empty = Pictures and videos from downloads
+vault-settings-empty = Files from downloads
 vault-items-count = Files: { $count }
-vault-media-only-note = For now the storage accepts only pictures and videos.
 vault-locked = Storage is locked
 vault-locked-text = Files are visible only after unlocking.
 vault-unlock = Unlock
 vault-unlock-reason = Enter the secure storage
 vault-empty = The storage is empty
-vault-empty-hint = Move a picture or a video from downloads: long-press a file, then "Move to secure storage".
+vault-empty-hint = Move a file from downloads (long-press it, then "Move to secure storage") or download it straight here - this is chosen in the downloaded files settings.
 vault-info = Files: { $count } · { $size }
 vault-move-in = Move to secure storage
 vault-moved-in = Moved to the storage

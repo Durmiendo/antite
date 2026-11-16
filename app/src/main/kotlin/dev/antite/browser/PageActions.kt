@@ -221,7 +221,7 @@ fun Browser.showContextMenu(t: Tab, info: ContextInfo) {
         items += DialogButton(T.contextOpenImage) { openTab(src, t.incognito, t, false) }
         items += DialogButton(T.contextDownloadImage) {
             engine.download(src, t.url, t.incognito) { r ->
-                if (r != null) downloads.start(r, prefs.bool("dlAsk", false), t.incognito) else toast(T.contextDownloadImageFailed)
+                if (r != null) downloads.start(r, t) else toast(T.contextDownloadImageFailed)
             }
         }
         items += DialogButton(T.contextCopyImageAddress) { activity.copy(src) }

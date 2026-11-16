@@ -561,7 +561,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     // A finished download moves in: the file is copied into the app's private folder, the original is dropped.
     fun vaultAdd(e: Entry) {
-        if (!Downloads.done(e) || !Downloads.media(e)) return
+        if (!Downloads.done(e)) return
         mediaVault.add(e, prefs.bool("vaultDeleteOriginal", true)) { ok ->
             downloads.revision.intValue++
             toast(if (ok) T.vaultMovedIn else T.vaultMoveFailed)
@@ -750,7 +750,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             showContextMenu(t, info)
         }
 
-        override fun onDownload(request: DownloadRequest) = downloads.start(request, prefs.bool("dlAsk", false), t.incognito)
+        override fun onDownload(request: DownloadRequest) = downloads.start(request, t)
 
         override fun onPageMeta(pageUrl: String, iconUrl: String?, themeColor: Int?) {
             if (t.incognito) return

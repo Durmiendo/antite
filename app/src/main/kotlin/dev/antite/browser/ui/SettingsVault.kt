@@ -13,7 +13,6 @@ internal fun vaultSettingsPage(b: Browser) = SettingsPage(T.vaultTitle) { nav ->
     choice(b, nav, T.vaultLock, "vaultLock", Options.vaultLocks, 0, false)
     toggle(b, T.vaultDeleteOriginal, T.vaultDeleteOriginalSummary, "vaultDeleteOriginal", true, false)
     toggle(b, T.vaultInMenu, T.vaultInMenuSummary, "vaultInMenu", true, false)
-    note(T.vaultMediaOnlyNote)
     val secure = b.activity.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true
     if (!secure) note(T.vaultNoLock)
 }

@@ -18,11 +18,13 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-class TabCategory(val id: String, name: String, color: Int, icon: String?) {
+class TabCategory(val id: String, name: String, color: Int, icon: String?, protectDownloads: Boolean = false) {
     var name by mutableStateOf(name)
     var color by mutableStateOf(color)
     // File name under files/categories, or null for no icon.
     var icon by mutableStateOf(icon)
+    // Files downloaded from its tabs go straight to the secure storage and never show in downloads.
+    var protectDownloads by mutableStateOf(protectDownloads)
 }
 
 // The user's tab categories, in strip order. "All" and incognito are not stored: they always exist.
@@ -47,7 +49,7 @@ class Categories(private val context: Context, private val prefs: Prefs) {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 list += TabCategory(o.getString("id"), o.optString("name"), o.optInt("color", COLORS[0]),
-                    o.optString("icon").ifEmpty { null })
+                    o.optString("icon").ifEmpty { null }, o.optBoolean("protect"))
             }
         }.onFailure { Log.w("Antite", "tab categories unreadable", it) }
     }
@@ -57,7 +59,8 @@ class Categories(private val context: Context, private val prefs: Prefs) {
     fun save() {
         val arr = JSONArray()
         list.forEach { c ->
-            arr.put(JSONObject().put("id", c.id).put("name", c.name).put("color", c.color).apply { c.icon?.let { put("icon", it) } })
+            arr.put(JSONObject().put("id", c.id).put("name", c.name).put("color", c.color).put("protect", c.protectDownloads)
+                .apply { c.icon?.let { put("icon", it) } })
         }
         prefs.edit { putString(PREF, arr.toString()) }
     }

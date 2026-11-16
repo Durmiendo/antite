@@ -88,6 +88,8 @@ fun VaultScreen(b: Browser, shown: Boolean) {
     val all = b.mediaVault.items
     val items = remember(all) { all.sortedByDescending { it.time } }
     val found = remember(items, filter) { if (filter.isEmpty()) items else items.filter { it.name.contains(filter, true) } }
+    // Only pictures and videos open inside; other files can be restored to downloads or deleted.
+    val viewable = remember(found) { found.filter(::viewable) }
     // The viewer is drawn over the grid, so closing a file returns to the same scroll position and search.
     Box(Modifier.fillMaxSize()) {
         val focus = LocalFocusManager.current
@@ -99,7 +101,7 @@ fun VaultScreen(b: Browser, shown: Boolean) {
         val viewing = viewer?.takeIf { b.vaultOpen }
         if (viewing != null) {
             BackHandler(enabled = shown) { viewer = null }
-            VaultViewer(b, viewing, { viewer = null }, found)
+            VaultViewer(b, viewing, { viewer = null }, viewable)
         }
     }
 }
@@ -138,7 +140,9 @@ private fun VaultGrid(
             item(key = "row:${row.first().id}") {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    row.forEach { i -> VaultTile(b, i, Modifier.weight(1f), { open(i) }, { b.vaultActions(i) }) }
+                    row.forEach { i ->
+                        VaultTile(b, i, Modifier.weight(1f), { if (viewable(i)) open(i) else b.vaultActions(i) }, { b.vaultActions(i) })
+                    }
                     if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
@@ -181,7 +185,11 @@ private fun VaultThumb(b: Browser, i: MediaVault.Item, modifier: Modifier) {
         Image(bmp, null, contentScale = ContentScale.Crop, modifier = modifier)
     } else {
         Box(modifier, contentAlignment = Alignment.Center) {
-            Ico(if (i.mime.startsWith("video/")) R.drawable.ic_videocam else R.drawable.ic_image, size = 40)
+            Ico(when {
+                i.mime.startsWith("video/") -> R.drawable.ic_videocam
+                i.mime.startsWith("image/") -> R.drawable.ic_image
+                else -> R.drawable.ic_description
+            }, size = 40)
         }
     }
 }
@@ -319,11 +327,14 @@ private fun ZoomableImage(file: File, mime: String) {
     }
 }
 
+private fun viewable(i: MediaVault.Item) = i.mime.startsWith("image/") || i.mime.startsWith("video/")
+
 private fun decode(f: File, mime: String, target: Int = 512): ImageBitmap? = when {
     mime.startsWith("video/") -> MediaMetadataRetriever().use { r ->
         r.setDataSource(f.absolutePath)
         r.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.asImageBitmap()
     }
+    !mime.startsWith("image/") -> null
     else -> {
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(f.absolutePath, opts)

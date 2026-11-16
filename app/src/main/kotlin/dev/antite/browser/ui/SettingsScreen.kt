@@ -29,6 +29,7 @@ import dev.antite.browser.Urls
 import dev.antite.browser.data.Option
 import dev.antite.browser.data.Options
 import dev.antite.browser.l10n.T
+import dev.antite.browser.service.Downloads
 import dev.antite.browser.transfer.BackupCipher
 import dev.antite.browser.transfer.WrongPasswordException
 import kotlinx.coroutines.Dispatchers
@@ -171,8 +172,11 @@ internal fun LazyListScope.categories(b: Browser, nav: Nav) {
     page(b, nav, privacyPage(b), T.settingsPrivacySummary, R.drawable.ic_shield_lock)
     page(b, nav, autofillPage(b), T.settingsCatAutofillSummary, R.drawable.ic_key)
     nav(nav, T.settingsLanguages, T.settingsLanguagesSummary, R.drawable.ic_translate) { LanguagesPage(b, it) }
-    page(b, nav, downloadsPage(b), if (b.prefs.bool("dlAsk", false)) T.settingsDownloadsAsk else T.settingsDownloadsDefault,
-        R.drawable.ic_download)
+    page(b, nav, downloadsPage(b), when (b.prefs.int("dlTarget", 0)) {
+        Downloads.TARGET_VAULT -> T.dlTargetVault
+        Downloads.TARGET_ASK -> T.dlTargetAsk
+        else -> if (b.prefs.bool("dlAsk", false)) T.settingsDownloadsAsk else T.settingsDownloadsDefault
+    }, R.drawable.ic_download)
     page(b, nav, accessibilityPage(b), T.settingsAccessibilitySummary, R.drawable.ic_accessibility_new)
     page(b, nav, systemPage(b), T.settingsCatSystemSummary, R.drawable.ic_devices)
     page(b, nav, aboutPage(b), T.settingsAboutSummary, R.drawable.ic_info)
@@ -215,6 +219,8 @@ internal fun autofillPage(b: Browser) = SettingsPage(T.settingsCatAutofill) { na
 }
 
 internal fun downloadsPage(b: Browser) = SettingsPage(T.settingsDownloads) { nav ->
+    choice(b, nav, T.dlTarget, "dlTarget", Options.downloadTargets, 0, false)
+    note(T.dlTargetNote)
     toggle(b, T.settingsDownloadsAskToggle, T.settingsDownloadsAskSummary, "dlAsk", false, false)
     choice(b, nav, T.dlLayout, "dlLayout", Options.downloadLayouts, 0, false)
     choice(b, nav, T.dlPreview, "dlPreview", Options.downloadPreviews, 0, false)
