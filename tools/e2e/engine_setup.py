@@ -74,12 +74,14 @@ def download_engine(d, port):
         if d.find("Скачиваем и проверяем…") is not None or d.find("Движок готов") is not None:
             break
         time.sleep(0.5)
+    # The progress notification lives only while the engine downloads, which starts with the first step.
+    def notified():
+        return "Движок Gecko " + prop("geckoviewVersion") in d.shell("dumpsys notification --noredact", check=False)
+    seen = notified()
     for _ in range(3):
         d.tap("Далее", exact=True)
-        time.sleep(0.5)
+        seen = seen or notified()
     d.tap("Начать", exact=True)
-    # The progress notification lives only while the engine downloads: the browser restarts right after.
-    seen = False
     end = time.time() + 300
     while d.find("Закреплённые", exact=True) is None:
         if time.time() > end:
