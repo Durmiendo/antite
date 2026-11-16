@@ -9,6 +9,7 @@ toast-copied = Copied
 shortcut-site-only = A shortcut can only be made for a site
 shortcut-unsupported = The home screen does not support shortcuts
 notifications-sites-channel = Site notifications
+notifications-sites-silent-channel = Silent site notifications
 action-retry = Retry
 action-cancel = Cancel
 time-seconds = { $n } s

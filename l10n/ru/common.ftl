@@ -9,6 +9,7 @@ toast-copied = Скопировано
 shortcut-site-only = Ярлык можно создать только для сайта
 shortcut-unsupported = Рабочий стол не поддерживает ярлыки
 notifications-sites-channel = Уведомления сайтов
+notifications-sites-silent-channel = Тихие уведомления сайтов
 action-retry = Повторить
 action-cancel = Отмена
 time-seconds = { $n } с

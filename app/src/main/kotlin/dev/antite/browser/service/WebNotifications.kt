@@ -18,7 +18,13 @@ class WebNotifications(context: Context) : NotificationHandler {
         const val ACTION_CLICK = "dev.antite.browser.WEB_NOTIFICATION"
         private const val EXTRA_ID = "notificationId"
         private const val CHANNEL = "web"
-        private val shown = HashMap<Int, () -> Unit>()
+        private const val CHANNEL_SILENT = "web-silent"
+        private const val KEEP_CLICKS = 50
+
+        // Click handlers of notifications nobody tapped or closed; the oldest are dropped.
+        private val shown = object : LinkedHashMap<Int, () -> Unit>() {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, () -> Unit>) = size > KEEP_CLICKS
+        }
 
         fun click(intent: Intent) {
             shown.remove(intent.getIntExtra(EXTRA_ID, 0))?.invoke()
@@ -28,6 +34,8 @@ class WebNotifications(context: Context) : NotificationHandler {
     private val app = context.applicationContext
     private val nm = app.getSystemService(NotificationManager::class.java).apply {
         createNotificationChannel(NotificationChannel(CHANNEL, T.notificationsSitesChannel, NotificationManager.IMPORTANCE_DEFAULT))
+        createNotificationChannel(NotificationChannel(CHANNEL_SILENT, T.notificationsSitesSilentChannel,
+            NotificationManager.IMPORTANCE_LOW))
     }
 
     override fun onNotification(event: WebNotificationEvent) {
@@ -39,14 +47,14 @@ class WebNotifications(context: Context) : NotificationHandler {
                     .setAction(ACTION_CLICK)
                     .putExtra(EXTRA_ID, id)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                val n = Notification.Builder(app, CHANNEL)
+                val channel = if (event.silent) CHANNEL_SILENT else CHANNEL
+                val n = Notification.Builder(app, channel)
                     .setSmallIcon(R.drawable.ic_public)
                     .setContentTitle(event.title)
                     .setContentText(event.text)
                     .setStyle(Notification.BigTextStyle().bigText(event.text))
                     .setSubText(event.origin?.let { Uri.parse(it).host })
                     .setAutoCancel(true)
-                    .setOnlyAlertOnce(event.silent)
                     .setContentIntent(PendingIntent.getActivity(app, id, open,
                         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                     .build()
