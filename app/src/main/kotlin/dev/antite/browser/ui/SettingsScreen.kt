@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.Auth
 import dev.antite.browser.Browser
+import dev.antite.browser.BuildConfig
 import dev.antite.browser.DialogButton
 import dev.antite.browser.FormField
 import dev.antite.browser.Overlay
@@ -240,9 +241,12 @@ internal fun systemPage(b: Browser) = SettingsPage(T.settingsCatSystem) { nav ->
 
 internal fun aboutPage(b: Browser) = SettingsPage(T.settingsAbout) { nav ->
     nav(nav, T.settingsUpdates, T.settingsUpdatesSummary(state = updatesSummary(b))) { UpdatesPage(b, it) }
-    mark("Antite 0.1", null, "row:version")
+    // The same version as on the updates page: from the build, with its build number.
+    val name = "Antite ${BuildConfig.VERSION_NAME}"
+    mark(name, null, "row:version")
     item(key = "row:version") {
-        SettingRow("Antite 0.1", T.settingsAboutEngine(type = b.engine.info.type, version = b.engine.info.version))
+        SettingRow(name, T.updatesShellBuild(code = BuildConfig.VERSION_CODE) + "\n" +
+            T.settingsAboutEngine(type = b.engine.info.type, version = b.engine.info.version))
     }
 }
 
