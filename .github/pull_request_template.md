@@ -8,5 +8,4 @@
 
 ## Contributor agreement
 
-- [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md) and agree to the contributor agreement in it for this
-      contribution.
+- [ ] I have read [CLA.md](../CLA.md) and agree to it for this contribution.

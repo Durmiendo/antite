@@ -74,7 +74,7 @@ Test pages are served from the computer over `adb reverse`; examples use `exampl
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Contributions are accepted under the contributor agreement described there.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Contributions are accepted under the [contributor agreement](CLA.md).
 
 ## License
 
