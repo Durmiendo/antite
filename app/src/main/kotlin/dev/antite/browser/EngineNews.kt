@@ -36,6 +36,7 @@ class EngineNews(private val b: Browser) {
                 }
                 delay(minutes * 60_000L)
                 if (withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx) }.isSuccess }) onResume()
+                else showIndexExpired()
             }
         }
     }
@@ -53,6 +54,7 @@ class EngineNews(private val b: Browser) {
         } else if (seen != null && active != null && active != seen) {
             b.toast(T.engineUpdated(version = active))
         }
+        showIndexExpired()
         val shell = st.getInt("shellAvailable", 0)
         if (!asked && shell > BuildConfig.VERSION_CODE && System.currentTimeMillis() >= st.getLong("postponed.shell$shell", 0)) {
             asked = true
@@ -76,6 +78,24 @@ class EngineNews(private val b: Browser) {
                 DialogButton(T.actionLater) { st.edit().putLong("postponed.$available", System.currentTimeMillis() + POSTPONE_MS).apply() },
                 DialogButton(T.actionUpdate) { update() },
             )))
+    }
+
+    private fun showIndexExpired() {
+        val st = EngineUpdates.state(ctx)
+        val expired = st.getLong(EngineUpdates.EXPIRED, 0)
+        b.indexExpired = if (System.currentTimeMillis() < st.getLong("postponed.indexExpired", 0)) 0 else expired
+    }
+
+    fun postponeIndexExpired() {
+        EngineUpdates.state(ctx).edit().putLong("postponed.indexExpired", System.currentTimeMillis() + POSTPONE_MS).apply()
+        b.indexExpired = 0
+    }
+
+    fun recheckIndex() = ctx.lifecycleScope.launch {
+        b.toast(T.updatesChecking)
+        withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx) } }
+        showIndexExpired()
+        if (b.indexExpired == 0L) onResume() else b.toast(T.indexExpiredStill)
     }
 
     private fun update() = ctx.lifecycleScope.launch {

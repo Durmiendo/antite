@@ -23,16 +23,23 @@ PORT = 8771
 NAME = "Chuzhoj"
 
 
-def foreign_source(out_dir):
-    """A key of our own and an index signed with it, offering engine 9999.0 and shell 9999."""
+def signed(out_dir, index):
+    """A key of our own and the index signed with it: the key for the source form and the pages to serve."""
     key = os.path.join(out_dir, "foreign.key.pem")
     if not os.path.exists(key):
         subprocess.run(["openssl", "ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", key], check=True)
     der = subprocess.run(["openssl", "ec", "-in", key, "-pubout", "-outform", "DER"],
                          capture_output=True, check=True).stdout
+    body = json.dumps(index).encode()
+    sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", key], input=body, capture_output=True, check=True).stdout
+    return base64.b64encode(der).decode(), {"/engines.json": body, "/engines.json.sig": sig}
+
+
+def foreign_source(out_dir):
+    """An index offering engine 9999.0 and shell 9999."""
     fake = {"url": [f"http://localhost:{PORT}/never"], "size": 1, "sha256": "00" * 32}
     abis = ["arm64-v8a", "armeabi-v7a", "x86_64"]
-    index = json.dumps({
+    return signed(out_dir, {
         "format": 1,
         "serial": int(time.time()),
         "expires": int(time.time()) + 30 * 86400,
@@ -41,9 +48,7 @@ def foreign_source(out_dir):
             "version": "9999.0", "minShell": 1, "adapter": fake, "upstream": {a: fake for a in abis},
         }],
         "shell": {"version": 9999, "apk": {a: fake for a in abis}},
-    }).encode()
-    sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", key], input=index, capture_output=True, check=True).stdout
-    return base64.b64encode(der).decode(), {"/engines.json": index, "/engines.json.sig": sig}
+    })
 
 
 def open_updates(d):

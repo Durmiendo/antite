@@ -278,6 +278,9 @@ fun BrowserScreen(b: Browser) {
             if (b.defaultBrowserOffer && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
                 DefaultBrowserBar(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() }))
             }
+            if (b.indexExpired > 0 && !b.defaultBrowserOffer && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
+                IndexExpiredBar(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() }))
+            }
             // Composed ahead, a little after start, so opening one only shows it.
             var warm by remember { mutableIntStateOf(0) }
             LaunchedEffect(Unit) {
@@ -633,6 +636,26 @@ private fun DefaultBrowserBar(b: Browser, modifier: Modifier) {
             listOf(T.actionNo to { b.answerDefaultBrowser(yes = false, later = false) },
                 T.actionLater to { b.answerDefaultBrowser(yes = false, later = true) },
                 T.actionYes to { b.answerDefaultBrowser(yes = true, later = false) }).forEach { (label, action) ->
+                Text(label, color = p.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                    modifier = Modifier.clickable(onClick = action).padding(12.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun IndexExpiredBar(b: Browser, modifier: Modifier) {
+    val p = LocalPalette.current
+    val date = remember(b.indexExpired) { java.text.DateFormat.getDateInstance().format(java.util.Date(b.indexExpired * 1000)) }
+    Column(modifier.fillMaxWidth().background(p.menu).padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Ico(R.drawable.ic_info, tint = p.insecure)
+            Text(T.indexExpiredBar(date = date), color = p.text, fontSize = 14.sp,
+                modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            listOf(T.actionLater to { b.engineNews.postponeIndexExpired() },
+                T.indexExpiredCheck to { b.engineNews.recheckIndex(); Unit }).forEach { (label, action) ->
                 Text(label, color = p.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp,
                     modifier = Modifier.clickable(onClick = action).padding(12.dp))
             }

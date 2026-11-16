@@ -71,7 +71,7 @@ object Sources {
 
     fun setUpdateSource(context: Context, id: String) {
         if (enabled(context).none { it.id == id }) throw SourceException(T.sourceErrorDisabled)
-        state(context).edit().putString(UPDATE, id).remove("available").remove("shellAvailable").commit()
+        state(context).edit().putString(UPDATE, id).remove("available").remove("shellAvailable").remove(EngineUpdates.EXPIRED).commit()
     }
 
     @Synchronized

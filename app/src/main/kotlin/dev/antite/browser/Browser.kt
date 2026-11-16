@@ -119,6 +119,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var translateOffer by mutableStateOf<String?>(null)
     val translation get() = if (TRANSLATION_ENABLED) engine.translation else null
     var defaultBrowserOffer by mutableStateOf(false)
+    // When the update source's index ran out, seconds; 0 while it is alive or the warning is postponed.
+    var indexExpired by mutableStateOf(0L)
     var loginOffer by mutableStateOf<Prompt.SelectLogin?>(null)
     private var defaultBrowserChecked = false
     var menuOpen by mutableStateOf(false)

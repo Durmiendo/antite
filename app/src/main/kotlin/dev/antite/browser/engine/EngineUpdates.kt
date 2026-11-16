@@ -39,6 +39,7 @@ object EngineUpdates {
     const val WIFI_ONLY = "updatesWifiOnly"
     const val INTERVAL = "updatesInterval"
     const val DEBUG = "debugInstall"
+    const val EXPIRED = "indexExpired"
 
     // Minutes; JobScheduler runs periodic jobs at most every 15 minutes, so shorter ones run while the browser is open.
     val INTERVALS = listOf(1, 15, 60, 360, 1440)
@@ -91,7 +92,8 @@ object EngineUpdates {
         return Fetched(engine, shell)
     }
 
-    class Found(val offer: Offer?, val shell: ShellOffer?, val errors: List<String>)
+    // expiredAt: the source answered with an index past its date (seconds), so nothing newer can come from it.
+    class Found(val offer: Offer?, val shell: ShellOffer?, val errors: List<String>, val expiredAt: Long = 0)
 
     // What the update source offers, skipping engines that already failed here. Other sources are not asked.
     fun best(context: Context): Found = fromSource(context, Sources.updateSource(context))
@@ -101,7 +103,7 @@ object EngineUpdates {
             fetch(context, s)
         } catch (e: IndexExpiredException) {
             val date = java.text.DateFormat.getDateInstance().format(java.util.Date(e.expires * 1000))
-            return Found(null, null, listOf(T.engineIndexExpired(source = s.name, date = date)))
+            return Found(null, null, listOf(T.engineIndexExpired(source = s.name, date = date)), e.expires)
         } catch (e: IndexException) {
             return Found(null, null, listOf(T.engineIndexBadSignature(source = s.name)))
         } catch (e: Exception) {
@@ -150,7 +152,10 @@ object EngineUpdates {
         state(context).edit().putLong("lastCheck", System.currentTimeMillis())
             .putString("lastError", found.errors.joinToString("\n").ifEmpty { null })
             .putString("available", result?.entry?.version)
-            .putInt("shellAvailable", found.shell?.version ?: 0).commit()
+            .putInt("shellAvailable", found.shell?.version ?: 0)
+            // Kept through a failed connection: only an answer from the source says whether its index is alive.
+            .apply { if (found.expiredAt > 0) putLong(EXPIRED, found.expiredAt) else if (found.errors.isEmpty()) remove(EXPIRED) }
+            .commit()
         if (found.offer == null && found.shell == null && found.errors.isNotEmpty()) throw IOException(found.errors.joinToString("; "))
         return Updates(result, found.shell)
     }
