@@ -544,10 +544,15 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     }
 
     // A device without a screen lock has nothing to authenticate against; the vault opens and the pages warn about it.
+    fun vaultNeedsAuth(): Boolean =
+        prefs.bool("vaultAuth", true) && activity.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true
+
+    // Open for the interface: unlocked, or there is nothing to unlock with, so no locked screen is shown.
+    val vaultOpen: Boolean get() = vaultUnlocked || !vaultNeedsAuth()
+
     fun unlockVault(then: () -> Unit = {}) {
         if (vaultUnlocked) return then()
-        val km = activity.getSystemService(KeyguardManager::class.java)
-        if (!prefs.bool("vaultAuth", true) || km == null || !km.isDeviceSecure) {
+        if (!vaultNeedsAuth()) {
             vaultUnlocked = true
             return then()
         }

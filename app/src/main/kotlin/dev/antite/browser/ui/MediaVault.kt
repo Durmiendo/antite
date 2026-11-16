@@ -96,7 +96,7 @@ fun VaultScreen(b: Browser, shown: Boolean) {
             focus.clearFocus()
             viewer = it
         }
-        val viewing = viewer?.takeIf { b.vaultUnlocked }
+        val viewing = viewer?.takeIf { b.vaultOpen }
         if (viewing != null) {
             BackHandler(enabled = shown) { viewer = null }
             VaultViewer(b, viewing, { viewer = null }, found)
@@ -112,7 +112,7 @@ private fun VaultGrid(
     val p = LocalPalette.current
     PageScaffold(T.vaultTitle, { b.overlay = dev.antite.browser.Overlay.NONE }) {
         if (b.activity.getSystemService(KeyguardManager::class.java)?.isDeviceSecure != true) note(T.vaultNoLock)
-        if (!b.vaultUnlocked) {
+        if (!b.vaultOpen) {
             item {
                 Column(
                     Modifier.fillMaxWidth().padding(top = 64.dp, bottom = 24.dp),
