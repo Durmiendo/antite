@@ -19,20 +19,20 @@ class UrlsTest {
 
     @Test
     fun punycodeHostIsShownInUnicode() {
-        assertEquals("пример.рф", Urls.displayHost("xn--e1afmkfd.xn--p1ai"))
-        assertEquals("münchen.de", Urls.displayHost("xn--mnchen-3ya.de"))
+        assertEquals("пример.испытание", Urls.displayHost("xn--e1afmkfd.xn--80akhbyknj4f"))
+        assertEquals("bücher.example", Urls.displayHost("xn--bcher-kva.example"))
     }
 
     @Test
     fun lookalikeHostsStayInPunycode() {
-        // "аррӏе" in Cyrillic looks like apple.
-        val fake = java.net.IDN.toASCII("аррӏе", java.net.IDN.ALLOW_UNASSIGNED) + ".com"
+        // "ехамрӏе" in Cyrillic looks like example.
+        val fake = java.net.IDN.toASCII("ехамрӏе", java.net.IDN.ALLOW_UNASSIGNED) + ".example"
         assertEquals(fake, Urls.displayHost(fake))
         // Latin and Cyrillic in one label.
-        val mixed = java.net.IDN.toASCII("pаypal") + ".com"
+        val mixed = java.net.IDN.toASCII("exаmple") + ".example"
         assertEquals(mixed, Urls.displayHost(mixed))
         // A Cyrillic word that cannot pass for Latin is fine under a Latin TLD.
-        assertEquals("яндекс.com", Urls.displayHost(java.net.IDN.toASCII("яндекс") + ".com"))
+        assertEquals("пример.example", Urls.displayHost(java.net.IDN.toASCII("пример") + ".example"))
     }
 
     @Test
