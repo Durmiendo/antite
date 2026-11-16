@@ -1,6 +1,8 @@
 toolbar-home = Home page
 toolbar-hint = Search or type URL
 toolbar-menu = Menu
+toolbar-tabs = Tabs: { $count }
+tab-close = Close tab
 find-hint = Find in page
 find-previous = Previous
 find-next = Next

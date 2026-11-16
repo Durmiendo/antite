@@ -51,6 +51,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -192,7 +194,7 @@ private fun Browser.reorder(shown: List<Tab>, from: Int, to: Int) {
     val moving = shown[from]
     val target = shown[to]
     val targetIndex = tabs.indexOf(target)
-    moveTab(moving, if (from < to) targetIndex else targetIndex)
+    moveTab(moving, targetIndex)
 }
 
 private fun Browser.select(t: Tab) {
@@ -225,7 +227,8 @@ private fun TabGrid(b: Browser, shown: List<Tab>, open: Boolean) {
                             if (icon != null) SiteIcon(icon, Urls.host(t.url), 16) else Ico(R.drawable.ic_public, size = 16)
                             Text(t.label, color = p.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f).padding(start = 8.dp))
-                            Box(Modifier.size(36.dp).clickable { b.closeTab(t) }, contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(36.dp).clickable(onClickLabel = T.tabClose) { b.closeTab(t) }
+                                .semantics { contentDescription = T.tabClose }, contentAlignment = Alignment.Center) {
                                 Ico(R.drawable.ic_close, size = 18)
                             }
                         }
@@ -276,7 +279,8 @@ private fun TabList(b: Browser, shown: List<Tab>, open: Boolean) {
                                     overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
                             }
                         }
-                        Box(Modifier.align(Alignment.TopEnd).size(40.dp).clickable { b.closeTab(t) }, contentAlignment = Alignment.Center) {
+                        Box(Modifier.align(Alignment.TopEnd).size(40.dp).clickable(onClickLabel = T.tabClose) { b.closeTab(t) }
+                            .semantics { contentDescription = T.tabClose }, contentAlignment = Alignment.Center) {
                             Ico(R.drawable.ic_close, sub)
                         }
                         if (t === b.current) Box(Modifier.align(Alignment.CenterStart).width(4.dp).fillMaxHeight().background(p.accent))

@@ -492,7 +492,8 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
             if (!b.urlFocused) {
                 IconBtn(R.drawable.ic_add, T.tabNew) { b.newTabAndFocus(inc) }
                 val n = b.incognitoCount(inc)
-                Box(Modifier.size(48.dp).clickable { b.showSwitcher() }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(48.dp).clickable(onClickLabel = T.toolbarTabs(count = n)) { b.showSwitcher() }
+                    .semantics { contentDescription = T.toolbarTabs(count = n) }, contentAlignment = Alignment.Center) {
                     Box(Modifier.size(22.dp).border(2.dp, p.text, RoundedCornerShape(5.dp)), contentAlignment = Alignment.Center) {
                         Text(if (n >= 100) ":D" else n.toString(), color = p.text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
@@ -660,7 +661,9 @@ private fun ExtensionPopup(b: Browser, tab: dev.antite.engine.EngineTab) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val view = remember(tab) { b.engine.createView(context).also { it.show(tab) } }
     Dialog(onDismissRequest = { b.closePopup(tab) }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxWidth().height(520.dp).background(LocalPalette.current.page, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))) {
+        // 520dp like a popup sheet, but never taller than most of a short or landscape screen.
+        val height = minOf(520, (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.85f).toInt())
+        Box(Modifier.fillMaxWidth().height(height.dp).background(LocalPalette.current.page, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))) {
             AndroidView(factory = { view.view }, modifier = Modifier.fillMaxSize())
         }
     }

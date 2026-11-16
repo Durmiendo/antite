@@ -1,6 +1,8 @@
 toolbar-home = Главная страница
 toolbar-hint = Введите запрос или URL
 toolbar-menu = Меню
+toolbar-tabs = Вкладки: { $count }
+tab-close = Закрыть вкладку
 find-hint = Найти на странице
 find-previous = Назад
 find-next = Вперёд

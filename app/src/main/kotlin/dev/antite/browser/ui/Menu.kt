@@ -45,6 +45,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -135,7 +137,7 @@ fun BrowserMenu(b: Browser) {
         MenuEntry.Check(R.drawable.ic_brightness_6, T.menuDarkTheme, b.prefs.isDark()) { b.toggleDark() },
         MenuEntry.Line,
         MenuEntry.Item(R.drawable.ic_settings, T.menuSettings) { b.showSettings() },
-        MenuEntry.Item(R.drawable.ic_exit_to_app, "Exit") { b.exitApp() },
+        MenuEntry.Item(R.drawable.ic_exit_to_app, T.menuExit) { b.exitApp() },
     ))
 }
 
@@ -184,7 +186,8 @@ private fun BoxScope.MenuBody(
                     Box(Modifier.weight(1f).height(56.dp), contentAlignment = Alignment.Center) {
                         Box(
                             Modifier.size(44.dp).background(if (ic.enabled) p.iconCircle else p.iconCircle.copy(alpha = 0.4f), CircleShape)
-                                .clickable(enabled = ic.enabled) { close(); ic.action() },
+                                .clickable(enabled = ic.enabled, onClickLabel = ic.label) { close(); ic.action() }
+                                .semantics { contentDescription = ic.label },
                             contentAlignment = Alignment.Center,
                         ) { Ico(ic.icon, if (ic.enabled) p.text else p.iconDisabled) }
                     }
