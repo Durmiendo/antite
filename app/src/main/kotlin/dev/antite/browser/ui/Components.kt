@@ -39,6 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -143,11 +148,17 @@ fun SettingRow(
     onLongClick: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    toggled: Boolean? = null,
 ) {
     val p = LocalPalette.current
-    val mod = if (onClick != null || onLongClick != null) {
+    val click = if (onClick != null || onLongClick != null) {
         Modifier.combinedClickable(onClick = { onClick?.invoke() }, onLongClick = onLongClick)
     } else Modifier
+    // A switch row says whether it is on, for screen readers (and e2e scripts reading the screen).
+    val mod = if (toggled == null) click else click.semantics {
+        role = Role.Switch
+        toggleableState = ToggleableState(toggled)
+    }
     Row(
         mod.fillMaxWidth().heightIn(min = 64.dp).padding(start = 20.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -167,7 +178,7 @@ fun SettingRow(
 @Composable
 fun SwitchRow(title: String, summary: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
     val p = LocalPalette.current
-    SettingRow(title, summary, onClick = { onChange(!checked) }, trailing = {
+    SettingRow(title, summary, onClick = { onChange(!checked) }, toggled = checked, trailing = {
         Switch(
             checked = checked, onCheckedChange = null,
             colors = SwitchDefaults.colors(
