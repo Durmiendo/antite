@@ -10,11 +10,13 @@ import dev.antite.browser.l10n.T
 
 object Auth {
     private const val GRACE_MS = 60_000L
-    private var lastOk = 0L
+    // Per reason: unlocking incognito must not open passwords or the vault for the next minute.
+    private val lastOk = HashMap<String, Long>()
     var onUnavailable: (String) -> Unit = {}
 
     fun require(a: Activity, reason: String, ok: () -> Unit, cancelled: () -> Unit) {
-        if (lastOk != 0L && SystemClock.elapsedRealtime() - lastOk < GRACE_MS) return ok()
+        val last = lastOk[reason]
+        if (last != null && SystemClock.elapsedRealtime() - last < GRACE_MS) return ok()
         val km = a.getSystemService(KeyguardManager::class.java)
         if (km == null || !km.isDeviceSecure) {
             onUnavailable(T.authNeedScreenLock)
@@ -29,7 +31,7 @@ object Auth {
             .build()
             .authenticate(CancellationSignal(), a.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) {
-                    lastOk = SystemClock.elapsedRealtime()
+                    lastOk[reason] = SystemClock.elapsedRealtime()
                     ok()
                 }
 
