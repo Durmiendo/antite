@@ -69,3 +69,4 @@ site-permission-generic = разрешение
 site-camera-and-mic = доступ к камере и микрофону
 popup-blocked = Всплывающее окно заблокировано
 card-fill-auth = Заполнить данные карты
+page-crashed-again = Страница снова аварийно завершилась. Обновите её, чтобы попробовать ещё раз

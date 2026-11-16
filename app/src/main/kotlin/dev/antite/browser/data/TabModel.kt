@@ -26,6 +26,7 @@ class Tab(val id: Long, val incognito: Boolean) {
     var thumbRequested = false
     var parentId = 0L
     var lastUsed = 0L
+    var lastCrashAt = 0L
     var canGoBack by mutableStateOf(false)
     var canGoForward by mutableStateOf(false)
     var loading by mutableStateOf(false)

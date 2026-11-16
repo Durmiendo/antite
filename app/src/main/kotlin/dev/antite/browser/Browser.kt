@@ -8,12 +8,14 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.data.Categories
 import dev.antite.browser.data.Db
@@ -62,6 +64,7 @@ enum class LibraryKind { HISTORY, BOOKMARKS, CLOSED, DOWNLOADS }
 class Browser(val activity: MainActivity, val engine: Engine) {
     companion object {
         internal const val ALLOW_ONCE = 4
+        private const val CRASH_LOOP_MS = 60_000L
         const val UBO_ID = "uBlock0@raymondhill.net"
 
         // Page translation is off until it works well (user, 10.11.2026); this one switch brings it back.
@@ -337,11 +340,23 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         main.postDelayed({ if (t === current && !(onlyWhenLoaded && t.loading)) captureThumb(t) }, delayMs)
     }
 
+    // A page that brings its process down again within a minute is not reloaded by itself, or it would loop; the tab
+    // stays empty until the user reloads it. Only crashes on screen count: the engine reports the system killing a
+    // process in the background the same way.
     fun recover(t: Tab) {
+        val now = SystemClock.elapsedRealtime()
+        val onScreen = activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        val again = onScreen && t.lastCrashAt != 0L && now - t.lastCrashAt < CRASH_LOOP_MS
+        if (onScreen) t.lastCrashAt = now
         if (t === current) engineView?.show(null)
         t.engineTab?.close()
         t.engineTab = null
-        if (t === current) switchTo(t)
+        if (t !== current) return
+        if (again) toast(T.pageCrashedAgain) else switchTo(t)
+    }
+
+    fun reload(t: Tab) {
+        if (t.engineTab == null && t === current) switchTo(t) else ensureSession(t).reload()
     }
 
     fun exitApp() {

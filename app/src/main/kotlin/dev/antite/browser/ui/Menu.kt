@@ -106,8 +106,7 @@ fun BrowserMenu(b: Browser) {
         TopIcon(R.drawable.ic_download, T.menuSavePdf, web) { b.downloads.savePdf(t) },
         TopIcon(R.drawable.ic_info, T.menuPageInfo, true) { b.pageInfo() },
         TopIcon(if (t.loading) R.drawable.ic_close else R.drawable.ic_refresh, if (t.loading) T.menuStop else T.menuReload, true) {
-            val s = b.ensureSession(t)
-            if (t.loading) s.stop() else s.reload()
+            if (t.loading) b.ensureSession(t).stop() else b.reload(t)
         },
     ), listOfNotNull(
         MenuEntry.Item(R.drawable.ic_add_box, T.tabNew) { b.openTab("about:blank", false, null, true) },

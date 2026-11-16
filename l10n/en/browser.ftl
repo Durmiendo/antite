@@ -69,3 +69,4 @@ site-permission-generic = a permission
 site-camera-and-mic = access to the camera and microphone
 popup-blocked = Pop-up blocked
 card-fill-auth = Fill in the card details
+page-crashed-again = The page crashed again. Reload it to try once more
