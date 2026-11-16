@@ -519,14 +519,12 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         setToolbarHidden(0f)
     }
 
-    // The vault is closed when the app leaves (or the setting keeps it open); "after 5 minutes" locks it back when
-    // the app or the page is shown again after the pause.
+    // "On exit" locks in onStop; "after 5 minutes" is checked once on return to the app, so a pause without leaving it
+    // (the system unlock dialog, a permission prompt) does not lock the vault again.
     fun vaultRelock() {
-        if (!vaultUnlocked) return
-        when (prefs.int("vaultLock", 0)) {
-            0 -> vaultUnlocked = false
-            1 -> if (System.currentTimeMillis() - vaultLeftAt > 5L * 60 * 1000) vaultUnlocked = false
-        }
+        if (vaultLeftAt == 0L) return
+        if (prefs.int("vaultLock", 0) == 1 && System.currentTimeMillis() - vaultLeftAt > 5L * 60 * 1000) vaultUnlocked = false
+        vaultLeftAt = 0L
     }
 
     // A device without a screen lock has nothing to authenticate against; the vault opens and the pages warn about it.
