@@ -119,6 +119,7 @@ interface TabCallbacks {
 
     fun onFirstPaint()
 
+    // The vertical scroll of the page in screen pixels.
     fun onScroll(y: Int)
 
     fun onFullscreen(full: Boolean)

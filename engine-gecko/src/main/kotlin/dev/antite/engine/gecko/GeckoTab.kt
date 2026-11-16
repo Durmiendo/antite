@@ -35,6 +35,7 @@ import org.mozilla.geckoview.WebRequestError
 import org.mozilla.geckoview.WebResponse
 import java.io.InputStream
 import java.util.WeakHashMap
+import kotlin.math.roundToInt
 
 internal class GeckoTab(
     private val engine: GeckoEngine,
@@ -282,8 +283,13 @@ internal class GeckoTab(
 
             override fun onKill(s: GeckoSession) = callbacks.onCrash()
         }
-        session.scrollDelegate = object : GeckoSession.ScrollDelegate {
-            override fun onScrollChanged(s: GeckoSession, x: Int, y: Int) = callbacks.onScroll(y)
+        // The compositor reports the scroll in CSS pixels with the zoom that turns them into screen pixels (device
+        // scale and pinch zoom together); the plain ScrollDelegate has no zoom, so a toolbar moved by its numbers
+        // lags behind the finger by the screen density.
+        session.compositorScrollDelegate = object : GeckoSession.CompositorScrollDelegate {
+            override fun onScrollChanged(s: GeckoSession, update: GeckoSession.ScrollPositionUpdate) {
+                callbacks.onScroll((update.scrollY * update.zoom).roundToInt())
+            }
         }
         session.historyDelegate = object : GeckoSession.HistoryDelegate {
             override fun onVisited(s: GeckoSession, url: String, last: String?, flags: Int): GeckoResult<Boolean> {
