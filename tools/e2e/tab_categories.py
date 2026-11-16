@@ -82,6 +82,9 @@ def delete_categories(d):
         d.tap(NAME, exact=True)
         time.sleep(1)
         d.scroll_to("Удалить категорию")
+        # scroll_to stops at a row just above the screen edge, where a tap would hit the navigation bar.
+        d.shell("input swipe 540 1600 540 900 250")
+        time.sleep(0.6)
         d.tap("Удалить категорию", exact=True)
         d.tap("Удалить", exact=True)
         time.sleep(1.5)
