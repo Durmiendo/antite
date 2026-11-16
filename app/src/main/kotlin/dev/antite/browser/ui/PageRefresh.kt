@@ -5,8 +5,8 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
-// Pull down to refresh, like Chrome. SwipeRefreshLayout intercepts the drag from GeckoView once the page is at the
-// top (atTop) and shows the circle; the intercepted gesture reaches the page as a cancel, so nothing scrolls under it.
+// Pull down to refresh, like Chrome. SwipeRefreshLayout intercepts the drag from GeckoView once nothing under the
+// finger can scroll up (atTop) and shows the circle; the intercepted gesture reaches the page as a cancel, so nothing scrolls under it.
 class PageRefreshLayout(
     context: Context,
     private val atTop: () -> Boolean,

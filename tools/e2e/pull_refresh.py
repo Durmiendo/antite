@@ -1,6 +1,7 @@
 """Pull down to refresh, as in Chrome: a slow pull down on a page at the top reloads it; the circle stays while
 the reload is in progress and goes away after it, also when the reload fails; a pull too short for the trigger and a pull on a scrolled page do nothing, also on a
-scrolled tab just switched to. The page shows a stamp that changes on every load.
+scrolled tab just switched to; a pull inside a scrolled box of a page that does not scroll itself, and on an area
+that takes touches itself, do nothing either. The page shows a stamp that changes on every load.
 
 Usage: python3 -I tools/e2e/pull_refresh.py --serial SERIAL
 """
@@ -21,6 +22,15 @@ from tab_categories import open_switcher  # noqa: E402
 PORT = 8784
 # Set while the server should answer slowly, so the refresh circle can be seen during the reload.
 slow = threading.Event()
+# A page that does not scroll itself: a scrolling box fills it, and a strip below the box takes touches for itself.
+BOXED = b"""<!doctype html><meta name=viewport content="width=device-width"><title>Boxed</title>
+<body style="margin:0;height:100vh;overflow:hidden">
+<div id="stamp" style="height:10vh;font-size:40px;padding:0 20px">load</div>
+<div id="box" style="height:50vh;overflow-y:auto"><div style="height:500vh;font-size:40px;padding:20px">box</div></div>
+<div id="pad" style="height:40vh;background:#cde;touch-action:none"></div>
+<script>var t = Date.now(); document.getElementById('stamp').textContent = 'load ' + t;
+document.getElementById('pad').addEventListener('touchmove', e => e.preventDefault(), {passive: false});</script>
+</body>"""
 PAGE = b"""<!doctype html><meta name=viewport content="width=device-width"><title>Pull</title>
 <body style="margin:0;height:400vh;background:#fff">
 <div id="stamp" style="font-size:40px;padding:120px 20px">load</div>
@@ -33,11 +43,12 @@ def serve():
         def do_GET(self):
             if slow.is_set() and self.path == "/":
                 time.sleep(4)
+            body = BOXED if self.path == "/boxed" else PAGE
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
-            self.send_header("Content-Length", str(len(PAGE)))
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(PAGE)
+            self.wfile.write(body)
 
         def log_message(self, *args):
             pass
@@ -173,6 +184,29 @@ def main():
                 d.fail("a pull on a scrolled tab just switched to reloaded it")
             time.sleep(0.4)
         print("6. a pull on a scrolled tab just switched to does not reload")
+
+        def no_reload(what, x, y):
+            """A pull from (x, y) must not change the stamp."""
+            before = stamp(d)
+            d.shell(f"input swipe {x} {y} {x} {y + 600} 900")
+            end = time.time() + 3
+            while time.time() < end:
+                n = d.find("load ")
+                if n is not None and n.get("text") != before:
+                    d.fail(f"a pull {what} reloaded the page")
+                time.sleep(0.4)
+
+        # The page itself is at the top all along; only the box scrolls.
+        d.launch(f"http://localhost:{PORT}/boxed")
+        time.sleep(3)
+        box_y = h * 45 // 100
+        for _ in range(2):
+            d.shell(f"input swipe {w // 2} {box_y + 250} {w // 2} {box_y - 250} 400")
+            time.sleep(1)
+        no_reload("inside a scrolled box", w // 2, box_y - 250)
+        print("7. a pull inside a scrolled box scrolls the box, the page is not reloaded")
+        no_reload("on an area that takes touches itself", w // 2, h * 68 // 100)
+        print("8. a pull on an area that takes the touch itself does not reload")
     finally:
         http.shutdown()
     print("OK")

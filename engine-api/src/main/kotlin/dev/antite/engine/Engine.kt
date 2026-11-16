@@ -55,6 +55,11 @@ interface EngineView {
     fun setToolbarMaxHeight(px: Int)
 
     fun setVerticalClipping(px: Int)
+
+    // Whether the touch in progress may pull the page down to refresh: the page did not take it for itself and
+    // nothing under the finger, an inner scrolling box included, can scroll up. Null while the engine has not
+    // answered for this touch, or when it cannot tell.
+    fun canPullToRefresh(): Boolean? = null
 }
 
 interface StorageCleaner {

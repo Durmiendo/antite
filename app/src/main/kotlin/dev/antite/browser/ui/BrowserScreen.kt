@@ -184,14 +184,17 @@ fun BrowserScreen(b: Browser) {
                 if (b.fullscreen) 0
                 else -(b.hidden.toInt() + if (keyboardUp) navMax else navMax - navBars.getBottom(density))
             }
-            // Pull to refresh, as in Chrome: on a loaded web page, while no interface is over it and the page is at
-            // the top. The circle follows the shell palette; it hides with the load started by the refresh itself.
-            val pullReady = t != null && !t.loading && !Urls.isBlank(t.url) && !b.urlFocused &&
+            // Pull to refresh, as in Chrome: on a web page, also while it loads, while no interface is over it and
+            // nothing under the finger can scroll up. The circle follows the shell palette; it hides with the load started by the refresh itself.
+            val pullReady = t != null && !Urls.isBlank(t.url) && !b.urlFocused &&
                 b.overlay == Overlay.NONE && !b.fullscreen && !b.pip && !b.tabLocked(t)
             val pullRefreshing = t != null && b.pullRefreshTab === t
             AndroidView(
                 factory = { ctx ->
-                    PageRefreshLayout(ctx, { b.pageScrollY == 0 }, { b.pageRefresh() }).apply { setPage(view.view) }
+                    // The engine's answer for this touch knows inner scrolling boxes and pages that take the touch
+                    // themselves; the page's own scroll is only the fallback of an engine that cannot tell.
+                    PageRefreshLayout(ctx, { view.canPullToRefresh() ?: (b.pageScrollY == 0) }, { b.pageRefresh() })
+                        .apply { setPage(view.view) }
                 },
                 update = { r ->
                     // Disabling the layout resets the circle, so it stays enabled while its own reload is running.

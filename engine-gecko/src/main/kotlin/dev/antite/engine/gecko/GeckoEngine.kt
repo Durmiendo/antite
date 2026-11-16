@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.MotionEvent
 import android.view.View
 import dev.antite.engine.AutofillStore
 import dev.antite.engine.BackgroundService
@@ -49,6 +50,7 @@ import org.mozilla.geckoview.GeckoSession.PermissionDelegate
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission
 import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.GeckoWebExecutor
+import org.mozilla.geckoview.PanZoomController
 import org.mozilla.geckoview.WebRequest
 import org.mozilla.geckoview.StorageController
 import org.mozilla.geckoview.TranslationsController.RuntimeTranslation
@@ -182,7 +184,7 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
     override fun createTab(options: TabOptions, callbacks: TabCallbacks): EngineTab =
         GeckoTab(this, options, callbacks, open = true)
 
-    override fun createView(context: Context): EngineView = GeckoEngineView(GeckoView(context))
+    override fun createView(context: Context): EngineView = GeckoEngineView(TouchGeckoView(context))
 
     private val web by lazy { GeckoWebExecutor(runtime) }
     private val io = java.util.concurrent.Executors.newCachedThreadPool()
@@ -627,7 +629,29 @@ internal fun geckoTypes(p: SitePermission): List<String> = when (p) {
     SitePermission.STORAGE_ACCESS -> emptyList()
 }
 
-internal class GeckoEngineView(private val gecko: GeckoView) : EngineView {
+// Asks Gecko on each finger down who takes the touch and where the content under it can still scroll, as Fenix does
+// for pull to refresh; the answer comes asynchronously, before the first moves of the gesture.
+internal class TouchGeckoView(context: Context) : GeckoView(context) {
+    @Volatile
+    var pullAllowed: Boolean? = null
+        private set
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked != MotionEvent.ACTION_DOWN) return super.onTouchEvent(event)
+        pullAllowed = null
+        onTouchEventForDetailResult(event).accept({ r ->
+            if (r == null) return@accept
+            val byPage = r.handledResult() == PanZoomController.INPUT_RESULT_HANDLED_CONTENT ||
+                r.handledResult() == PanZoomController.INPUT_RESULT_IGNORED
+            val canScrollUp = r.scrollableDirections() and PanZoomController.SCROLLABLE_FLAG_TOP != 0
+            val canOverscroll = r.overscrollDirections() and PanZoomController.OVERSCROLL_FLAG_VERTICAL != 0
+            pullAllowed = !byPage && !canScrollUp && canOverscroll
+        }, { pullAllowed = false })
+        return true
+    }
+}
+
+internal class GeckoEngineView(private val gecko: TouchGeckoView) : EngineView {
     override val view: View get() = gecko
 
     override fun show(tab: EngineTab?) {
@@ -648,4 +672,6 @@ internal class GeckoEngineView(private val gecko: GeckoView) : EngineView {
     override fun setToolbarMaxHeight(px: Int) = gecko.setDynamicToolbarMaxHeight(px)
 
     override fun setVerticalClipping(px: Int) = gecko.setVerticalClipping(px)
+
+    override fun canPullToRefresh(): Boolean? = gecko.pullAllowed
 }
