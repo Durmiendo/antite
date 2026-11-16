@@ -58,6 +58,23 @@ val DarkPalette = Palette(
     background = Color(0xFF131313),
 )
 
+// True black for OLED screens: every large surface is #000, raised ones stay just visible against it.
+val OledPalette = DarkPalette.copy(
+    toolbar = Color(0xFF000000),
+    toolbarIncognito = Color(0xFF000000),
+    pill = Color(0xFF1C1C1C),
+    pillIncognito = Color(0xFF24262A),
+    page = Color(0xFF000000),
+    surface = Color(0xFF000000),
+    menu = Color(0xFF161616),
+    divider = Color(0xFF262626),
+    iconCircle = Color(0xFF1A1A1A),
+    card = Color(0xFF141414),
+    background = Color(0xFF000000),
+)
+
+fun paletteOf(dark: Boolean, oled: Boolean) = if (!dark) LightPalette else if (oled) OledPalette else DarkPalette
+
 val LightPalette = Palette(
     dark = false,
     toolbar = Color(0xFFFFFFFF),
@@ -85,8 +102,8 @@ val LightPalette = Palette(
 val LocalPalette = staticCompositionLocalOf { DarkPalette }
 
 @Composable
-fun AntiteTheme(dark: Boolean, content: @Composable () -> Unit) {
-    val p = if (dark) DarkPalette else LightPalette
+fun AntiteTheme(dark: Boolean, oled: Boolean, content: @Composable () -> Unit) {
+    val p = paletteOf(dark, oled)
     val scheme = if (dark) {
         darkColorScheme(
             primary = p.accent, onPrimary = p.onAccent, surface = p.surface, onSurface = p.text,

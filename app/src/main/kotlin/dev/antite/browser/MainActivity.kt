@@ -112,7 +112,7 @@ class MainActivity : ComponentActivity() {
         })
         setContent {
             val dark = browser.prefs.isDark()
-            AntiteTheme(dark) {
+            AntiteTheme(dark, browser.prefs.isOled()) {
                 CompositionLocalProvider(LocalBrowser provides browser) { BrowserScreen(browser) }
             }
             window.insetsController?.setSystemBarsAppearance(

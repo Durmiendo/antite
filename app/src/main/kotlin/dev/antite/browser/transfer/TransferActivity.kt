@@ -65,7 +65,7 @@ class TransferActivity : ComponentActivity() {
             }
         })
         setContent {
-            AntiteTheme(Prefs(this).isDark()) {
+            AntiteTheme(Prefs(this).isDark(), Prefs(this).isOled()) {
                 val p = LocalPalette.current
                 Column(
                     Modifier.fillMaxSize().background(p.background).padding(32.dp),

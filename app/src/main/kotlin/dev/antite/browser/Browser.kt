@@ -37,9 +37,8 @@ import dev.antite.browser.service.Downloads
 import dev.antite.browser.service.MediaPlayback
 import dev.antite.browser.service.WebNotifications
 import dev.antite.browser.transfer.TransferActivity
-import dev.antite.browser.ui.DarkPalette
-import dev.antite.browser.ui.LightPalette
 import dev.antite.browser.ui.Motion
+import dev.antite.browser.ui.paletteOf
 import dev.antite.engine.AndroidPermissionRequest
 import dev.antite.engine.ContentPermissionRequest
 import dev.antite.engine.ContextInfo
@@ -652,7 +651,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
         override fun errorPage(url: String, error: LoadError): String {
             if (error == LoadError.HTTPS_ONLY) t.httpsOnlyFailed = url
-            return ErrorPage.html(url, error, if (prefs.isDark()) DarkPalette else LightPalette)
+            return ErrorPage.html(url, error, paletteOf(prefs.isDark(), prefs.isOled()))
         }
 
         override fun onTitleChange(title: String) {

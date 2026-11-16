@@ -194,6 +194,7 @@ internal fun searchHomePage(b: Browser) = SettingsPage(T.settingsCatSearch) { na
 internal fun appearancePage(b: Browser) = SettingsPage(T.settingsCatAppearance) { nav ->
     section(T.appearanceThemeText)
     choice(b, nav, T.settingsTheme, "theme", Options.themes, 2, true)
+    toggle(b, T.settingsThemeOled, T.settingsThemeOledSummary, "oled", false, false)
     choice(b, nav, T.a11yFont, "font", Options.fonts, 2, true)
     interfaceLanguage(b, nav)
     section(T.appearanceAnimations)

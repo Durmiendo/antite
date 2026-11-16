@@ -166,6 +166,8 @@ class Prefs(context: Context) {
             Configuration.UI_MODE_NIGHT_YES
     }
 
+    fun isOled(): Boolean = bool("oled", false)
+
     val locales: List<String>
         get() = string("langs", "").split(',').filter { it.isNotEmpty() }
 
