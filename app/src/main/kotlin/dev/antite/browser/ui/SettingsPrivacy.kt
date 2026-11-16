@@ -7,6 +7,7 @@ import dev.antite.browser.R
 import dev.antite.browser.clearDataDialog
 import dev.antite.browser.data.Options
 import dev.antite.browser.engine.Sources
+import dev.antite.browser.l10n.L10n
 import dev.antite.browser.l10n.T
 import dev.antite.browser.openUboDashboard
 import dev.antite.engine.BackgroundService
@@ -48,9 +49,19 @@ internal fun vaultSummary(b: Browser): String = when (val n = b.mediaVault.items
     else -> T.vaultItemsCount(count = n)
 }
 
+// The engine describes its requests in its own words; known ones are shown in the interface language (bg-<id>-<part>).
+private fun serviceText(s: BackgroundService, part: String, engineText: String): String {
+    val key = "bg-${s.id}-$part"
+    return L10n.format(key).takeIf { it != key } ?: engineText
+}
+
+internal fun serviceTitle(s: BackgroundService) = serviceText(s, "title", s.title)
+
 internal fun serviceSummary(s: BackgroundService, on: Boolean) = buildString {
-    append(s.summary).append("\n").append(T.networkDestination(hosts = s.hosts.joinToString(", ")))
-    if (!on && s.offEffect != null) append("\n").append(T.networkWhenOff(effect = s.offEffect))
+    append(serviceText(s, "summary", s.summary)).append("\n")
+        .append(T.networkDestination(hosts = serviceText(s, "hosts", s.hosts.joinToString(", "))))
+    val off = s.offEffect
+    if (!on && off != null) append("\n").append(T.networkWhenOff(effect = serviceText(s, "off", off)))
 }
 
 internal fun networkPage(b: Browser) = SettingsPage(T.privacyNetwork) { nav ->
@@ -73,7 +84,7 @@ internal fun networkPage(b: Browser) = SettingsPage(T.privacyNetwork) { nav ->
     b.engine.backgroundServices.forEach { s ->
         item(key = "bg:${s.id}") {
             val on = b.prefs.serviceEnabled(s)
-            SwitchRow(s.title, serviceSummary(s, on), on) { v ->
+            SwitchRow(serviceTitle(s), serviceSummary(s, on), on) { v ->
                 b.prefs.edit { putBoolean(b.prefs.serviceKey(s.id), v) }
                 b.applyEngineSettings()
             }
