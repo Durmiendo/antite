@@ -94,10 +94,27 @@ class DownloadService : Service() {
             return r.first
         }
 
+        private val waiting = mutableListOf<Long>()
+
         fun enqueue(context: Context, task: Task) {
             tasks[task.id] = task
             progress[task.id] = if (task.total > 0) 0f else -1f
-            context.startForegroundService(Intent(context, DownloadService::class.java).setAction(ACTION_START).putExtra(EXTRA_ID, task.id))
+            start(context, task.id)
+        }
+
+        // A download a page starts after the app was left cannot start a foreground service (Android 12+); it waits
+        // until the app is shown again.
+        private fun start(context: Context, id: Long) {
+            try {
+                context.startForegroundService(Intent(context, DownloadService::class.java).setAction(ACTION_START).putExtra(EXTRA_ID, id))
+            } catch (e: IllegalStateException) {
+                synchronized(waiting) { waiting += id }
+            }
+        }
+
+        fun startWaiting(context: Context) {
+            val ids = synchronized(waiting) { waiting.toList().also { waiting.clear() } }
+            ids.forEach { start(context, it) }
         }
 
         fun cancel(id: Long) {

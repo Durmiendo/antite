@@ -32,6 +32,8 @@ import dev.antite.browser.data.Tab
 import dev.antite.browser.engine.EngineSetupActivity
 import dev.antite.browser.engine.Engines
 import dev.antite.browser.l10n.T
+import dev.antite.browser.service.DownloadService
+import dev.antite.browser.service.MediaService
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.BrowserScreen
 import dev.antite.browser.ui.LocalBrowser
@@ -132,6 +134,8 @@ class MainActivity : ComponentActivity() {
             browser.engineNews.onResume()
             browser.checkDefaultBrowserOffer()
             browser.vaultRelock()
+            DownloadService.startWaiting(this)
+            if (MediaService.playing) MediaService.update(this)
         }
     }
 

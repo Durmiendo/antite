@@ -72,8 +72,13 @@ class MediaService : Service() {
         var art: Bitmap? = null
         var playing = false
 
+        // Android 12+ refuses to start a foreground service from the background (a page starting playback after
+        // the app was left); playback goes on and the notification comes when the app is opened again.
         fun update(c: Context) {
-            c.startForegroundService(Intent(c, MediaService::class.java).setAction(ACTION_UPDATE))
+            try {
+                c.startForegroundService(Intent(c, MediaService::class.java).setAction(ACTION_UPDATE))
+            } catch (e: IllegalStateException) {
+            }
         }
 
         fun stop(c: Context) {
