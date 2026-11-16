@@ -729,7 +729,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             showContextMenu(t, info)
         }
 
-        override fun onDownload(request: DownloadRequest) = downloads.start(request, prefs.bool("dlAsk", false))
+        override fun onDownload(request: DownloadRequest) = downloads.start(request, prefs.bool("dlAsk", false), t.incognito)
 
         override fun onPageMeta(pageUrl: String, iconUrl: String?, themeColor: Int?) {
             if (t.incognito) return

@@ -29,19 +29,21 @@ class Downloads(private val b: Browser) {
         }
     }
 
-    fun start(r: DownloadRequest, askTarget: Boolean) {
+    // A file from incognito stays in the list, as in Chrome, but without the site it came from.
+    fun start(r: DownloadRequest, askTarget: Boolean, incognito: Boolean) {
         val name = URLUtil.guessFileName(r.url, r.contentDisposition, r.contentType)
         val mime = r.contentType?.substringBefore(';')?.trim()?.ifEmpty { null } ?: "application/octet-stream"
-        if (!askTarget) return save(r.body, name, mime, null, r.contentLength, Urls.host(r.url))
+        val source = if (incognito) "" else Urls.host(r.url)
+        if (!askTarget) return save(r.body, name, mime, null, r.contentLength, source)
         b.activity.createDocument(name, mime) { uri ->
-            if (uri == null) runCatching { r.body.close() } else save(r.body, name, mime, uri, r.contentLength, Urls.host(r.url))
+            if (uri == null) runCatching { r.body.close() } else save(r.body, name, mime, uri, r.contentLength, source)
         }
     }
 
     fun savePdf(t: Tab) {
         val base = (t.title.ifEmpty { Urls.host(t.url) }).replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80)
         b.ensureSession(t).saveAsPdf { input ->
-            if (input != null) save(input, "$base.pdf", "application/pdf", null, -1, Urls.host(t.url)) else b.toast(T.downloadPdfFailed)
+            if (input != null) save(input, "$base.pdf", "application/pdf", null, -1, if (t.incognito) "" else Urls.host(t.url)) else b.toast(T.downloadPdfFailed)
         }
     }
 
