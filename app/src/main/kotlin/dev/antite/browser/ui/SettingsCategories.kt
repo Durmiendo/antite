@@ -27,6 +27,7 @@ import dev.antite.browser.DialogButton
 import dev.antite.browser.FormField
 import dev.antite.browser.UiDialog
 import dev.antite.browser.data.Categories
+import dev.antite.browser.Auth
 import dev.antite.browser.data.TabCategory
 import dev.antite.browser.l10n.T
 import kotlinx.coroutines.Dispatchers
@@ -124,18 +125,30 @@ internal fun CategoryPage(b: Browser, nav: Nav, c: TabCategory) {
                 b.categories.save()
             }
         }
+        item(key = "lock") {
+            // Both ways need the unlock: turning it on proves the device has a screen lock, turning it off opens the tabs.
+            SwitchRow(T.incognitoLock, T.categoryLockSummary, c.locked) { on ->
+                Auth.require(b.activity, T.categoryLockChangeReason(name = c.name), {
+                    c.locked = on
+                    if (on && c.id !in b.unlockedCategories) b.unlockedCategories += c.id
+                    b.categories.save()
+                }, {})
+            }
+        }
         section(T.categoryPlace)
         item(key = "left") { SettingRow(T.ntpMoveLeft, onClick = { b.categories.move(c, -1) }) }
         item(key = "right") { SettingRow(T.ntpMoveRight, onClick = { b.categories.move(c, 1) }) }
         item(key = "delete") {
             SettingRow(T.categoryDelete, onClick = {
-                b.show(UiDialog.Message(T.categoryDelete, T.categoryDeleteConfirm(name = c.name), buttons = listOf(
+                fun ask() = b.show(UiDialog.Message(T.categoryDelete, T.categoryDeleteConfirm(name = c.name), buttons = listOf(
                     DialogButton(T.actionCancel) {},
                     DialogButton(T.actionDelete) {
                         b.deleteCategory(c)
                         nav.back()
                     },
                 )))
+                // Deleting moves the tabs to "All", so a locked category asks first.
+                if (c.locked) Auth.require(b.activity, T.categoryLockChangeReason(name = c.name), ::ask, {}) else ask()
             })
         }
     }

@@ -1,5 +1,5 @@
 """Tab categories: one made in settings shows in the switcher strip between "Все" and "Инкогнито", a new tab from the
-switcher lands in the open category, a swipe moves to the next category, the per-category count follows, a pin tied
+switcher lands in the open category, a card dragged onto a chip changes its category, a swipe moves to the next category, the per-category count follows, a pin tied
 to the category opens its page there, deleting the category leaves its tabs in "Все", and unlock to enter hides
 incognito tabs.
 
@@ -65,8 +65,9 @@ def chip_count(d, name):
     for n in nodes:
         t = n.get("text") or ""
         bx1, by1, bx2, by2 = d.bounds(n)
-        if t.isdigit() and abs((by1 + by2) - (y1 + y2)) < 20 and 0 <= bx1 - x2 < 60:
-            return int(t)
+        # A hundred tabs and more are drawn as ":D".
+        if (t.isdigit() or t == ":D") and abs((by1 + by2) - (y1 + y2)) < 20 and 0 <= bx1 - x2 < 60:
+            return int(t) if t.isdigit() else 100
     return None
 
 
@@ -120,6 +121,19 @@ def long_press(d, text):
     time.sleep(1)
 
 
+def drag_card_to_chip(d, chip):
+    """Long press on the first card of the open page, then drag it onto a strip chip."""
+    close = [n for n in d.nodes() if n.get("content-desc") == "Закрыть вкладку"]
+    if not close:
+        d.fail("no tab card on this page")
+    x1, y1, x2, y2 = d.bounds(close[0])
+    sx, sy = x1 - 150, y2 + 200
+    tx, ty = d.center(d.wait(chip, exact=True))
+    steps = "; ".join(f"input motionevent MOVE {sx + (tx - sx) * i // 8} {sy + (ty - sy) * i // 8}" for i in range(1, 9))
+    d.shell(f"input motionevent DOWN {sx} {sy}; sleep 1; {steps}; sleep 0.5; input motionevent UP {tx} {ty}")
+    time.sleep(1.5)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--serial", required=True)
@@ -163,6 +177,18 @@ def main():
         d.fail("the switcher did not open on the new tab's category")
     if chip_count(d, NAME) != 1:
         d.fail(f"category count after a new tab: {chip_count(d, NAME)}")
+
+    print("2a. a card dragged onto the category's chip moves there, and onto \"Все\" - out of it")
+    d.tap("Все", exact=True)
+    time.sleep(1)
+    drag_card_to_chip(d, NAME)
+    if chip_count(d, NAME) != 2:
+        d.fail(f"category count after dragging a card onto its chip: {chip_count(d, NAME)}")
+    d.tap(NAME, exact=True)
+    time.sleep(1)
+    drag_card_to_chip(d, "Все")
+    if chip_count(d, NAME) != 1:
+        d.fail(f"category count after dragging a card onto \"Все\": {chip_count(d, NAME)}")
 
     print("3. a swipe goes to the next category (incognito, empty)")
     d.shell("input swipe 900 1500 150 1500 250")

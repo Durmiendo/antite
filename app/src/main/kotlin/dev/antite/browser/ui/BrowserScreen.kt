@@ -184,7 +184,7 @@ fun BrowserScreen(b: Browser) {
             // Pull to refresh, as in Chrome: on a loaded web page, while no interface is over it and the page is at
             // the top. The circle follows the shell palette; it hides with the load started by the refresh itself.
             val pullReady = t != null && !t.loading && !Urls.isBlank(t.url) && !b.urlFocused &&
-                b.overlay == Overlay.NONE && !b.fullscreen && !b.pip && !(t.incognito && b.incognitoLocked)
+                b.overlay == Overlay.NONE && !b.fullscreen && !b.pip && !b.tabLocked(t)
             val pullRefreshing = t != null && b.pullRefreshTab === t
             AndroidView(
                 factory = { ctx ->
@@ -271,6 +271,11 @@ fun BrowserScreen(b: Browser) {
             // A locked incognito tab shows neither its page nor its address until the device is unlocked.
             if (t != null && t.incognito && b.incognitoLocked && !covered) {
                 IncognitoLock(b, Modifier.fillMaxSize().background(p.background)
+                    .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }, showTabs = true)
+            }
+            val lockedCategory = t?.takeIf { !it.incognito }?.let { b.categories.byId(it.category) }?.takeIf { b.categoryLocked(it.id) }
+            if (lockedCategory != null && !covered) {
+                CategoryLock(b, lockedCategory, Modifier.fillMaxSize().background(p.background)
                     .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }, showTabs = true)
             }
             // The navigation bar is transparent with edge-to-edge; while it is shown the page must not show through it.

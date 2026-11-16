@@ -98,6 +98,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var switcherPage by mutableStateOf(Categories.ALL)
     // Incognito tabs behind "unlock to enter" stay hidden until this is set; leaving the app clears it.
     var incognitoUnlocked by mutableStateOf(false)
+    // Locked categories opened by a device unlock; closed again when the browser is left.
+    val unlockedCategories = mutableStateListOf<String>()
     // The secure storage asks for the device unlock on open; the same lock settings govern when it closes back.
     var vaultUnlocked by mutableStateOf(false)
     private var vaultLeftAt = 0L
@@ -408,11 +410,21 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     fun onStop() {
         if (prefs.bool("closeIncognito", false)) tabs.filter { it.incognito }.forEach(::closeTab)
         incognitoUnlocked = false
+        unlockedCategories.clear()
         vaultLeftAt = System.currentTimeMillis()
         if (prefs.int("vaultLock", 0) == 0) vaultUnlocked = false
     }
 
     val incognitoLocked: Boolean get() = prefs.bool("incognitoLock", false) && !incognitoUnlocked
+
+    fun categoryLocked(id: String?): Boolean = id != null && id !in unlockedCategories && categories.byId(id)?.locked == true
+
+    fun tabLocked(t: Tab): Boolean = if (t.incognito) incognitoLocked else categoryLocked(t.category)
+
+    fun unlockCategory(c: TabCategory) {
+        if (!categoryLocked(c.id)) return
+        Auth.require(activity, T.categoryUnlockReason(name = c.name), { unlockedCategories += c.id }, {})
+    }
 
     fun unlockIncognito(then: () -> Unit = {}, cancelled: () -> Unit = {}) {
         if (!incognitoLocked) return then()

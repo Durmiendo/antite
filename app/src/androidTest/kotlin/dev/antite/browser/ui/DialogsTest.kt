@@ -19,7 +19,7 @@ class DialogsTest {
     fun itemRunsItsActionBeforeTheDialogCloses() {
         val calls = mutableListOf<String>()
         rule.setContent {
-            AntiteTheme(true) {
+            AntiteTheme(true, false) {
                 ItemsDialog("Войти как", listOf(DialogButton("alice") { calls += "select" })) { calls += "close" }
             }
         }
