@@ -733,8 +733,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
         override fun onPageMeta(pageUrl: String, iconUrl: String?, themeColor: Int?) {
             if (t.incognito) return
-            val page = Uri.parse(pageUrl)
-            val h = Urls.host(pageUrl)
+            // Only the tab's own site sets its icon: a late message from the page before a navigation must not.
+            val h = Urls.host(t.url)
+            if (h.isEmpty() || Urls.host(pageUrl) != h) return
+            val page = Uri.parse(t.url)
             icons.setTheme(h, themeColor)
             icons.onPageIcon(h, iconUrl, "${page.scheme}://${page.host}")
         }

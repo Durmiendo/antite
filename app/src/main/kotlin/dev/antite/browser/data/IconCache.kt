@@ -98,11 +98,12 @@ class IconCache(context: Context, private val engine: Engine, private val downlo
 
     fun onPageIcon(host: String, iconUrl: String?, origin: String) {
         if (host.isEmpty() || iconUrl == null || !download()) return
+        val url = iconUrl.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: "$origin/favicon.ico"
         scope.launch {
             val f = file(host)
             if (f.exists() && System.currentTimeMillis() - f.lastModified() < REFRESH_MS) return@launch
             withContext(Dispatchers.Main) {
-                if (inFlight.add(host)) fetch(host, iconUrl, "$origin/favicon.ico")
+                if (inFlight.add(host)) fetch(host, url, "$origin/favicon.ico")
             }
         }
     }
