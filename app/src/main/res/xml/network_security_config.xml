@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Debug installs may come over plain http in a local network; every other path needs https or a signature. -->
+    <!-- Plain http is allowed for every host: debug installs come from a computer in the local network by its IP.
+         Pages do not go through this (Gecko has its own network stack); the engine index is checked by its signature
+         and every downloaded file by sha256, not by the transport. -->
     <base-config cleartextTrafficPermitted="true" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">localhost</domain>
-        <domain includeSubdomains="false">127.0.0.1</domain>
-    </domain-config>
 </network-security-config>
