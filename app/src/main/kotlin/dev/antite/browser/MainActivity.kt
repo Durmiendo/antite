@@ -27,6 +27,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.data.Tab
 import dev.antite.browser.engine.EngineSetupActivity
 import dev.antite.browser.engine.Engines
@@ -34,6 +35,7 @@ import dev.antite.browser.l10n.T
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.BrowserScreen
 import dev.antite.browser.ui.LocalBrowser
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -160,7 +162,9 @@ class MainActivity : ComponentActivity() {
     }
 
     fun pickFiles(mimeTypes: List<String>, multiple: Boolean, done: (List<Uri>?) -> Unit) {
-        filesResult = done
+        filesResult = { uris ->
+            if (uris.isNullOrEmpty()) done(uris) else lifecycleScope.launch { done(Uploads.copy(this@MainActivity, uris)) }
+        }
         val mime = mimeTypes.singleOrNull()?.takeIf { '/' in it } ?: "*/*"
         if (multiple) pickMany.launch(mime) else pickOne.launch(mime)
     }
