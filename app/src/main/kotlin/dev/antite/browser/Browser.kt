@@ -64,6 +64,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     companion object {
         internal const val ALLOW_ONCE = 4
         private const val CRASH_LOOP_MS = 60_000L
+        private const val RESTORE_COVER_MS = 4000L
         const val UBO_ID = "uBlock0@raymondhill.net"
 
         // Page translation is off until it works well (user, 10.11.2026); this one switch brings it back.
@@ -119,6 +120,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var translateOffer by mutableStateOf<String?>(null)
     val translation get() = if (TRANSLATION_ENABLED) engine.translation else null
     var defaultBrowserOffer by mutableStateOf(false)
+    // The tab whose last picture is drawn over the page while it loads again after being lost in the background.
+    var restoreCover by mutableStateOf<Tab?>(null)
+        private set
+    private var restoreOnReturn: Tab? = null
     // When the update source's index ran out, seconds; 0 while it is alive or the warning is postponed.
     var indexExpired by mutableStateOf(0L)
     var loginOffer by mutableStateOf<Prompt.SelectLogin?>(null)
@@ -245,6 +250,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val prev = current
         if (prev != null && prev !== t) prev.engineTab?.setActive(false)
         urlFocused = false
+        if (restoreCover !== t) restoreCover = null
         current = t
         t.lastUsed = System.currentTimeMillis()
         val s = ensureSession(t)
@@ -329,6 +335,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun captureThumb(t: Tab?) {
         if (t == null || t !== current || overlay == Overlay.SWITCHER) return
+        // Nothing of the page is on screen while it is lost or still under its old picture.
+        if (t.engineTab == null || restoreCover === t) return
         engineView?.capture { b ->
             if (b == null) return@capture
             t.thumb = Bitmap.createScaledBitmap(b, maxOf(1, b.width / 3), maxOf(1, b.height / 3), true)
@@ -344,16 +352,36 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     // A page that brings its process down again within a minute is not reloaded by itself, or it would loop; the tab
     // stays empty until the user reloads it. Only crashes on screen count: the engine reports the system killing a
     // process in the background the same way.
+    // A page lost while the browser is not visible is not loaded there, where the system would kill it again: it
+    // comes back when the user does, under its last picture.
     fun recover(t: Tab) {
         val now = SystemClock.elapsedRealtime()
-        val onScreen = activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        val state = activity.lifecycle.currentState
+        val onScreen = state.isAtLeast(Lifecycle.State.RESUMED)
         val again = onScreen && t.lastCrashAt != 0L && now - t.lastCrashAt < CRASH_LOOP_MS
         if (onScreen) t.lastCrashAt = now
         if (t === current) engineView?.show(null)
         t.engineTab?.close()
         t.engineTab = null
         if (t !== current) return
+        if (!state.isAtLeast(Lifecycle.State.STARTED)) {
+            restoreOnReturn = t
+            if (t.thumb != null) restoreCover = t
+            return
+        }
         if (again) toast(T.pageCrashedAgain) else switchTo(t)
+    }
+
+    fun restoreLostPage() {
+        val t = restoreOnReturn ?: return
+        restoreOnReturn = null
+        if (t !== current || t.engineTab != null) {
+            restoreCover = null
+            return
+        }
+        switchTo(t)
+        // The first paint takes the picture away; a page that never paints must not stay hidden behind it.
+        main.postDelayed({ if (restoreCover === t) restoreCover = null }, RESTORE_COVER_MS)
     }
 
     fun reload(t: Tab) {
@@ -704,7 +732,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             scheduleSave()
         }
 
-        override fun onFirstPaint() = captureSoon(t, 1500, false)
+        override fun onFirstPaint() {
+            if (restoreCover === t) restoreCover = null
+            captureSoon(t, 1500, false)
+        }
 
         override fun onScroll(y: Int) {
             this@Browser.onScroll(t, y)

@@ -131,6 +131,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::browser.isInitialized) {
+            browser.restoreLostPage()
             browser.engineNews.onResume()
             browser.checkDefaultBrowserOffer()
             browser.vaultRelock()

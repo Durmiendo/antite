@@ -1,5 +1,8 @@
 package dev.antite.browser.ui
 
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
 import dev.antite.browser.data.Categories
 import android.os.SystemClock
 import androidx.compose.ui.geometry.Offset
@@ -211,6 +214,11 @@ fun BrowserScreen(b: Browser) {
                         view.setVerticalClipping(clipping())
                     },
             )
+            if (t != null && b.restoreCover === t) t.thumb?.let { thumb ->
+                Image(thumb.asImageBitmap(), null, contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize().padding(bottom = with(density) { bottomGap.toDp() })
+                        .graphicsLayer { translationY = if (b.fullscreen) 0f else toolbarPx - b.hidden })
+            }
             // Full screen and PiP have no bars, else Gecko keeps an empty strip for them at the bottom. Gecko resets the
             // clipping to 0 whenever the max height is set, so it is set only when it changes and the clipping is resent.
             val maxHeight = if (b.pip || b.fullscreen) 0 else toolbarPx.toInt() + navFull
