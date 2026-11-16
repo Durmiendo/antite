@@ -180,6 +180,7 @@ internal fun LazyListScope.categories(b: Browser, nav: Nav) {
 internal fun searchHomePage(b: Browser) = SettingsPage(T.settingsCatSearch) { nav ->
     choice(b, nav, T.settingsSearchEngine, "engine", Options.engines, 0, false)
     toggle(b, T.privacySuggest, T.privacySuggestSummary, "searchSuggest", true, false)
+    toggle(b, T.privacySuggestIncognito, T.privacySuggestIncognitoSummary, "searchSuggestIncognito", false, false)
     nav(nav, T.settingsHome, if (b.prefs.bool("homeButton", false)) homeSummary(b) else T.settingsOff) { HomePage(b, it) }
     section(T.tabNew)
     choice(b, nav, T.tabsFrequent, "ntpFrequent", Options.frequentSites, 3, false)

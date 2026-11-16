@@ -194,6 +194,7 @@ fun Suggestions(b: Browser, modifier: Modifier) {
         }
         local = if (incognito) emptyList() else b.db.io { suggest(text, 5) }
         if (!b.prefs.bool("searchSuggest", true)) return@LaunchedEffect
+        if (incognito && !b.prefs.bool("searchSuggestIncognito", false)) return@LaunchedEffect
         delay(150)
         b.engine.fetch(b.prefs.suggestUrl + Uri.encode(text), 64 * 1024) { bytes ->
             if (bytes == null || b.suggestQuery.trim() != text) return@fetch
