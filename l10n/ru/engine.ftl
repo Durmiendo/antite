@@ -51,3 +51,7 @@ shell-update-failed = Не удалось обновить { -brand }: { $reason
 shell-update-gone = обновления больше нет в источнике
 engine-downloaded-title = Движок скачан
 engine-downloaded-text = Gecko { $version } начнёт работать после перезапуска браузера.
+setup-next = Далее
+setup-start = Начать
+setup-wait-engine = Ждём движок…
+setup-engine-ready = Движок готов

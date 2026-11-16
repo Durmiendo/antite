@@ -51,3 +51,7 @@ shell-update-failed = Could not update { -brand }: { $reason }
 shell-update-gone = the update is no longer in the source
 engine-downloaded-title = Engine downloaded
 engine-downloaded-text = Gecko { $version } starts working after the browser restarts.
+setup-next = Next
+setup-start = Start
+setup-wait-engine = Waiting for the engine…
+setup-engine-ready = The engine is ready

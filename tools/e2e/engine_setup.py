@@ -66,13 +66,18 @@ def download_engine(d, port):
     """From a browser without an engine: open the setup screen, download, wait for the browser."""
     d.stop()
     d.shell(f"am start -n {PACKAGE}/.MainActivity --es indexUrl http://localhost:{port}/engines.json")
-    d.wait("Gecko " + prop("geckoviewVersion"), timeout=30)
-    d.tap("Скачать", exact=True)
-    for _ in range(10):
+    # The download starts by itself; the steps of the first start are gone through meanwhile.
+    for _ in range(40):
         if d.find("Разрешить", exact=True) is not None:
             d.tap("Разрешить", exact=True)
             break
+        if d.find("Скачиваем и проверяем…") is not None or d.find("Движок готов") is not None:
+            break
         time.sleep(0.5)
+    for _ in range(3):
+        d.tap("Далее", exact=True)
+        time.sleep(0.5)
+    d.tap("Начать", exact=True)
     # The progress notification lives only while the engine downloads: the browser restarts right after.
     seen = False
     end = time.time() + 300

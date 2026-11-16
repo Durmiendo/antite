@@ -33,6 +33,23 @@ import dev.antite.browser.service.DownloadService
 import dev.antite.browser.ui.FormDialog
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.LocalPalette
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import dev.antite.browser.data.KeyRing
+import dev.antite.browser.data.Options
+import dev.antite.browser.data.Secure
+import dev.antite.browser.l10n.L10n
+import dev.antite.browser.toSecretBytes
+import dev.antite.browser.ui.Badge
+import dev.antite.browser.ui.RadioRow
+import dev.antite.browser.ui.SecretField
+import dev.antite.browser.ui.SecretInput
+import dev.antite.browser.ui.SwitchRow
 import kotlin.concurrent.thread
 
 class EngineSetupActivity : ComponentActivity() {
@@ -58,37 +75,10 @@ class EngineSetupActivity : ComponentActivity() {
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
         setContent {
-            AntiteTheme(Prefs(this).isDark(), Prefs(this).isOled()) {
-                val p = LocalPalette.current
-                Column(
-                    Modifier.fillMaxSize().background(p.background).padding(32.dp),
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(T.engineSetupTitle, color = p.text, fontSize = 22.sp)
-                    when (val s = this@EngineSetupActivity.state) {
-                        State.Checking -> {
-                            Info(T.engineSetupChecking)
-                            LinearProgressIndicator(Modifier.fillMaxWidth(), color = p.accent)
-                        }
-                        is State.Ready -> {
-                            Info(T.engineSetupIntro)
-                            Info(T.engineSetupOffer(version = s.offer.entry.version, size = mb(s.offer.size), source = s.offer.source.name,
-                                host = Uri.parse(s.offer.source.url).host) +
-                                if (s.offer.source.builtin) "" else "\n" + T.engineSetupKey(fingerprint = s.offer.source.fingerprint))
-                            TextButton(onClick = { download(s) }) { Text(T.actionDownload, color = p.accent, fontSize = 16.sp) }
-                            TextButton(onClick = { adding = true }) { Text(T.engineOtherSource, color = p.accent, fontSize = 16.sp) }
-                        }
-                        is State.Downloading -> {
-                            Info(T.engineSetupDownloading)
-                            LinearProgressIndicator({ s.fraction }, Modifier.fillMaxWidth(), color = p.accent)
-                        }
-                        is State.Failed -> {
-                            Info(s.message)
-                            TextButton(onClick = ::check) { Text(T.actionRetry, color = p.accent, fontSize = 16.sp) }
-                            TextButton(onClick = { adding = true }) { Text(T.engineOtherSource, color = p.accent, fontSize = 16.sp) }
-                        }
-                    }
-                }
+            // Theme and language picked on a step apply at once.
+            val rev = settingsRevision
+            AntiteTheme(remember(rev) { Prefs(this).isDark() }, remember(rev) { Prefs(this).isOled() }) {
+                key(rev) { Wizard() }
                 if (adding) {
                     FormDialog(T.engineOtherSource, T.engineOtherSourceWarning, listOf(
                         FormField(T.engineSourceIndexUrl, kind = FormField.Kind.URL),
@@ -109,6 +99,162 @@ class EngineSetupActivity : ComponentActivity() {
         if (saved == null) check()
     }
 
+    private var settingsRevision by mutableIntStateOf(0)
+    private var step by mutableIntStateOf(0)
+    private var engineReady by mutableStateOf(false)
+    private var finished by mutableStateOf(false)
+    private var keysApplying = false
+    private var keyMode by mutableStateOf(KeyRing.Mode.DEVICE)
+    private var keyError by mutableStateOf<String?>(null)
+    private val pw1 = SecretInput()
+    private val pw2 = SecretInput()
+
+    // The steps of the first start; a new one is one more entry here.
+    private class Step(val title: String, val content: @androidx.compose.runtime.Composable () -> Unit)
+
+    private val steps
+        @androidx.compose.runtime.Composable get() = listOf(
+            Step(T.languagesInterface) {
+                val options = listOf("" to T.languagesSystem) + L10n.languages
+                val cur = options.indexOfFirst { it.first == Prefs(this).string(L10n.PREF, "") }.coerceAtLeast(0)
+                options.forEachIndexed { i, (code, name) ->
+                    RadioRow(name, i == cur) {
+                        Prefs(this).edit { putString(L10n.PREF, code) }
+                        L10n.init(this)
+                        settingsRevision++
+                    }
+                }
+            },
+            Step(T.settingsTheme) {
+                val prefs = Prefs(this)
+                val cur = prefs.index("theme", Options.themes, 2)
+                Options.themes.forEachIndexed { i, o -> RadioRow(o.label, i == cur) { prefs.edit { putInt("theme", i) }; settingsRevision++ } }
+                SwitchRow(T.settingsThemeOled, null, prefs.isOled()) { prefs.edit { putBoolean("oled", it) }; settingsRevision++ }
+            },
+            Step(T.settingsSearchEngine) {
+                val prefs = Prefs(this)
+                val cur = prefs.index("engine", Options.engines, 0)
+                Options.engines.forEachIndexed { i, o -> RadioRow(o.label, i == cur) { prefs.edit { putInt("engine", i) }; settingsRevision++ } }
+            },
+            Step(T.keysMode) {
+                KeyRing.Mode.entries.forEach { m ->
+                    RadioRow(modeName(m), m == keyMode) { keyMode = m }
+                }
+                Badge(if (keyMode.usesDevice) T.keysEraseYes else T.keysEraseNo, Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                if (keyMode.usesPassword) {
+                    Column(Modifier.padding(horizontal = 20.dp)) {
+                        SecretField(pw1, T.keysPassword)
+                        SecretField(pw2, T.keysPasswordAgain)
+                        Badge(T.keysPasswordNewWarningShort, Modifier.padding(top = 4.dp))
+                    }
+                }
+                keyError?.let { Text(it, color = LocalPalette.current.insecure, fontSize = 14.sp, modifier = Modifier.padding(20.dp)) }
+            },
+        )
+
+    private fun modeName(m: KeyRing.Mode) = when (m) {
+        KeyRing.Mode.DEVICE -> T.keysModeDevice
+        KeyRing.Mode.PASSWORD -> T.keysModePassword
+        KeyRing.Mode.BOTH -> T.keysModeBoth
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun Wizard() {
+        val p = LocalPalette.current
+        val all = steps
+        Column(Modifier.fillMaxSize().background(p.background).systemBarsPadding().padding(vertical = 24.dp)) {
+            Column(Modifier.padding(horizontal = 24.dp)) {
+                Text("Antite", color = p.text, fontSize = 26.sp)
+                EngineStatus()
+                Text(all.indices.joinToString(" ") { if (it == step) "●" else "○" }, color = p.accent, fontSize = 14.sp,
+                    modifier = Modifier.padding(top = 16.dp))
+                Text(all[step].title, color = p.text, fontSize = 20.sp, modifier = Modifier.padding(vertical = 12.dp))
+            }
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { all[step].content() }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = { if (step > 0) step-- }, enabled = step > 0) { Text(T.actionBack, fontSize = 16.sp) }
+                val last = step == all.lastIndex
+                TextButton(onClick = { if (last) finish(all) else step++ }, enabled = !finished) {
+                    Text(when {
+                        !last -> T.setupNext
+                        finished -> T.setupWaitEngine
+                        else -> T.setupStart
+                    }, color = p.accent, fontSize = 16.sp)
+                }
+            }
+        }
+    }
+
+    // The last step applies the key mode, then the browser starts as soon as the engine is in.
+    private fun finish(all: List<Step>) {
+        if (keyMode.usesPassword) {
+            val a = pw1.take()
+            val b = pw2.take()
+            val same = a.contentEquals(b)
+            b.fill('\u0000')
+            if (!same || a.isEmpty()) {
+                a.fill('\u0000')
+                keyError = if (!same) T.keysPasswordMismatch else T.keysPasswordEmpty
+                return
+            }
+            val bytes = a.toSecretBytes()
+            finished = true
+            keysApplying = true
+            keyError = null
+            thread(name = "keys") {
+                try {
+                    Secure.ring(this).setMode(keyMode, bytes)
+                    Secure.ring(this).lock()
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        keysApplying = false
+                        finished = false
+                        keyError = T.keysFailed(reason = e.message ?: "")
+                    }
+                    return@thread
+                }
+                runOnUiThread {
+                    keysApplying = false
+                    if (engineReady) Engines.restart(this)
+                }
+            }
+            return
+        }
+        finished = true
+        if (engineReady) Engines.restart(this)
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun EngineStatus() {
+        val p = LocalPalette.current
+        when (val s = state) {
+            State.Checking -> {
+                Info(T.engineSetupChecking)
+                LinearProgressIndicator(Modifier.fillMaxWidth(), color = p.accent)
+            }
+            is State.Ready -> {
+                Info(T.engineSetupOffer(version = s.offer.entry.version, size = mb(s.offer.size), source = s.offer.source.name,
+                    host = Uri.parse(s.offer.source.url).host) +
+                    if (s.offer.source.builtin) "" else "\n" + T.engineSetupKey(fingerprint = s.offer.source.fingerprint))
+                Row {
+                    TextButton(onClick = { download(s) }) { Text(T.actionDownload, color = p.accent, fontSize = 16.sp) }
+                    TextButton(onClick = { adding = true }) { Text(T.engineOtherSource, color = p.accent, fontSize = 16.sp) }
+                }
+            }
+            is State.Downloading -> {
+                Info(if (engineReady) T.setupEngineReady else T.engineSetupDownloading)
+                LinearProgressIndicator({ s.fraction }, Modifier.fillMaxWidth(), color = p.accent)
+            }
+            is State.Failed -> {
+                Info(s.message)
+                Row {
+                    TextButton(onClick = ::check) { Text(T.actionRetry, color = p.accent, fontSize = 16.sp) }
+                    TextButton(onClick = { adding = true }) { Text(T.engineOtherSource, color = p.accent, fontSize = 16.sp) }
+                }
+            }
+        }
+    }
+
     @androidx.compose.runtime.Composable
     private fun Info(text: String) {
         Text(text, color = LocalPalette.current.textSecondary, fontSize = 16.sp, modifier = Modifier.padding(vertical = 12.dp))
@@ -123,7 +269,7 @@ class EngineSetupActivity : ComponentActivity() {
                 useTestSource()
                 val found = EngineUpdates.best(this)
                 when {
-                    found.offer != null -> State.Ready(found.offer)
+                    found.offer != null -> State.Ready(found.offer).also { r -> runOnUiThread { download(r) } }
                     found.errors.isNotEmpty() ->
                         State.Failed(T.engineSetupListFailedOffline + "\n" + found.errors.joinToString("\n"))
                     else -> State.Failed(T.engineSetupNoneForAbi(abi = Abi.current))
@@ -153,7 +299,11 @@ class EngineSetupActivity : ComponentActivity() {
         state = State.Downloading(0f)
         UpdateDownloads.engine(this, ready.offer, { state = State.Downloading(it / 100f) }) { status, error ->
             state = when (status) {
-                DownloadService.DONE -> return@engine Engines.restart(this)
+                DownloadService.DONE -> {
+                    engineReady = true
+                    if (finished && !keysApplying) return@engine Engines.restart(this)
+                    State.Downloading(1f)
+                }
                 DownloadService.CANCELLED -> ready
                 else -> State.Failed(T.engineDownloadFailed(reason = error?.message))
             }
