@@ -9,15 +9,20 @@ trusting the download mirrors.
 
 ## Features
 
-- Tabs with a grid or list switcher, session restore, incognito tabs
-- Bookmarks, history, recently closed tabs, a new tab page with pinned sites
+- Tabs with a grid or list switcher, tab categories with their own names, colors and pictures, session restore
+- Incognito tabs, optionally behind the device unlock, with screenshots blocked
+- Bookmarks, history, recently closed tabs, a new tab page with pinned and frequent sites
 - Password manager, payment cards and addresses, encrypted with the Android Keystore
+- Secure storage: pictures and videos moved out of downloads into the browser's private folder, with a built-in viewer
 - uBlock Origin, installed on first start
-- Privacy settings: HTTPS-only, DNS over HTTPS, tracking and fingerprinting protection, WebRTC IP hiding
+- Privacy settings: HTTPS-only, DNS over HTTPS, tracking and fingerprinting protection, WebRTC IP hiding, search
+  suggestions off in incognito
 - A settings page that lists every request the browser makes on its own, with a switch for each
-- Offline page translation, find in page, save as PDF, downloads with progress notifications
-- Engine updates from signed sources, with automatic rollback if a new engine fails to start
+- Find in page, save as PDF, pull to refresh, picture-in-picture for full-screen video, background media playback
+- Downloads with progress notifications
+- Engine and app updates from signed sources, with automatic rollback if a new engine fails to start
 - Encrypted export and import of all browser data
+- Interface in Russian and English ([Fluent](https://projectfluent.org/) files in [`l10n/`](l10n))
 
 Requires Android 11 (API 30) or newer on arm64-v8a, armeabi-v7a or x86_64. One APK fits all three.
 
@@ -48,14 +53,28 @@ You need JDK 17 and the Android SDK with the `android-37.2` platform. Put the SD
 ```
 ./gradlew :app:assembleDebug               # shell APK, app/build/outputs/apk/debug/
 ./gradlew :engine-gecko:adapterPackage     # engine adapter, engine-gecko/build/outputs/engine/
-./gradlew :app:testDebugUnitTest           # JVM tests
 ```
 
 Release builds are signed only when `antite.keysDir` in `~/.gradle/gradle.properties` points to the signing keys;
 otherwise they come out unsigned.
 
 `tools/publish/publish_engine.py` builds the adapter, pins Mozilla's per-ABI AARs, writes and signs `engines.json`.
-`tools/e2e/` holds end-to-end scenarios that drive a device or emulator over adb.
+`tools/publish/serve_local.py` serves the current build to a device for the browser's debug install mode.
+
+## Tests
+
+```
+./gradlew :app:testDebugUnitTest           # JVM tests
+./gradlew :app:assembleDebugAndroidTest    # instrumented tests, run with adb shell am instrument
+```
+
+`tools/e2e/` holds end-to-end scenarios that drive a device or emulator over adb, for example
+`python3 -I tools/e2e/upload.py --serial HOST:PORT`. Each script says in its header what it checks and what it needs.
+Test pages are served from the computer over `adb reverse`; examples use `example.com` and reserved names only.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Contributions are accepted under the contributor agreement described there.
 
 ## License
 
