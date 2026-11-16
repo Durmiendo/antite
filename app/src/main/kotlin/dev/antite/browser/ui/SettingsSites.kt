@@ -124,8 +124,11 @@ internal fun SitePage(b: Browser, nav: Nav, h: String) {
         section(T.sitesProtection)
         item {
             SwitchRow(T.privacyTracking, if (trackingOff) T.sitesTrackingOff else T.sitesTrackingOn, !trackingOff) { on ->
-                b.engine.permissions.set("https://$h", SitePermission.TRACKING_EXCEPTION,
-                    if (on) PermissionValue.BLOCK else PermissionValue.ALLOW)
+                // Gecko keeps the exception per origin; a site may be open over http as well.
+                for (origin in listOf("https://$h", "http://$h")) {
+                    b.engine.permissions.set(origin, SitePermission.TRACKING_EXCEPTION,
+                        if (on) PermissionValue.BLOCK else PermissionValue.ALLOW)
+                }
                 revision++
             }
         }
