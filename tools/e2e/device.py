@@ -87,6 +87,11 @@ class Device:
     def scroll_to(self, text, swipes=8):
         for _ in range(swipes):
             n = self.find(text)
+            # A row at the very bottom sits under the navigation bar: a tap there would press Home.
+            if n is not None and self.center(n)[1] > 2200:
+                self.shell("input swipe 540 1600 540 1100 250")
+                time.sleep(0.6)
+                n = self.find(text)
             if n is not None:
                 return n
             self.shell("input swipe 540 1900 540 700 250")

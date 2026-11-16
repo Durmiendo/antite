@@ -48,7 +48,10 @@ def main():
         print("2. an engine from a plain http address, without a signature")
         d.tap("Установить с адреса", exact=True)
         d.tap("Адрес компьютера", exact=True)
+        # The field takes focus with the dialog's animation; keys sent before that are lost.
+        time.sleep(1.5)
         d.shell("input keyevent 123 " + " ".join(["67"] * 80))
+        d.shell("input keyevent 122 " + " ".join(["112"] * 80))
         d.type(f"http://localhost:{PORT}/engines.json")
         d.tap("Проверить", exact=True)
         d.tap("Движок Gecko " + version, timeout=30)
