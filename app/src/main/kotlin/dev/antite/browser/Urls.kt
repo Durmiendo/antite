@@ -8,6 +8,15 @@ object Urls {
 
     fun isBlank(url: String?) = url.isNullOrEmpty() || url == "about:blank"
 
+    private val TYPED_SCHEMES = setOf("http", "https", "about", "data", "moz-extension")
+
+    // What may be opened from the address bar or a saved address: no javascript: (runs in the open page) or file:.
+    fun canOpenTyped(url: String): Boolean {
+        val scheme = url.substringBefore(':', "").lowercase(Locale.ROOT)
+        if (scheme == "view-source") return url.substringAfter(':').let { isWeb(it.lowercase(Locale.ROOT)) }
+        return scheme in TYPED_SCHEMES
+    }
+
     fun host(url: String?): String {
         val h = url?.let { Uri.parse(it).host } ?: return url ?: ""
         return h.removePrefix("www.")

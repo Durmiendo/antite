@@ -41,4 +41,16 @@ class UrlsTest {
         assertEquals("/%E2%80%AE", Urls.unescape("/%E2%80%AE"))
         assertEquals("/%D0", Urls.unescape("/%D0"))
     }
+
+    @Test
+    fun typedAddressesThatCannotRunInThePageOrReadFiles() {
+        assertEquals(true, Urls.canOpenTyped("https://example.com/"))
+        assertEquals(true, Urls.canOpenTyped("about:config"))
+        assertEquals(true, Urls.canOpenTyped("view-source:https://example.com/"))
+        assertEquals(false, Urls.canOpenTyped("javascript://%0Aalert(1)"))
+        assertEquals(false, Urls.canOpenTyped("JavaScript:alert(1)"))
+        assertEquals(false, Urls.canOpenTyped("file:///data/data/dev.antite.browser/databases/antite.db"))
+        assertEquals(false, Urls.canOpenTyped("view-source:file:///sdcard/"))
+        assertEquals(false, Urls.canOpenTyped("resource://android/assets/"))
+    }
 }

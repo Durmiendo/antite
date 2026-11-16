@@ -24,6 +24,7 @@ import dev.antite.browser.FormField
 import dev.antite.browser.Overlay
 import dev.antite.browser.R
 import dev.antite.browser.UiDialog
+import dev.antite.browser.Urls
 import dev.antite.browser.data.Option
 import dev.antite.browser.data.Options
 import dev.antite.browser.l10n.T
@@ -316,6 +317,10 @@ internal fun HomePage(b: Browser, nav: Nav) {
             var url = v[0].trim()
             if (url.isEmpty()) return@Form false
             if ("://" !in url) url = "https://$url"
+            if (!Urls.canOpenTyped(url)) {
+                b.toast(T.addressNotWeb)
+                return@Form false
+            }
             b.prefs.edit { putString("homeUrl", url) }
             then()
             true

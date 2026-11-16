@@ -417,7 +417,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         if (s.isEmpty()) return
         val url = when {
             "://" in s || s.startsWith("about:") || s.startsWith("view-source:") || s.startsWith("data:") ||
-                s.startsWith("moz-extension:") -> s
+                s.startsWith("moz-extension:") -> if (Urls.canOpenTyped(s)) s else prefs.searchUrl + Uri.encode(s)
             ' ' !in s && '.' in s && !s.endsWith(".") -> "https://$s"
             else -> prefs.searchUrl + Uri.encode(s)
         }

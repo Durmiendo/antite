@@ -14,6 +14,7 @@ ntp-tile-edit = Изменить плитку
 ntp-tile-name = Название
 ntp-tile-address = Адрес, например ranobelib.me
 ntp-tile-need-address = Нужен адрес
+address-not-web = Этот адрес открыть нельзя
 ntp-move-left = Сдвинуть влево
 ntp-move-right = Сдвинуть вправо
 ntp-unpin = Открепить

@@ -98,6 +98,10 @@ fun NewTabPage(b: Browser, modifier: Modifier) {
                 return@Form false
             }
             if ("://" !in u) u = "https://$u"
+            if (!Urls.canOpenTyped(u)) {
+                b.toast(T.addressNotWeb)
+                return@Form false
+            }
             val label = v[0].trim().ifEmpty { Urls.host(u) }
             val target = u
             change { if (pin == null) addPin(target, label) else updatePin(pin.id, target, label) }

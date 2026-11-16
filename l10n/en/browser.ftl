@@ -14,6 +14,7 @@ ntp-tile-edit = Edit tile
 ntp-tile-name = Name
 ntp-tile-address = Address, for example ranobelib.me
 ntp-tile-need-address = An address is needed
+address-not-web = This address cannot be opened
 ntp-move-left = Move left
 ntp-move-right = Move right
 ntp-unpin = Unpin
