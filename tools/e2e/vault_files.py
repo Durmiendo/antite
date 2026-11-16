@@ -89,10 +89,13 @@ def main():
         d.wait(note, timeout=20, exact=True)
         if d.find(picture, exact=True) is not None:
             d.fail("the folder shows a file that is not in it")
-        d.tap("Все", exact=True)
+        # Back leaves the folder: the top shows the picture and the folder, the note stays inside.
+        d.shell("input keyevent 4")
         time.sleep(1)
-        for name in (picture, note):
-            d.wait(name, exact=True)
+        d.wait(picture, exact=True)
+        d.wait(FOLDER, exact=True)
+        if d.find(note, exact=True) is not None:
+            d.fail("the top shows a file of the folder")
         print(f"   the picked original is {'still there' if media_size(d, note) is not None else 'deleted'}")
 
         print("3. nothing in the storage folder is readable on the disk")

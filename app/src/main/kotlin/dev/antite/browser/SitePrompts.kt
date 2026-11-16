@@ -1,6 +1,7 @@
 package dev.antite.browser
 
 import android.content.pm.PackageManager
+import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.data.SitePerms
 import dev.antite.browser.data.Tab
 import dev.antite.browser.l10n.T
@@ -10,6 +11,7 @@ import dev.antite.engine.Engine
 import dev.antite.engine.MediaPermissionRequest
 import dev.antite.engine.Prompt
 import dev.antite.engine.SitePermission
+import kotlinx.coroutines.launch
 
 internal fun Browser.askSite(icon: Int, host: String, what: String, answer: (Int) -> Unit) {
     var result = -1
@@ -101,8 +103,12 @@ internal fun Browser.onPrompt(t: Tab, p: Prompt) {
                 toast(T.popupBlocked)
             }
         }
-        is Prompt.File -> activity.pickFiles(p.mimeTypes, p.multiple) { uris ->
-            if (uris.isNullOrEmpty()) p.dismiss() else p.confirm(uris)
+        is Prompt.File -> if (!prefs.bool("vaultInMenu", true)) pickDeviceFiles(p) else {
+            var chosen = false
+            show(UiDialog.Items(T.uploadFrom, listOf(
+                DialogButton(T.uploadFromDevice) { chosen = true; pickDeviceFiles(p) },
+                DialogButton(T.vaultTitle) { chosen = true; unlockVault { pickVaultFiles(p) } },
+            ), onDismiss = { if (!chosen) p.dismiss() }))
         }
         is Prompt.SaveLogin -> AutofillPrompts.saveLogin(this, p)
         // Like Chrome, saved logins and a strong password are offered above the keyboard; typing ignores them.
@@ -110,9 +116,44 @@ internal fun Browser.onPrompt(t: Tab, p: Prompt) {
             dismissLoginOffer()
             loginOffer = p
         }
-        is Prompt.SelectCard -> Auth.require(activity, T.cardFillAuth, { show(UiDialog.Engine(p)) }, { p.dismiss() })
+        is Prompt.SelectCard -> unlockSecrets(T.cardFillAuth, { show(UiDialog.Engine(p)) }, { p.dismiss() })
         is Prompt.SaveCard -> if (prefs.bool("cardsEnabled", true)) show(UiDialog.Engine(p)) else p.dismiss()
         is Prompt.SaveAddress -> if (prefs.bool("addressesEnabled", true)) show(UiDialog.Engine(p)) else p.dismiss()
         else -> show(UiDialog.Engine(p))
+    }
+}
+
+private fun Browser.pickDeviceFiles(p: Prompt.File) = activity.pickFiles(p.mimeTypes, p.multiple) { uris ->
+    if (uris.isNullOrEmpty()) p.dismiss() else p.confirm(uris)
+}
+
+// Files of the secure storage that fit the page's accept list; several when the field takes several.
+private fun Browser.pickVaultFiles(p: Prompt.File) {
+    val fits = mediaVault.items.filter { item -> p.mimeTypes.isEmpty() || p.mimeTypes.any { accepts(it, item) } }
+        .sortedByDescending { it.time }
+    if (fits.isEmpty()) {
+        toast(T.uploadVaultNothing)
+        return p.dismiss()
+    }
+    var chosen = false
+    fun send(items: List<dev.antite.browser.data.MediaVault.Item>) {
+        chosen = true
+        if (items.isEmpty()) return p.dismiss()
+        activity.lifecycleScope.launch { p.confirm(Uploads.fromVault(activity, mediaVault, items)) }
+    }
+    if (p.multiple) show(UiDialog.Checks(T.vaultTitle, fits.map { it.name }, fits.map { false }, T.actionConfirm,
+        { checked -> send(fits.filterIndexed { i, _ -> checked[i] }) }, { if (!chosen) p.dismiss() }))
+    else show(UiDialog.Items(T.vaultTitle, fits.map { item -> DialogButton(item.name) { send(listOf(item)) } },
+        { if (!chosen) p.dismiss() }))
+}
+
+// An accept entry: a MIME type, a wildcard like image/*, or an extension like .pdf.
+private fun accepts(accept: String, item: dev.antite.browser.data.MediaVault.Item): Boolean {
+    val a = accept.trim().lowercase()
+    return when {
+        a.startsWith(".") -> item.name.lowercase().endsWith(a)
+        a.endsWith("/*") -> item.mime.startsWith(a.dropLast(1))
+        a == "*/*" || a.isEmpty() -> true
+        else -> item.mime.equals(a, true)
     }
 }

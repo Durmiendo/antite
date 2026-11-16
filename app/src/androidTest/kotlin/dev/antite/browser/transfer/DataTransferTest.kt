@@ -3,7 +3,11 @@ package dev.antite.browser.transfer
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import dev.antite.browser.data.Crypto
+import dev.antite.browser.data.Cipher256
+import dev.antite.browser.data.Ciphers
+import dev.antite.browser.data.KeyRing
+import dev.antite.browser.data.Secure
+import dev.antite.browser.data.Vault
 import dev.antite.browser.data.VaultFile
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -18,6 +22,8 @@ import org.junit.runner.RunWith
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.random.Random
 
 @RunWith(AndroidJUnit4::class)
@@ -27,6 +33,9 @@ class DataTransferTest {
     private lateinit var src: File
     private lateinit var dst: File
     private val cookies = Random(7).nextBytes(3 * BackupCipher.CHUNK + 123)
+    // Each side has its own key ring where the app keeps it, with Keystore aliases of the tests' own.
+    private lateinit var srcRing: KeyRing
+    private lateinit var dstRing: KeyRing
 
     @Before
     fun setUp() {
@@ -39,6 +48,8 @@ class DataTransferTest {
         write(src, "shared_prefs/antite.xml", "<map/>".toByteArray())
         File(src, "files/empty").mkdirs()
         write(src, "cache/junk", "junk".toByteArray())
+        srcRing = KeyRing(File(src, "files/keys"), Secure.Keystore, Secure.Argon2, "antite-test-src").apply { create() }
+        dstRing = KeyRing(File(dst, "files/keys"), Secure.Keystore, Secure.Argon2, "antite-test-dst").apply { create() }
         vault(File(src, "databases/vault.db"))
         write(dst, "files/old.txt", "old".toByteArray())
         write(dst, "cache/stale", "stale".toByteArray())
@@ -47,7 +58,12 @@ class DataTransferTest {
     @After
     fun tearDown() {
         base.deleteRecursively()
+        for (prefix in listOf("antite-test-src", "antite-test-dst")) for (d in KeyRing.DOMAINS) for (gen in 1..5) {
+            runCatching { Secure.Keystore.destroy("$prefix-$d-$gen") }
+        }
     }
+
+    private fun seal(plain: String) = Vault.seal(srcRing.key(KeyRing.SECRETS), Cipher256.AES, plain)
 
     private fun write(root: File, rel: String, bytes: ByteArray) {
         File(root, rel).apply { parentFile!!.mkdirs() }.writeBytes(bytes)
@@ -59,9 +75,9 @@ class DataTransferTest {
             db.execSQL("CREATE TABLE logins (guid TEXT PRIMARY KEY, password TEXT NOT NULL)")
             db.execSQL("CREATE TABLE addresses (guid TEXT PRIMARY KEY, data TEXT NOT NULL)")
             db.execSQL("CREATE TABLE cards (guid TEXT PRIMARY KEY, number TEXT NOT NULL)")
-            db.execSQL("INSERT INTO logins VALUES ('a', ?), ('broken', 'not-encrypted')", arrayOf(Crypto.encrypt("pw-alice")))
-            db.execSQL("INSERT INTO addresses VALUES ('h', ?)", arrayOf(Crypto.encrypt("{\"name\":\"Ivan\"}")))
-            db.execSQL("INSERT INTO cards VALUES ('c', ?)", arrayOf(Crypto.encrypt("4111111111111111")))
+            db.execSQL("INSERT INTO logins VALUES ('a', ?)", arrayOf(seal("pw-alice")))
+            db.execSQL("INSERT INTO addresses VALUES ('h', ?)", arrayOf(seal("{\"name\":\"Ivan\"}")))
+            db.execSQL("INSERT INTO cards VALUES ('c', ?)", arrayOf(seal("4111111111111111")))
         }
     }
 
@@ -74,12 +90,12 @@ class DataTransferTest {
 
     private fun export(password: String): ByteArray {
         val out = ByteArrayOutputStream()
-        DataTransfer.export(context, src, out, password.toCharArray()) {}
+        DataTransfer.export(context, src, out, password.toCharArray(), srcRing) {}
         return out.toByteArray()
     }
 
     private fun import(backup: ByteArray, password: String) =
-        DataTransfer.import(context, dst, ByteArrayInputStream(backup), backup.size.toLong(), password.toCharArray()) {}
+        DataTransfer.import(context, dst, ByteArrayInputStream(backup), backup.size.toLong(), password.toCharArray(), dstRing) {}
 
     @Test
     fun roundTripRestoresEverything() {
@@ -94,29 +110,55 @@ class DataTransferTest {
         assertFalse("old data is replaced", File(dst, "files/old.txt").exists())
         assertFalse(File(dst, "transfer-in").exists())
 
+        // The secrets stay sealed as they were; this side now has the same data keys, under its own device key.
         val v = File(dst, "databases/vault.db")
         val logins = column(v, "logins", "password")
-        assertEquals(setOf("a"), logins.keys)
-        assertNotEquals("stored encrypted, not as plain text", "pw-alice", logins["a"])
-        assertEquals("pw-alice", Crypto.decrypt(logins["a"]))
-        assertEquals("{\"name\":\"Ivan\"}", Crypto.decrypt(column(v, "addresses", "data")["h"]))
-        assertEquals("4111111111111111", Crypto.decrypt(column(v, "cards", "number")["c"]))
+        assertEquals(column(File(src, "databases/vault.db"), "logins", "password"), logins)
+        val k = dstRing.key(KeyRing.SECRETS)
+        assertEquals("pw-alice", Vault.open(k, logins.getValue("a")))
+        assertEquals("{\"name\":\"Ivan\"}", Vault.open(k, column(v, "addresses", "data").getValue("h")))
+        assertEquals("4111111111111111", Vault.open(k, column(v, "cards", "number").getValue("c")))
+        for (d in KeyRing.DOMAINS) assertArrayEquals(srcRing.key(d), dstRing.key(d))
+        assertTrue("the key files of this side stay its own", File(dst, "files/keys/vault.json").readText().contains("\"gen\":2"))
+        assertFalse(File(dst, "keyring").exists())
+    }
+
+    // A backup from before the key ring: no data keys inside, the secrets in the open.
+    @Test
+    fun oldBackupGetsItsSecretsSealedHere() {
+        val db = File(base, "old-vault.db")
+        SQLiteDatabase.openOrCreateDatabase(db, null).use {
+            it.execSQL("CREATE TABLE logins (guid TEXT PRIMARY KEY, password TEXT NOT NULL)")
+            it.execSQL("CREATE TABLE addresses (guid TEXT PRIMARY KEY, data TEXT NOT NULL)")
+            it.execSQL("CREATE TABLE cards (guid TEXT PRIMARY KEY, number TEXT NOT NULL)")
+            it.execSQL("INSERT INTO logins VALUES ('a', 'pw-alice')")
+        }
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(BackupCipher.encrypt(out, "secret".toCharArray())).use { zip ->
+            zip.putNextEntry(ZipEntry("manifest.json"))
+            zip.write(("{\"format\":1,\"package\":\"${context.packageName}\"}").toByteArray())
+            zip.putNextEntry(ZipEntry("databases/vault.db"))
+            zip.write(db.readBytes())
+            zip.closeEntry()
+        }
+        val before = dstRing.key(KeyRing.SECRETS).copyOf()
+        import(out.toByteArray(), "secret")
+        val stored = column(File(dst, "databases/vault.db"), "logins", "password").getValue("a")
+        assertNotEquals("pw-alice", stored)
+        assertEquals("pw-alice", Vault.open(dstRing.key(KeyRing.SECRETS), stored))
+        assertArrayEquals("this side keeps its own keys", before, dstRing.key(KeyRing.SECRETS))
     }
 
     @Test
     fun secureStorageFileSurvivesTheTransfer() {
         val photo = Random(9).nextBytes(2 * VaultFile.CHUNK + 77)
+        val key = Ciphers.randomBytes(Cipher256.KEY)
         File(src, "files/vault").mkdirs()
-        VaultFile.writer(File(src, "files/vault/7.enc").outputStream(), Crypto.fileKeys).use { it.write(photo) }
-        val stored = File(src, "files/vault/7.enc").readBytes()
+        VaultFile.writer(File(src, "files/vault/7.enc").outputStream(), Cipher256.XCHACHA, key).use { it.write(photo) }
         import(export("secret"), "secret")
         val moved = File(dst, "files/vault/7.enc")
-        assertArrayEquals(photo, VaultFile.Reader(moved, Crypto.fileKeys).stream().use { it.readBytes() })
-        assertArrayEquals("the source file keeps its wrapped key", stored, File(src, "files/vault/7.enc").readBytes())
-        // Wrapped again for this installation: the header differs, the encrypted chunks are the same.
-        val now = moved.readBytes()
-        assertFalse(stored.copyOf(VaultFile.HEADER).contentEquals(now.copyOf(VaultFile.HEADER)))
-        assertArrayEquals(stored.copyOfRange(VaultFile.HEADER, stored.size), now.copyOfRange(VaultFile.HEADER, now.size))
+        assertArrayEquals(File(src, "files/vault/7.enc").readBytes(), moved.readBytes())
+        assertArrayEquals(photo, VaultFile.Reader(moved, key).stream().use { it.readBytes() })
     }
 
     @Test

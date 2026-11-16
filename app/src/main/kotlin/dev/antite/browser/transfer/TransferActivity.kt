@@ -28,10 +28,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.antite.browser.MainActivity
+import dev.antite.browser.data.KeyRing
 import dev.antite.browser.data.Prefs
+import dev.antite.browser.data.Secure
 import dev.antite.browser.l10n.T
+import dev.antite.browser.toSecretBytes
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.LocalPalette
+import dev.antite.browser.ui.SecretField
+import dev.antite.browser.ui.SecretInput
 import java.io.FileNotFoundException
 import java.io.IOException
 import kotlin.concurrent.thread
@@ -56,6 +61,10 @@ class TransferActivity : ComponentActivity() {
     private var status by mutableStateOf(T.transferWaiting)
     private var fraction by mutableStateOf<Float?>(null)
     private var finished by mutableStateOf(false)
+    // With a password key mode this process has to unlock the key ring itself (docs/decisions/0008).
+    private var askKeys by mutableStateOf(false)
+    private var keysError by mutableStateOf<String?>(null)
+    private val keysInput = SecretInput()
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -74,7 +83,11 @@ class TransferActivity : ComponentActivity() {
                     Text(if (intent.getBooleanExtra(EXTRA_EXPORT, true)) T.transferExportTitle else T.transferImportTitle,
                         color = p.text, fontSize = 22.sp)
                     Text(status, color = p.textSecondary, fontSize = 16.sp, modifier = Modifier.padding(vertical = 16.dp))
-                    if (!finished) {
+                    if (askKeys) {
+                        SecretField(keysInput, T.keysUnlock)
+                        keysError?.let { Text(it, color = p.insecure, fontSize = 14.sp) }
+                        TextButton(onClick = ::unlockAndRun) { Text(T.actionConfirm, color = p.accent, fontSize = 16.sp) }
+                    } else if (!finished) {
                         val f = fraction
                         if (f == null) {
                             LinearProgressIndicator(Modifier.fillMaxWidth(), color = p.accent)
@@ -87,7 +100,22 @@ class TransferActivity : ComponentActivity() {
                 }
             }
         }
-        if (state == null) thread(name = "transfer") { run() }
+        if (state != null) return
+        if (Secure.ring(this).mode.usesPassword) askKeys = true else thread(name = "transfer") { run() }
+    }
+
+    private fun unlockAndRun() {
+        val bytes = keysInput.take().toSecretBytes()
+        thread(name = "transfer") {
+            try {
+                Secure.ring(this).unlock(bytes)
+            } catch (e: Exception) {
+                keysError = if (e is KeyRing.WrongPasswordException) T.keysPasswordWrong else T.keysFailed(reason = e.message ?: "")
+                return@thread
+            }
+            askKeys = false
+            run()
+        }
     }
 
     private fun run() {
@@ -109,13 +137,13 @@ class TransferActivity : ComponentActivity() {
             }
             if (export) {
                 val out = contentResolver.openOutputStream(uri, "wt") ?: throw FileNotFoundException()
-                out.use { DataTransfer.export(this, dataDir, it, password, report) }
+                out.use { DataTransfer.export(this, dataDir, it, password, progress = report) }
                 T.transferExported
             } else {
                 val size = contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
                     ?.use { if (it.moveToFirst()) it.getLong(0) else -1L } ?: -1L
                 val input = contentResolver.openInputStream(uri) ?: throw FileNotFoundException()
-                input.use { DataTransfer.import(this, dataDir, it, size, password, report) }
+                input.use { DataTransfer.import(this, dataDir, it, size, password, progress = report) }
                 T.transferImported
             }
         } catch (e: WrongPasswordException) {

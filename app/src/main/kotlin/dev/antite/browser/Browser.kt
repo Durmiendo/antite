@@ -90,7 +90,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     val tabs = mutableStateListOf<Tab>()
     var current by mutableStateOf<Tab?>(null)
         private set
-    val mediaVault = MediaVault(activity)
+    val mediaVault = MediaVault.get(activity)
     val containers = Containers(prefs)
 
     var overlay by mutableStateOf(Overlay.NONE)
@@ -170,7 +170,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         applyEngineSettings()
         EngineUpdates.schedule(activity)
         activity.lifecycleScope.launch { loadNtp() }
-        engine.setAutofillStore(AutofillBridge(vault, activity.lifecycleScope))
+        engine.setAutofillStore(AutofillBridge(vault, activity.lifecycleScope) { then, cancelled -> unlockSecrets(T.keysUnlock, then, cancelled) })
         engine.setNotificationHandler(WebNotifications(activity))
         engine.extensions?.let { ext ->
             ext.ensureInstalled(UBO_ID, UBO_URL)
@@ -421,7 +421,11 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         incognitoUnlocked = false
         unlockedCategories.clear()
         vaultLeftAt = System.currentTimeMillis()
-        if (prefs.int("vaultLock", 0) == 0) vaultUnlocked = false
+        Uploads.wipe(activity)
+        if (prefs.int("vaultLock", 0) == 0) {
+            vaultUnlocked = false
+            lockKeys()
+        }
     }
 
     val incognitoLocked: Boolean get() = prefs.bool("incognitoLock", false) && !incognitoUnlocked
@@ -609,7 +613,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     // (the system unlock dialog, a permission prompt) does not lock the vault again.
     fun vaultRelock() {
         if (vaultLeftAt == 0L) return
-        if (prefs.int("vaultLock", 0) == 1 && System.currentTimeMillis() - vaultLeftAt > 5L * 60 * 1000) vaultUnlocked = false
+        if (prefs.int("vaultLock", 0) == 1 && System.currentTimeMillis() - vaultLeftAt > 5L * 60 * 1000) {
+            vaultUnlocked = false
+            lockKeys()
+        }
         vaultLeftAt = 0L
     }
 
@@ -617,10 +624,15 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     fun vaultNeedsAuth(): Boolean =
         prefs.bool("vaultAuth", true) && activity.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true
 
-    // Open for the interface: unlocked, or there is nothing to unlock with, so no locked screen is shown.
-    val vaultOpen: Boolean get() = vaultUnlocked || !vaultNeedsAuth()
+    // Open for the interface: unlocked, or there is nothing to unlock with, so no locked screen is shown. With a
+    // password key mode only the password opens it.
+    val vaultOpen: Boolean get() = if (ring.mode.usesPassword) mediaVault.opened else vaultUnlocked || !vaultNeedsAuth()
 
     fun unlockVault(then: () -> Unit = {}) {
+        if (ring.mode.usesPassword) {
+            if (mediaVault.opened) return then()
+            return askPassword(T.keysUnlock, { vaultUnlocked = true; then() })
+        }
         if (vaultUnlocked) return then()
         if (!vaultNeedsAuth()) {
             vaultUnlocked = true

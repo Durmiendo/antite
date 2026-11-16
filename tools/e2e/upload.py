@@ -1,6 +1,7 @@
-"""A file picked for <input type=file> reaches the site: the page posts it and the server compares the bytes.
+"""A file picked for <input type=file> reaches the site: the page posts it and the server compares the bytes. First
+from the device through the system picker, then from the secure storage.
 
-Usage: python3 -I tools/e2e/upload.py --serial HOST:PORT
+Usage: python3 -I tools/e2e/upload.py --serial HOST:PORT --test-apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 """
 import argparse
 import os
@@ -10,7 +11,10 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from device import Device  # noqa: E402
+from device import PACKAGE, Device  # noqa: E402
+from media_vault import open_vault, row_actions  # noqa: E402
+from tab_categories import to_browser  # noqa: E402
+from vault_password import reset  # noqa: E402
 
 PORT = 8781
 
@@ -72,6 +76,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--serial", required=True)
     ap.add_argument("--out", default="build/e2e")
+    ap.add_argument("--test-apk", required=True)
     a = ap.parse_args()
     d = Device(a.serial, a.out)
     name = f"up-{int(time.time())}.txt"
@@ -86,12 +91,17 @@ def main():
     d.adb("reverse", f"tcp:{PORT}", f"tcp:{PORT}")
     try:
         d.stop()
+        d.launch()
+        d.wait("Меню", timeout=30, exact=True)
+        reset(d)
         d.launch(f"http://localhost:{PORT}/page")
         d.wait("Меню", timeout=30, exact=True)
         time.sleep(3)
         print("1. tap the file input, pick the file in the system picker")
         # Gecko's accessibility bounds ignore the toolbar offset, so the input is tapped by position.
         d.shell("input tap 540 700")
+        time.sleep(1.5)
+        d.tap("Файлы устройства", exact=True)
         time.sleep(2.5)
         if "documentsui" not in d.top_activity():
             d.fail("system file picker did not open")
@@ -103,7 +113,32 @@ def main():
             d.fail("nothing was uploaded")
         if received[0] != content:
             d.fail(f"uploaded {len(received[0])} bytes, expected {len(content)} bytes of the file")
-        print(f"OK: {len(content)} bytes uploaded unchanged")
+        print(f"   {len(content)} bytes uploaded unchanged")
+
+        print("2. the same field takes a file from the secure storage")
+        secret = f"uv-{int(time.time()) % 100000}.txt"
+        d.install(a.test_apk)
+        # The test APK's provider serves the name itself as the file's content.
+        d.shell(f"am start -a android.intent.action.SEND -t text/plain "
+                f"--eu android.intent.extra.STREAM content://{PACKAGE}.test.share/{secret} -n {PACKAGE}/.ShareToVault")
+        time.sleep(4)
+        received.clear()
+        d.launch(f"http://localhost:{PORT}/page")
+        time.sleep(3)
+        d.shell("input tap 540 700")
+        time.sleep(1.5)
+        d.tap("Защищённое хранилище", exact=True)
+        d.tap(secret, exact=True, timeout=20)
+        end = time.time() + 15
+        while not received and time.time() < end:
+            time.sleep(0.5)
+        if received[:1] != [secret.encode()]:
+            d.fail(f"the storage file did not reach the site: {received[:1]!r}")
+        open_vault(d)
+        row_actions(d, secret, "Удалить")
+        d.tap("Удалить", exact=True)
+        to_browser(d)
+        print("OK")
     finally:
         http.shutdown()
         d.shell(f"rm -f /sdcard/Download/{name}", check=False)

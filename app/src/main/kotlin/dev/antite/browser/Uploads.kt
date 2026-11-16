@@ -3,6 +3,8 @@ package dev.antite.browser
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import dev.antite.browser.data.MediaVault
+import dev.antite.browser.data.VaultFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -27,6 +29,26 @@ object Uploads {
             }.getOrNull()
         }
     }
+
+    // A storage file given to a site: decrypted into the cache only for as long as the app is on screen; wipe()
+    // overwrites and deletes these copies when it leaves.
+    suspend fun fromVault(context: Context, vault: MediaVault, items: List<MediaVault.Item>): List<Uri> = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        items.mapIndexedNotNull { i, item ->
+            runCatching {
+                val dir = File(File(context.cacheDir, VAULT_DIR), "$now-$i").apply { mkdirs() }
+                val file = File(dir, item.name.substringAfterLast('/').ifBlank { "file" })
+                vault.reader(item).stream().use { input -> file.outputStream().use { input.copyTo(it) } }
+                Uri.fromFile(file)
+            }.getOrNull()
+        }
+    }
+
+    fun wipe(context: Context) {
+        File(context.cacheDir, VAULT_DIR).walkBottomUp().forEach { f -> if (f.isFile) VaultFile.wipe(f) else f.delete() }
+    }
+
+    private const val VAULT_DIR = "uploads-vault"
 
     private fun name(context: Context, uri: Uri): String {
         val shown = runCatching {

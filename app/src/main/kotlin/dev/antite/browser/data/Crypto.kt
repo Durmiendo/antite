@@ -1,16 +1,14 @@
 package dev.antite.browser.data
 
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
 import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
+// The device key of the time before the key ring (docs/decisions/0008): only read, to move old data over, then destroyed.
 object Crypto {
     private const val ALIAS = "antite-vault"
     private const val STORE = "AndroidKeyStore"
@@ -22,27 +20,15 @@ object Crypto {
         key?.let { return it }
         val ks = KeyStore.getInstance(STORE).apply { load(null) }
         val existing = (ks.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
-        val k = existing ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, STORE).run {
-            init(
-                KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .build(),
-            )
-            generateKey()
-        }
+        val k = existing ?: throw java.security.KeyStoreException("no legacy key")
         key = k
         return k
     }
 
-    // For the keys of secure storage files: length of the IV, the IV, the sealed bytes.
-    fun seal(plain: ByteArray): ByteArray {
-        val c = Cipher.getInstance(MODE)
-        c.init(Cipher.ENCRYPT_MODE, key())
-        val iv = c.iv
-        val body = c.doFinal(plain)
-        return ByteBuffer.allocate(1 + iv.size + body.size).put(iv.size.toByte()).put(iv).put(body).array()
+    @Synchronized
+    fun forget() {
+        key = null
+        runCatching { KeyStore.getInstance(STORE).apply { load(null) }.deleteEntry(ALIAS) }
     }
 
     fun open(sealed: ByteArray): ByteArray {
@@ -52,17 +38,6 @@ object Crypto {
         val c = Cipher.getInstance(MODE)
         c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
         return c.doFinal(body)
-    }
-
-    val fileKeys = VaultFile.Keys(::seal, ::open)
-
-    fun encrypt(plain: String): String {
-        val c = Cipher.getInstance(MODE)
-        c.init(Cipher.ENCRYPT_MODE, key())
-        val iv = c.iv
-        val body = c.doFinal(plain.toByteArray(Charsets.UTF_8))
-        val out = ByteBuffer.allocate(1 + iv.size + body.size).put(iv.size.toByte()).put(iv).put(body)
-        return Base64.encodeToString(out.array(), Base64.NO_WRAP)
     }
 
     fun decrypt(stored: String?): String? {

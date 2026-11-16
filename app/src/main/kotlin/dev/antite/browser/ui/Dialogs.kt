@@ -82,13 +82,23 @@ fun DialogHost(b: Browser) {
         is UiDialog.Checks -> ChecksDialog(d, close)
         is UiDialog.Form -> FormDialog(d.title, d.message, d.fields, d.confirm, { d.onConfirm(it) }, close)
         is UiDialog.Engine -> EnginePromptDialog(d.prompt) { b.dialogs.remove(d) }
+        is UiDialog.Password -> PasswordDialog(d, close)
     }
 }
 
 @Composable
-fun DialogCard(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+internal fun DialogTitleText(text: String?) = DialogTitle(text)
+
+@Composable
+internal fun DialogMessage(text: String?) = DialogText(text)
+
+@Composable
+internal fun DialogButtons(buttons: List<Pair<String, () -> Unit>>) = Buttons(buttons, false)
+
+@Composable
+fun DialogCard(onDismiss: () -> Unit, dismissOutside: Boolean = true, content: @Composable () -> Unit) {
     val p = LocalPalette.current
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = dismissOutside)) {
         // Chrome's app-modal dialogs keep the system dialog animation; only "no animations" turns it off.
         if (Motion.off) {
             val window = (LocalView.current.parent as? DialogWindowProvider)?.window

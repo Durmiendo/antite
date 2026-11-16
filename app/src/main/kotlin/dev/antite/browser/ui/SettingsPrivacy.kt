@@ -23,7 +23,7 @@ internal fun privacyPage(b: Browser) = SettingsPage(T.settingsPrivacy) { nav ->
             T.privacySafeBrowsingSummary,
             b.prefs.serviceKey(sb.id), sb.defaultEnabled, true)
     }
-    page(b, nav, vaultSettingsPage(b), vaultSummary(b), R.drawable.ic_shield_lock)
+    page(b, nav, vaultSettingsPage(b), keysSummary(b), R.drawable.ic_shield_lock)
     nav(nav, T.privacySecureDns, Options.doh[doh].label) { DnsPage(b, it) }
     section(T.privacyPrivacy)
     choice(b, nav, T.privacyTracking, "tracking", Options.tracking, 0, true)
@@ -42,11 +42,6 @@ internal fun privacyPage(b: Browser) = SettingsPage(T.settingsPrivacy) { nav ->
     section(T.privacySites)
     page(b, nav, siteSettingsPage(b), T.settingsSitesSummary)
     action("uBlock Origin", T.settingsUboSummary, "row:ubo", b::openUboDashboard)
-}
-
-internal fun vaultSummary(b: Browser): String = when (val n = b.mediaVault.items.size) {
-    0 -> T.vaultSettingsEmpty
-    else -> T.vaultItemsCount(count = n)
 }
 
 // The engine describes its requests in its own words; known ones are shown in the interface language (bg-<id>-<part>).

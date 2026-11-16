@@ -50,6 +50,17 @@ sealed interface UiDialog {
         override val onDismiss: () -> Unit = {},
     ) : UiDialog
 
+    // A password typed into SecretField; onSubmit gets the chars (and must wipe them) and answers with an error to
+    // show, or null to close. twice asks for it a second time, for a new password.
+    class Password(
+        val title: String,
+        val message: String? = null,
+        val twice: Boolean = false,
+        val confirm: String = T.actionConfirm,
+        val onSubmit: (CharArray, done: (String?) -> Unit) -> Unit,
+        override val onDismiss: () -> Unit = {},
+    ) : UiDialog
+
     class Engine(val prompt: Prompt) : UiDialog {
         override val onDismiss: () -> Unit = { prompt.dismiss() }
     }

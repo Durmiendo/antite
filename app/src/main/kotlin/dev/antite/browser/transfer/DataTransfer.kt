@@ -2,10 +2,10 @@ package dev.antite.browser.transfer
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import dev.antite.browser.data.Crypto
 import dev.antite.browser.data.Db
+import dev.antite.browser.data.KeyRing
+import dev.antite.browser.data.Secure
 import dev.antite.browser.data.Vault
-import dev.antite.browser.data.VaultFile
 import dev.antite.browser.l10n.T
 import org.json.JSONObject
 import java.io.File
@@ -24,34 +24,29 @@ object DataTransfer {
     private const val FORMAT = 1
     private const val MANIFEST = "manifest.json"
     private const val VAULT = "databases/vault.db"
-    private const val MEDIA_VAULT = "files/vault"
     private const val OUT_DIR = "transfer-out"
     private const val IN_DIR = "transfer-in"
     private const val OLD_DIR = "transfer-old"
+    // The data keys travel in the open inside the encrypted backup; this device wraps them on import.
+    private const val KEYRING = "keyring/"
     private val SKIPPED = setOf("cache", "code_cache", "lib", OUT_DIR, IN_DIR, OLD_DIR)
     // The engine and whom it trusts for updates (sources, keys) stay this device's: a backup must not bring in another
     // update source, or a backup file from someone else would install their engine.
-    private val DEVICE_ONLY = listOf("files/engines", "shared_prefs/engines.xml")
+    // The key files are wrapped by this device's Keystore and are of no use elsewhere.
+    private val DEVICE_ONLY = listOf("files/engines", "shared_prefs/engines.xml", "files/keys")
     private const val SETTINGS = "shared_prefs/antite.xml"
     private val DEBUG_INSTALL = Regex("""\s*<boolean name="debugInstall" value="[^"]*" />""")
     // A database from a newer Antite cannot be opened by this one (no downgrade), so such a backup is refused.
     private val SCHEMAS = listOf("databases/antite.db" to Db.VERSION, VAULT to Vault.VERSION)
-    private val SECRET_COLUMNS = listOf("logins" to "password", "addresses" to "data", "cards" to "number")
 
-    fun export(context: Context, root: File, out: OutputStream, password: CharArray, progress: (Progress) -> Unit) {
+    fun export(context: Context, root: File, out: OutputStream, password: CharArray, ring: KeyRing = Secure.ring(context), progress: (Progress) -> Unit) {
         val work = File(root, OUT_DIR)
         work.deleteRecursively()
         work.mkdirs()
         try {
-            val vault = File(root, VAULT)
-            val plainVault = if (vault.exists()) File(work, "vault.db").also { copy ->
-                vault.copyTo(copy)
-                File(vault.path + "-wal").takeIf { it.exists() }?.copyTo(File(copy.path + "-wal"))
-                rewriteSecrets(copy) { Crypto.decrypt(it) }
-            } else null
-
-            val files = collect(root).filter { (rel, _) -> !rel.startsWith("databases/vault.db") && !isEngine(rel) }
-            val total = files.sumOf { it.second.length() } + (plainVault?.length() ?: 0)
+            val keys = KeyRing.DOMAINS.map { d -> File(work, d).also { it.writeBytes(ring.key(d)) } }
+            val files = collect(root).filter { (rel, _) -> !isEngine(rel) }
+            val total = files.sumOf { it.second.length() }
             var done = 0L
             ZipOutputStream(BackupCipher.encrypt(out, password)).use { zip ->
                 zip.putNextEntry(ZipEntry(MANIFEST))
@@ -62,14 +57,13 @@ object DataTransfer {
                     .put("created", System.currentTimeMillis())
                     .toString().toByteArray())
                 zip.closeEntry()
-                val entries = files + listOfNotNull(plainVault?.let { VAULT to it })
+                val entries = files + keys.map { "$KEYRING${it.name}" to it }
                 for ((rel, file) in entries) {
                     if (file.isDirectory) {
                         zip.putNextEntry(ZipEntry("$rel/"))
                     } else {
                         zip.putNextEntry(ZipEntry(rel))
-                        // The key of a secure storage file is wrapped by this device's key; the copy carries it open.
-                        (if (isVaultFile(rel)) VaultFile.forBackup(file, Crypto.fileKeys) else file.inputStream()).use { input ->
+                        file.inputStream().use { input ->
                             val buf = ByteArray(64 * 1024)
                             while (true) {
                                 val n = input.read(buf)
@@ -84,11 +78,12 @@ object DataTransfer {
                 }
             }
         } finally {
+            work.listFiles()?.forEach { f -> if (f.isFile) f.writeBytes(ByteArray(f.length().toInt())) }
             work.deleteRecursively()
         }
     }
 
-    fun import(context: Context, root: File, input: InputStream, total: Long, password: CharArray, progress: (Progress) -> Unit) {
+    fun import(context: Context, root: File, input: InputStream, total: Long, password: CharArray, ring: KeyRing = Secure.ring(context), progress: (Progress) -> Unit) {
         val stage = File(root, IN_DIR)
         stage.deleteRecursively()
         stage.mkdirs()
@@ -123,13 +118,18 @@ object DataTransfer {
                 val found = SQLiteDatabase.openDatabase(f.path, null, SQLiteDatabase.OPEN_READONLY).use { it.version }
                 if (found > version) throw IOException(T.transferNewerBackup)
             }
-            File(stage, VAULT).takeIf { it.exists() }?.let { v ->
-                rewriteSecrets(v) { Crypto.encrypt(it) }
+            val keyDir = File(stage, KEYRING)
+            val keys = KeyRing.DOMAINS.associateWith { d -> File(keyDir, d).takeIf { it.isFile }?.readBytes() }
+            keyDir.listFiles()?.forEach { it.writeBytes(ByteArray(it.length().toInt())) }
+            keyDir.deleteRecursively()
+            // A backup from before the key ring holds its secrets in the open: they are sealed with this device's key.
+            if (keys[KeyRing.SECRETS] == null) File(stage, VAULT).takeIf { it.exists() }?.let { v ->
+                val k = ring.key(KeyRing.SECRETS)
+                rewriteSecrets(v) { Vault.seal(k, Secure.cipher(context), it) }
             }
-            File(stage, MEDIA_VAULT).listFiles()?.filter { isVaultFile("$MEDIA_VAULT/${it.name}") }
-                ?.forEach { VaultFile.adopt(it, Crypto.fileKeys) }
             File(stage, SETTINGS).takeIf { it.exists() }?.let { f -> f.writeText(f.readText().replace(DEBUG_INSTALL, "")) }
             replace(root, stage)
+            for ((d, k) in keys) if (k != null) ring.install(d, k)
             File(root, "cache").listFiles()?.forEach { it.deleteRecursively() }
         } finally {
             stage.deleteRecursively()
@@ -160,8 +160,6 @@ object DataTransfer {
         old.deleteRecursively()
     }
 
-    private fun isVaultFile(rel: String) = rel.startsWith("$MEDIA_VAULT/") && rel.endsWith(".enc")
-
     private fun isEngine(rel: String) = DEVICE_ONLY.any { rel == it || rel.startsWith("$it/") }
 
     private fun collect(root: File): List<Pair<String, File>> {
@@ -184,7 +182,7 @@ object DataTransfer {
         val db = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READWRITE)
         try {
             db.beginTransaction()
-            for ((table, column) in SECRET_COLUMNS) {
+            for ((table, column) in Vault.SECRET_COLUMNS) {
                 val rows = db.rawQuery("SELECT guid, $column FROM $table", null).use { c ->
                     buildList { while (c.moveToNext()) add(c.getString(0) to c.getString(1)) }
                 }

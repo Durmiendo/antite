@@ -20,9 +20,9 @@ class VaultDiskTool {
         assumeTrue("run only from e2e scripts with -e marker", marker != null)
         val dir = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "vault")
         val files = dir.listFiles().orEmpty()
-        assertTrue("no encrypted files in ${dir.path}: ${files.map { it.name }}", files.any { it.name == "index.enc" } && files.size > 1)
+        assertTrue("no encrypted files in ${dir.path}: ${files.map { it.name }}", files.any { it.name == "index.box" } && files.size > 1)
         for (f in files) {
-            assertTrue("${f.name} is not an encrypted file (${f.length()} bytes, modified ${java.util.Date(f.lastModified())}), all: ${files.map { it.name }}", f.name.endsWith(".enc"))
+            assertTrue("${f.name} is not an encrypted file (${f.length()} bytes, modified ${java.util.Date(f.lastModified())}), all: ${files.map { it.name }}", f.name.endsWith(".enc") || f.name.endsWith(".thumb") || f.name == "index.box")
             assertFalse("${f.name} holds the marker in the open", String(f.readBytes(), Charsets.ISO_8859_1).contains(marker!!))
         }
     }

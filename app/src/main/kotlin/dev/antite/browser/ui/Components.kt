@@ -34,6 +34,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -149,8 +153,11 @@ fun SettingRow(
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     toggled: Boolean? = null,
+    info: String? = null,
+    badge: String? = null,
 ) {
     val p = LocalPalette.current
+    var open by remember { mutableStateOf(false) }
     val click = if (onClick != null || onLongClick != null) {
         Modifier.combinedClickable(onClick = { onClick?.invoke() }, onLongClick = onLongClick)
     } else Modifier
@@ -170,23 +177,51 @@ fun SettingRow(
         Column(Modifier.weight(1f)) {
             Text(title, color = p.text, fontSize = 16.sp)
             if (!summary.isNullOrEmpty()) Text(summary, color = p.textSecondary, fontSize = 14.sp)
+            if (badge != null) Badge(badge, Modifier.padding(top = 4.dp))
         }
+        if (info != null) IconBtn(R.drawable.ic_info, T.keysInfo, tint = if (open) p.accent else p.icon) { open = !open }
         if (trailing != null) trailing()
     }
+    if (info != null && open) InfoCard(info)
+}
+
+// A short label in a rounded plate, in place of a sentence of text.
+@Composable
+fun Badge(text: String, modifier: Modifier = Modifier) {
+    val p = LocalPalette.current
+    Text(
+        text, color = p.textSecondary, fontSize = 12.sp,
+        modifier = modifier.background(p.card, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
+    )
+}
+
+// The explanation behind an info button, opened under its row.
+@Composable
+fun InfoCard(text: String) {
+    val p = LocalPalette.current
+    Text(
+        text, color = p.textSecondary, fontSize = 13.sp, lineHeight = 18.sp,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+            .background(p.card, RoundedCornerShape(12.dp)).padding(12.dp),
+    )
 }
 
 @Composable
 fun SwitchRow(title: String, summary: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+    SettingRow(title, summary, onClick = { onChange(!checked) }, toggled = checked, trailing = { SwitchMark(checked) })
+}
+
+// The switch drawn at the end of a row; the row itself takes the taps.
+@Composable
+fun SwitchMark(checked: Boolean) {
     val p = LocalPalette.current
-    SettingRow(title, summary, onClick = { onChange(!checked) }, toggled = checked, trailing = {
-        Switch(
-            checked = checked, onCheckedChange = null,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = p.onAccent, checkedTrackColor = p.accent,
-                uncheckedThumbColor = p.icon, uncheckedTrackColor = p.card, uncheckedBorderColor = p.divider,
-            ),
-        )
-    })
+    Switch(
+        checked = checked, onCheckedChange = null,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = p.onAccent, checkedTrackColor = p.accent,
+            uncheckedThumbColor = p.icon, uncheckedTrackColor = p.card, uncheckedBorderColor = p.divider,
+        ),
+    )
 }
 
 @Composable

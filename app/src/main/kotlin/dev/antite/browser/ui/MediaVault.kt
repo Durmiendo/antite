@@ -5,22 +5,27 @@ import android.graphics.BitmapFactory
 import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.text.format.Formatter
 import android.util.LruCache
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -51,6 +56,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,9 +78,11 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.launch
 import me.saket.telephoto.zoomable.rememberZoomableState
 import me.saket.telephoto.zoomable.zoomable
 import dev.antite.browser.Browser
+import dev.antite.browser.ring
 import dev.antite.browser.DialogButton
 import dev.antite.browser.R
 import dev.antite.browser.UiDialog
@@ -93,7 +101,7 @@ fun VaultScreen(b: Browser, shown: Boolean) {
     val p = LocalPalette.current
     var filter by remember { mutableStateOf("") }
     var viewer by remember { mutableStateOf<MediaVault.Item?>(null) }
-    // The open folder; null is "All".
+    // The open folder; null is the top of the storage.
     var folder by remember { mutableStateOf<Long?>(null) }
     // Closed with the page: it comes back to the search and the grid, not to the file that was open.
     LaunchedEffect(shown) {
@@ -106,8 +114,10 @@ fun VaultScreen(b: Browser, shown: Boolean) {
     val all = b.mediaVault.items
     val folders = b.mediaVault.folders
     if (folder != null && folders.none { it.id == folder }) folder = null
-    val items = remember(all, folder) { all.filter { folder == null || it.folder == folder }.sortedByDescending { it.time } }
-    val found = remember(items, filter) { if (filter.isEmpty()) items else items.filter { it.name.contains(filter, true) } }
+    val items = remember(all, folder) { all.filter { it.folder == folder }.sortedByDescending { it.time } }
+    // The search looks through every folder.
+    val found = remember(items, all, filter) { if (filter.isEmpty()) items else all.filter { it.name.contains(filter, true) }.sortedByDescending { it.time } }
+    BackHandler(enabled = shown && viewer == null && folder != null) { folder = folders.firstOrNull { it.id == folder }?.parent }
     // Only pictures and videos open inside; other files can be restored to downloads or deleted.
     val viewable = remember(found) { found.filter(::viewable) }
     // The viewer is drawn over the grid, so closing a file returns to the same scroll position and search.
@@ -135,7 +145,9 @@ private fun VaultGrid(
     PageScaffold(T.vaultTitle, { b.overlay = dev.antite.browser.Overlay.NONE }, actions = {
         if (b.vaultOpen) IconBtn(R.drawable.ic_add, T.vaultAddFiles) { b.vaultImport(folder) }
     }) {
-        if (b.activity.getSystemService(KeyguardManager::class.java)?.isDeviceSecure != true) note(T.vaultNoLock)
+        if (!b.ring.mode.usesPassword && b.activity.getSystemService(KeyguardManager::class.java)?.isDeviceSecure != true) {
+            item { Badge(T.vaultNoLockBadge, Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
+        }
         if (!b.vaultOpen) {
             item {
                 Column(
@@ -143,22 +155,30 @@ private fun VaultGrid(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Ico(R.drawable.ic_shield_lock, size = 44, modifier = Modifier.padding(bottom = 16.dp))
-                    Text(T.vaultLocked, color = p.text, fontSize = 16.sp, modifier = Modifier.padding(bottom = 6.dp))
-                    Text(T.vaultLockedText, color = p.textSecondary, fontSize = 14.sp, lineHeight = 20.sp,
-                        modifier = Modifier.padding(horizontal = 32.dp).padding(bottom = 16.dp))
+                    Text(T.vaultLocked, color = p.text, fontSize = 16.sp, modifier = Modifier.padding(bottom = 16.dp))
                     TextButton(onClick = { b.unlockVault() }) { Text(T.vaultUnlock, color = p.accent) }
                 }
             }
             return@PageScaffold
         }
         item { SearchField(filter, onFilter) }
-        item(key = "folders") { FolderStrip(b, folder, onFolder) }
-        if (b.mediaVault.pending.isNotEmpty()) note(T.vaultEncrypting(count = b.mediaVault.pending.size))
-        if (items.isEmpty()) {
+        item(key = "path") { PathLine(b, folder, onFolder) }
+        if (b.mediaVault.pending.isNotEmpty()) item { Badge(T.vaultEncrypting, Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
+        val subfolders = if (filter.isEmpty()) b.mediaVault.folders.filter { it.parent == folder }.sortedBy { it.name.lowercase() } else emptyList()
+        if (items.isEmpty() && subfolders.isEmpty()) {
             note(if (folder == null) T.vaultEmpty else T.vaultFolderEmpty)
-            if (folder == null) note(T.vaultEmptyHint)
-        } else if (found.isEmpty()) {
+            if (folder == null) item(key = "ways") { AddWays() }
+        } else if (filter.isNotEmpty() && found.isEmpty()) {
             note(T.vaultNotFound)
+        }
+        subfolders.chunked(2).forEach { row ->
+            item(key = "folders:${row.first().id}") {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    row.forEach { f -> FolderTile(b, f, Modifier.weight(1f)) { onFolder(f.id) } }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
         }
         found.chunked(2).forEach { row ->
             item(key = "row:${row.first().id}") {
@@ -166,7 +186,7 @@ private fun VaultGrid(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     row.forEach { i ->
                         VaultTile(b, i, Modifier.weight(1f), {
-                            if (i.id in b.mediaVault.pending) b.toast(T.vaultEncrypting(count = b.mediaVault.pending.size))
+                            if (i.id in b.mediaVault.pending) b.toast(T.vaultEncrypting)
                             else if (viewable(i)) open(i) else b.vaultActions(i)
                         }, { b.vaultActions(i) })
                     }
@@ -174,41 +194,63 @@ private fun VaultGrid(
                 }
             }
         }
-        if (found.isNotEmpty()) {
-            val total = Formatter.formatShortFileSize(b.activity, found.sumOf { it.size })
-            note(T.vaultInfo(count = found.size, size = total))
+    }
+}
+
+// How files get in, as plates instead of a paragraph.
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AddWays() {
+    FlowRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(T.vaultWayAdd, T.vaultWayShare, T.vaultWayDownloads, T.vaultWayDownloadHere).forEach { Badge(it) }
+    }
+}
+
+// Where the grid is: the top of the storage and the folders down to the open one, each a step back; then a chip
+// that makes a folder here.
+@Composable
+private fun PathLine(b: Browser, folder: Long?, onFolder: (Long?) -> Unit) {
+    val p = LocalPalette.current
+    val path = b.mediaVault.path(folder)
+    LazyRow(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        item(key = "top") {
+            Text(T.vaultTitle, color = if (folder == null) p.text else p.accent, fontSize = 14.sp, maxLines = 1,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onFolder(null) }.padding(6.dp))
+        }
+        items(path, key = { it.id }) { f ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("›", color = p.textSecondary, fontSize = 14.sp)
+                Text(f.name, color = if (f.id == folder) p.text else p.accent, fontSize = 14.sp, maxLines = 1,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onFolder(f.id) }.padding(6.dp))
+            }
+        }
+        item(key = "new") {
+            Row(
+                Modifier.height(32.dp).clip(RoundedCornerShape(16.dp)).border(1.dp, p.divider, RoundedCornerShape(16.dp))
+                    .clickable { b.vaultFolderName(T.vaultFolderNew, "") { b.mediaVault.addFolder(it, folder) { f -> onFolder(f.id) } } }
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Ico(R.drawable.ic_add, p.text, 18, Modifier.padding(end = 4.dp))
+                Text(T.vaultFolderNew, color = p.text, fontSize = 14.sp, maxLines = 1)
+            }
         }
     }
 }
 
-// Folders as a strip of chips, like tab categories: "All", the folders, and a chip that makes a new one. A long press
-// on a folder renames or deletes it.
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FolderStrip(b: Browser, folder: Long?, onFolder: (Long?) -> Unit) {
+private fun FolderTile(b: Browser, f: MediaVault.Folder, modifier: Modifier, open: () -> Unit) {
     val p = LocalPalette.current
-    @Composable
-    fun chip(label: String, selected: Boolean, icon: Int? = null, onLong: (() -> Unit)? = null, onClick: () -> Unit) {
-        Row(
-            Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(if (selected) p.accent else Color.Transparent)
-                .then(if (selected) Modifier else Modifier.border(1.dp, p.divider, RoundedCornerShape(17.dp)))
-                .combinedClickable(onClick = onClick, onLongClick = onLong).padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (icon != null) Ico(icon, if (selected) p.onAccent else p.text, 18, Modifier.padding(end = 6.dp))
-            Text(label, color = if (selected) p.onAccent else p.text, fontSize = 14.sp, maxLines = 1,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
-        }
-    }
-    LazyRow(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        item(key = "all") { chip(T.tabsAll, folder == null) { onFolder(null) } }
-        items(b.mediaVault.folders, key = { it.id }) { f ->
-            chip(f.name, folder == f.id, R.drawable.ic_folder, onLong = { b.vaultFolderActions(f) }) { onFolder(f.id) }
-        }
-        item(key = "new") {
-            chip(T.vaultFolderNew, false, R.drawable.ic_add) { b.vaultFolderName(T.vaultFolderNew, "") { b.mediaVault.addFolder(it) { f -> onFolder(f.id) } } }
-        }
+    Row(
+        modifier.height(56.dp).clip(RoundedCornerShape(12.dp)).background(p.pill)
+            .combinedClickable(onClick = open, onLongClick = { b.vaultFolderActions(f) }).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Ico(R.drawable.ic_folder, size = 24, modifier = Modifier.padding(end = 10.dp))
+        Text(f.name, color = p.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -235,9 +277,7 @@ private fun VaultTile(b: Browser, i: MediaVault.Item, modifier: Modifier, open: 
 private fun VaultThumb(b: Browser, i: MediaVault.Item, modifier: Modifier) {
     // Asked again once a file from before the encryption has been encrypted.
     val thumb by produceState(vaultThumbs.get(i.id), i.id, i.id in b.mediaVault.pending) {
-        if (value == null) value = withContext(Dispatchers.IO) {
-            runCatching { decode(b.mediaVault, i) }.getOrNull()?.also { vaultThumbs.put(i.id, it) }
-        }
+        if (value == null) value = withContext(Dispatchers.IO) { thumbnail(b.mediaVault, i) }?.also { vaultThumbs.put(i.id, it) }
     }
     val bmp = thumb
     if (bmp != null) {
@@ -302,16 +342,32 @@ private fun VaultViewer(b: Browser, start: MediaVault.Item, onClose: () -> Unit,
             delay(150)
         }
     }
+    val scope = rememberCoroutineScope()
+    // A tap on the page hides or shows the controls, as in a gallery.
+    var controls by remember { mutableStateOf(true) }
+    fun go(delta: Int) {
+        val target = pager.currentPage + delta
+        if (target in 0 until list.size) scope.launch { pager.animateScrollToPage(target) }
+    }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        HorizontalPager(state = pager, key = { list[it].id }, modifier = Modifier.fillMaxSize()) { page ->
+        HorizontalPager(state = pager, key = { list[it].id },
+            modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { controls = !controls } }) { page ->
             val i = list[page]
             if (i.mime.startsWith("video/")) {
                 VideoPage(player, page == pager.currentPage)
             } else {
-                ZoomableImage(b.mediaVault, i)
+                ZoomableImage(b.mediaVault, i) { controls = !controls }
             }
         }
-        Row(
+        if (controls && pager.currentPage > 0) Box(Modifier.align(Alignment.CenterStart).padding(4.dp)
+            .background(Color(0x66000000), RoundedCornerShape(24.dp))) {
+            IconBtn(R.drawable.ic_chevron_left, T.vaultPrevious, tint = Color.White) { go(-1) }
+        }
+        if (controls && pager.currentPage < list.size - 1) Box(Modifier.align(Alignment.CenterEnd).padding(4.dp)
+            .background(Color(0x66000000), RoundedCornerShape(24.dp))) {
+            IconBtn(R.drawable.ic_chevron_right, T.vaultNext, tint = Color.White) { go(1) }
+        }
+        if (controls) Row(
             Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -323,16 +379,19 @@ private fun VaultViewer(b: Browser, start: MediaVault.Item, onClose: () -> Unit,
             }
         }
         val i = current
-        if (i != null && i.mime.startsWith("video/")) {
+        if (controls && i != null && i.mime.startsWith("video/")) {
             Row(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 20.dp),
+                    .background(Color(0x66000000)).padding(horizontal = 8.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                IconBtn(R.drawable.ic_replay_10, T.vaultBack10, tint = Color.White) { player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)) }
                 IconBtn(if (playing) R.drawable.ic_pause else R.drawable.ic_play,
                     if (playing) T.vaultPause else T.vaultPlay, tint = Color.White) {
                     if (playing) player.pause() else player.play()
                 }
+                IconBtn(R.drawable.ic_forward_10, T.vaultForward10, tint = Color.White) { player.seekTo(player.currentPosition + 10_000) }
+                Text(time(posMs), color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 4.dp))
                 var drag by remember { mutableFloatStateOf(-1f) }
                 Slider(
                     value = if (drag >= 0) drag else if (durMs > 0) posMs.toFloat() / durMs else 0f,
@@ -345,9 +404,15 @@ private fun VaultViewer(b: Browser, start: MediaVault.Item, onClose: () -> Unit,
                         thumbColor = p.accent, activeTrackColor = p.accent, inactiveTrackColor = Color(0x40FFFFFF)),
                     modifier = Modifier.weight(1f),
                 )
+                Text(time(durMs), color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp))
             }
         }
     }
+}
+
+private fun time(ms: Long): String {
+    val s = ms / 1000
+    return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
 }
 
 @OptIn(UnstableApi::class)
@@ -371,7 +436,7 @@ private fun VideoPage(player: ExoPlayer, current: Boolean) {
 }
 
 @Composable
-private fun ZoomableImage(vault: MediaVault, item: MediaVault.Item) {
+private fun ZoomableImage(vault: MediaVault, item: MediaVault.Item, onTap: () -> Unit) {
     val bmp by produceState<ImageBitmap?>(null, item.id) {
         if (value == null) value = withContext(Dispatchers.IO) { runCatching { decode(vault, item, 2048) }.getOrNull() }
     }
@@ -384,8 +449,18 @@ private fun ZoomableImage(vault: MediaVault, item: MediaVault.Item) {
     }
     val zoom = rememberZoomableState()
     Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-        Image(b, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().zoomable(zoom))
+        Image(b, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().zoomable(zoom, onClick = { onTap() }))
     }
+}
+
+// The stored preview, or one made now from the file and stored for the next time.
+private fun thumbnail(vault: MediaVault, item: MediaVault.Item): ImageBitmap? {
+    vault.thumb(item)?.let { bytes -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { return it.asImageBitmap() } }
+    val made = runCatching { decode(vault, item, 320) }.getOrNull() ?: return null
+    val out = java.io.ByteArrayOutputStream()
+    made.asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+    vault.saveThumb(item, out.toByteArray())
+    return made
 }
 
 private fun viewable(i: MediaVault.Item) = i.mime.startsWith("image/") || i.mime.startsWith("video/")
@@ -466,10 +541,7 @@ private class VaultDataSource(private val vault: MediaVault) : BaseDataSource(fa
 // Tap a tile: the file is not opened in other apps from here, it either goes back to downloads or is deleted.
 fun Browser.vaultActions(i: MediaVault.Item) {
     show(UiDialog.Items(i.name, listOfNotNull(
-        DialogButton(T.vaultToFolder) {
-            show(UiDialog.Items(T.vaultToFolder, listOf(DialogButton(T.vaultNoFolder) { mediaVault.move(i, null) }) +
-                mediaVault.folders.map { f -> DialogButton(f.name) { mediaVault.move(i, f.id) } }))
-        }.takeIf { mediaVault.folders.isNotEmpty() },
+        DialogButton(T.vaultToFolder) { pickFolder { mediaVault.move(i, it) } }.takeIf { mediaVault.folders.isNotEmpty() },
         DialogButton(T.vaultRestore) {
             mediaVault.restore(i) { ok ->
                 downloads.revision.intValue++
@@ -493,9 +565,18 @@ fun Browser.vaultFolderName(title: String, name: String, done: (String) -> Unit)
     }))
 }
 
+// Every folder by its full path, and the top of the storage.
+private fun Browser.pickFolder(except: Long? = null, done: (Long?) -> Unit) {
+    val list = mediaVault.folders.filter { it.id != except }
+        .map { f -> mediaVault.path(f.id).joinToString(" › ") { it.name } to f.id }.sortedBy { it.first.lowercase() }
+    show(UiDialog.Items(T.vaultToFolder, listOf(DialogButton(T.vaultNoFolder) { done(null) }) +
+        list.map { (name, id) -> DialogButton(name) { done(id) } }))
+}
+
 fun Browser.vaultFolderActions(f: MediaVault.Folder) {
     show(UiDialog.Items(f.name, listOf(
         DialogButton(T.vaultFolderRename) { vaultFolderName(T.vaultFolderRename, f.name) { mediaVault.renameFolder(f, it) } },
+        DialogButton(T.vaultToFolder) { pickFolder(f.id) { mediaVault.moveFolder(f, it) } },
         DialogButton(T.vaultFolderDelete) { confirm(T.vaultFolderDeleteConfirm(name = f.name), T.actionDelete) { mediaVault.deleteFolder(f) } },
     )))
 }

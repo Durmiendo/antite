@@ -6,60 +6,70 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.RandomAccessFile
-import java.io.SequenceInputStream
 import java.nio.ByteBuffer
-import java.security.SecureRandom
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
-// The format of a file in the secure storage (docs/decisions/0006): a header with the file's own key wrapped by the
-// device key, then AES-256-GCM chunks of 64 KiB that can be read from any position.
+// The format of a file in the secure storage (docs/decisions/0006, 0008): a 70-byte header naming the cipher, then
+// chunks of 64 KiB, each sealed on its own, so the file can be read from any position. The file's key lives in the
+// vault index. Version 1 files carried their key in the header, wrapped by the old device key; they are read only
+// to move them over, which takes a header rewrite: their AES chunks are the same as in version 2.
 object VaultFile {
     const val CHUNK = 64 * 1024
-    const val TAG = 16
     const val HEADER = 70
-    private const val VERSION = 1
-    private const val KEY_DEVICE = 1
-    private const val KEY_OPEN = 2
-    private const val KEY_SLOT = 63
+    private const val VERSION = 2
+    private const val V1_KEY_DEVICE = 1
+    private const val V1_KEY_OPEN = 2
+    private const val V1_KEY_SLOT = 63
     private val MAGIC = byteArrayOf('A'.code.toByte(), 'V'.code.toByte(), 'L'.code.toByte(), 'T'.code.toByte())
 
-    // How a file key is wrapped for this device and unwrapped again.
-    class Keys(val wrap: (ByteArray) -> ByteArray, val unwrap: (ByteArray) -> ByteArray)
+    class Head(val version: Int, val cipher: Cipher256, val v1Form: Int = 0, val v1Blob: ByteArray = ByteArray(0))
 
-    private fun header(form: Int, blob: ByteArray): ByteArray {
-        if (blob.size > KEY_SLOT) throw IOException("key blob too long: ${blob.size}")
-        return ByteBuffer.allocate(HEADER).put(MAGIC).put(VERSION.toByte()).put(form.toByte()).put(blob.size.toByte())
-            .put(blob).array()
-    }
+    private fun header(cipher: Cipher256) =
+        ByteBuffer.allocate(HEADER).put(MAGIC).put(VERSION.toByte()).put(cipher.id.toByte()).array()
 
-    private class Head(val form: Int, val blob: ByteArray)
-
-    private fun parse(h: ByteArray): Head {
+    fun head(h: ByteArray): Head {
         if (h.size < HEADER || !h.copyOf(4).contentEquals(MAGIC)) throw IOException("not a vault file")
-        if (h[4].toInt() != VERSION) throw IOException("unsupported vault file version ${h[4]}")
-        val n = h[6].toInt()
-        if (n !in 1..KEY_SLOT) throw IOException("bad key blob")
-        return Head(h[5].toInt(), h.copyOfRange(7, 7 + n))
+        return when (h[4].toInt()) {
+            1 -> {
+                val n = h[6].toInt()
+                if (n !in 1..V1_KEY_SLOT) throw IOException("bad key blob")
+                Head(1, Cipher256.AES, h[5].toInt(), h.copyOfRange(7, 7 + n))
+            }
+            VERSION -> Head(VERSION, Cipher256.of(h[5].toInt()))
+            else -> throw IOException("unsupported vault file version ${h[4]}")
+        }
     }
 
-    private fun key(head: Head, keys: Keys): ByteArray = when (head.form) {
-        KEY_DEVICE -> keys.unwrap(head.blob)
-        else -> throw IOException("vault file key is not for this device")
+    fun head(file: File): Head = RandomAccessFile(file, "r").use { raf -> ByteArray(HEADER).also { raf.readFully(it) }.let(::head) }
+
+    // The key of a version 1 file, as a 64-byte key of this format. unwrap opens the old device-wrapped form.
+    fun v1Key(head: Head, unwrap: (ByteArray) -> ByteArray): ByteArray {
+        val k = when (head.v1Form) {
+            V1_KEY_DEVICE -> unwrap(head.v1Blob)
+            V1_KEY_OPEN -> head.v1Blob
+            else -> throw IOException("unknown key form ${head.v1Form}")
+        }
+        return k.copyOf(Cipher256.KEY).also { k.fill(0) }
     }
 
-    private fun crypt(mode: Int, key: ByteArray, index: Long, last: Boolean, data: ByteArray, off: Int, len: Int): ByteArray {
-        val c = Cipher.getInstance("AES/GCM/NoPadding")
-        c.init(mode, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG * 8, ByteBuffer.allocate(12).putLong(index).array()))
-        c.updateAAD(ByteBuffer.allocate(14).put(MAGIC).put(VERSION.toByte()).putLong(index).put(if (last) 1 else 0).array())
-        return c.doFinal(data, off, len)
+    // A version 1 file becomes a version 2 one: its chunks are already AES under the same key and nonces.
+    fun upgradeHeader(file: File) {
+        RandomAccessFile(file, "rw").use { raf ->
+            raf.seek(0)
+            raf.write(header(Cipher256.AES))
+            raf.fd.sync()
+        }
     }
 
-    // Encrypts what is written; the file is complete only after close().
-    fun writer(out: OutputStream, keys: Keys): OutputStream {
-        val key = ByteArray(32).also { SecureRandom().nextBytes(it) }
-        out.write(header(KEY_DEVICE, keys.wrap(key)))
+    // Chunk nonces only need to differ within a file: every file has its own random key.
+    private fun nonce(index: Long) = ByteBuffer.allocate(24).putLong(index).array()
+
+    // The same associated data as version 1, so its chunks stay valid.
+    private fun aad(index: Long, last: Boolean) =
+        ByteBuffer.allocate(14).put(MAGIC).put(1).putLong(index).put(if (last) 1 else 0).array()
+
+    // Encrypts what is written; the file is complete only after close(). The key is the caller's to wipe.
+    fun writer(out: OutputStream, cipher: Cipher256, key: ByteArray): OutputStream {
+        out.write(header(cipher))
         return object : OutputStream() {
             private val buf = ByteArray(CHUNK)
             private var filled = 0
@@ -83,7 +93,8 @@ object VaultFile {
             }
 
             private fun flushChunk(last: Boolean) {
-                out.write(crypt(Cipher.ENCRYPT_MODE, key, index++, last, buf, 0, filled))
+                out.write(Ciphers.seal(cipher, key, nonce(index), aad(index, last), buf, 0, filled))
+                index++
                 filled = 0
             }
 
@@ -93,22 +104,26 @@ object VaultFile {
                 if (closed) return
                 closed = true
                 flushChunk(true)
+                buf.fill(0)
                 out.close()
             }
         }
     }
 
     // The length of the content of a complete file of this size.
-    fun plainLength(fileLength: Long): Long {
+    fun plainLength(fileLength: Long, cipher: Cipher256): Long {
+        val tag = cipher.overhead
         val body = fileLength - HEADER
-        if (body < TAG) throw IOException("vault file too short")
-        val chunks = (body + CHUNK + TAG - 1) / (CHUNK + TAG)
-        return body - chunks * TAG
+        if (body < tag) throw IOException("vault file too short")
+        val chunks = (body + CHUNK + tag - 1) / (CHUNK + tag)
+        return body - chunks * tag
     }
 
-    class Reader(file: File, keys: Keys) : Closeable {
+    // Reads with a copy of the key, wiped on close().
+    class Reader(file: File, key: ByteArray) : Closeable {
         private val raf = RandomAccessFile(file, "r")
-        private val key: ByteArray
+        private val key = key.copyOf()
+        private val cipher: Cipher256
         val length: Long
         private val chunks: Long
         private var cached = -1L
@@ -118,11 +133,11 @@ object VaultFile {
             try {
                 val h = ByteArray(HEADER)
                 raf.readFully(h)
-                key = key(parse(h), keys)
-                length = plainLength(raf.length())
+                cipher = head(h).cipher
+                length = plainLength(raf.length(), cipher)
                 chunks = maxOf(1, (length + CHUNK - 1) / CHUNK)
             } catch (e: Exception) {
-                raf.close()
+                close()
                 throw e
             }
         }
@@ -130,14 +145,15 @@ object VaultFile {
         private fun load(index: Long) {
             if (index == cached) return
             val last = index == chunks - 1
-            val size = (if (last) length - index * CHUNK else CHUNK.toLong()).toInt() + TAG
-            if (size < TAG) throw IOException("vault file is damaged at chunk $index")
+            val size = (if (last) length - index * CHUNK else CHUNK.toLong()).toInt() + cipher.overhead
+            if (size < cipher.overhead) throw IOException("vault file is damaged at chunk $index")
             val data = ByteArray(size)
-            raf.seek(HEADER + index * (CHUNK + TAG))
+            raf.seek(HEADER + index * (CHUNK + cipher.overhead))
             raf.readFully(data)
+            plain.fill(0)
             plain = try {
-                crypt(Cipher.DECRYPT_MODE, key, index, last, data, 0, size)
-            } catch (e: java.security.GeneralSecurityException) {
+                Ciphers.open(cipher, key, nonce(index), aad(index, last), data, 0, size)
+            } catch (e: IOException) {
                 throw IOException("vault file is damaged at chunk $index", e)
             }
             cached = index
@@ -171,32 +187,30 @@ object VaultFile {
         }
 
         @Synchronized
-        override fun close() = raf.close()
-    }
-
-    // For the backup file: the same file with its key in the open, readable on any device. The backup itself is
-    // encrypted, so the open key never lies on the disk.
-    fun forBackup(file: File, keys: Keys): InputStream {
-        val input = file.inputStream()
-        try {
-            val h = ByteArray(HEADER)
-            if (input.readNBytes(h, 0, HEADER) != HEADER) throw IOException("vault file too short")
-            return SequenceInputStream(header(KEY_OPEN, key(parse(h), keys)).inputStream(), input)
-        } catch (e: Exception) {
-            input.close()
-            throw e
+        override fun close() {
+            key.fill(0)
+            plain.fill(0)
+            raf.close()
         }
     }
 
-    // After a restore: the open key is wrapped for this device, in place.
-    fun adopt(file: File, keys: Keys) {
-        RandomAccessFile(file, "rw").use { raf ->
-            val h = ByteArray(HEADER)
-            raf.readFully(h)
-            val head = parse(h)
-            if (head.form != KEY_OPEN) throw IOException("vault file key is not open")
-            raf.seek(0)
-            raf.write(header(KEY_DEVICE, keys.wrap(head.blob)))
+    // Overwrites the file with zeros and syncs before it is deleted. On flash memory this guarantees nothing by
+    // itself; the guarantee comes from destroying the key (docs/decisions/0008).
+    fun wipe(file: File) {
+        if (!file.exists()) return
+        runCatching {
+            RandomAccessFile(file, "rw").use { raf ->
+                val zeros = ByteArray(CHUNK)
+                var left = raf.length()
+                raf.seek(0)
+                while (left > 0) {
+                    val n = minOf(left, CHUNK.toLong()).toInt()
+                    raf.write(zeros, 0, n)
+                    left -= n
+                }
+                raf.fd.sync()
+            }
         }
+        file.delete()
     }
 }

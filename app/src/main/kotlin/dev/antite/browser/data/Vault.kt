@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
+import android.util.Base64
 import dev.antite.browser.Urls
 import dev.antite.engine.Address
 import dev.antite.engine.Card
@@ -27,7 +28,13 @@ data class SavedCard(val guid: String, val name: String?, val last4: String, val
     val label: String get() = "•••• $last4" + if (month.isNullOrEmpty()) "" else "  $month/$year"
 }
 
-class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "vault.db", null, VERSION) {
+// Passwords, addresses and cards. The secret part of each row is sealed by the "secrets" data key of the key ring
+// (docs/decisions/0008); deleting or changing one replaces that key, so the old value cannot be read from any copy.
+class Vault private constructor(private val context: Context) : SQLiteOpenHelper(context, "vault.db", null, VERSION) {
+    private val ring = Secure.ring(context)
+    private val cipher = { Secure.cipher(context) }
+    private var ready = false
+
     companion object {
         const val VERSION = 1
         @Volatile
@@ -46,6 +53,32 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
 
         private fun newGuid() = "{${UUID.randomUUID()}}"
 
+        val SECRET_COLUMNS = listOf("logins" to "password", "addresses" to "data", "cards" to "number")
+        private val AAD = "antite-secret".toByteArray()
+
+        // A value of the version before the key ring: base64 of the IV length (always 12), the IV, the sealed bytes.
+        private fun isLegacy(raw: ByteArray) = raw.isNotEmpty() && raw[0].toInt() == 12
+
+        fun seal(key: ByteArray, cipher: Cipher256, plain: String): String {
+            val bytes = plain.toByteArray(Charsets.UTF_8)
+            try {
+                return Base64.encodeToString(Ciphers.box(cipher, key, bytes, AAD), Base64.NO_WRAP)
+            } finally {
+                bytes.fill(0)
+            }
+        }
+
+        fun open(key: ByteArray, stored: String): String {
+            val raw = Base64.decode(stored, Base64.NO_WRAP)
+            if (isLegacy(raw)) return Crypto.decrypt(stored) ?: throw IOException("legacy value unreadable")
+            val plain = Ciphers.unbox(key, raw, AAD)
+            try {
+                return String(plain, Charsets.UTF_8)
+            } finally {
+                plain.fill(0)
+            }
+        }
+
         private val ADDRESS_KEYS = listOf(
             "name", "givenName", "additionalName", "familyName", "organization", "streetAddress",
             "addressLevel1", "addressLevel2", "addressLevel3", "postalCode", "country", "tel", "email",
@@ -54,6 +87,81 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
 
     init {
         setWriteAheadLoggingEnabled(true)
+    }
+
+    // Deleted rows are overwritten in the file, not only unlinked.
+    override fun onConfigure(db: SQLiteDatabase) {
+        db.rawQuery("PRAGMA secure_delete=ON", null).use { it.moveToFirst() }
+    }
+
+    // The secrets key; on first use also finishes a stopped key replacement and moves values of the version before
+    // the key ring over. Throws KeyRing.LockedException while a password is needed.
+    private fun key(): ByteArray {
+        if (!ready) {
+            ring.recover(KeyRing.SECRETS) { k -> firstValue()?.let { v -> runCatching { open(k, v) }.isSuccess } ?: true }
+            val k = ring.key(KeyRing.SECRETS)
+            var left = 0
+            rewrite { v ->
+                if (!isLegacy(Base64.decode(v, Base64.NO_WRAP))) null
+                else runCatching { seal(k, cipher(), open(k, v)) }.getOrNull().also { if (it == null) left++ }
+            }
+            if (left == 0) Secure.legacyMoved(context, "secrets")
+            ready = true
+        }
+        return ring.key(KeyRing.SECRETS)
+    }
+
+    // Values of the version before the key ring start with "D" in base64 (their first byte is 12).
+    private fun firstValue(): String? {
+        for ((table, column) in SECRET_COLUMNS) {
+            val v = readableDatabase.rawQuery("SELECT $column FROM $table WHERE substr($column, 1, 1) != 'D' LIMIT 1", null)
+                .use { if (it.moveToFirst()) it.getString(0) else null }
+            if (v != null) return v
+        }
+        return null
+    }
+
+    // Every secret value through transform (null keeps it), in one transaction; the old pages leave the WAL.
+    private fun rewrite(transform: (String) -> String?) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for ((table, column) in SECRET_COLUMNS) {
+                val rows = db.rawQuery("SELECT guid, $column FROM $table", null).use { c ->
+                    buildList { while (c.moveToNext()) add(c.getString(0) to c.getString(1)) }
+                }
+                for ((guid, value) in rows) {
+                    val v = transform(value) ?: continue
+                    db.execSQL("UPDATE $table SET $column=? WHERE guid=?", arrayOf(v, guid))
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+    }
+
+    // After a delete or a change: everything is sealed again under a new key and the old key is destroyed.
+    private fun forget() {
+        key()
+        ring.rotate(KeyRing.SECRETS) { old, fresh -> rewrite { v -> seal(fresh, cipher(), open(old, v)) } }
+    }
+
+    // A new cipher setting: values are sealed again, under a new key as well.
+    fun recrypt() = forget()
+
+    private fun encrypt(plain: String) = seal(key(), cipher(), plain)
+
+    private fun decrypt(stored: String?): String? {
+        if (stored == null) return null
+        val k = key()
+        return try {
+            open(k, stored)
+        } catch (e: IOException) {
+            android.util.Log.w("Antite", "secret unreadable", e)
+            null
+        }
     }
 
     suspend fun <T> io(block: Vault.() -> T): T = withContext(dispatcher) { block() }
@@ -84,7 +192,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
         ).use { c ->
             buildList {
                 while (c.moveToNext()) {
-                    val pass = Crypto.decrypt(c.getString(5)) ?: continue
+                    val pass = decrypt(c.getString(5)) ?: continue
                     add(Login(c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), pass))
                 }
             }
@@ -105,7 +213,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
 
     fun password(guid: String): String? =
         readableDatabase.rawQuery("SELECT password FROM logins WHERE guid=?", arrayOf(guid))
-            .use { if (it.moveToFirst()) Crypto.decrypt(it.getString(0)) else null }
+            .use { if (it.moveToFirst()) decrypt(it.getString(0)) else null }
 
     fun existing(origin: String, username: String?): SavedLogin? =
         readableDatabase.rawQuery(
@@ -122,7 +230,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
             put("form_action", e.formActionOrigin)
             put("http_realm", e.httpRealm)
             put("username", e.username)
-            put("password", Crypto.encrypt(e.password))
+            put("password", encrypt(e.password))
             put("used", now)
         }
         val db = writableDatabase
@@ -136,8 +244,9 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
     fun editLogin(guid: String, username: String, password: String) {
         writableDatabase.update("logins", ContentValues().apply {
             put("username", username)
-            put("password", Crypto.encrypt(password))
+            put("password", encrypt(password))
         }, "guid=?", arrayOf(guid))
+        forget()
     }
 
     fun loginUsed(guid: String?) {
@@ -148,6 +257,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
 
     fun deleteLogin(guid: String) {
         writableDatabase.delete("logins", "guid=?", arrayOf(guid))
+        forget()
     }
 
     fun isNever(origin: String): Boolean =
@@ -169,7 +279,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
         readableDatabase.rawQuery("SELECT guid, data FROM addresses ORDER BY used DESC", null).use { c ->
             buildList {
                 while (c.moveToNext()) {
-                    val json = Crypto.decrypt(c.getString(1)) ?: continue
+                    val json = decrypt(c.getString(1)) ?: continue
                     runCatching { add(addressFromJson(c.getString(0), JSONObject(json))) }
                 }
             }
@@ -177,7 +287,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
 
     fun saveAddress(a: Address) {
         val v = ContentValues().apply {
-            put("data", Crypto.encrypt(addressToJson(a).toString()))
+            put("data", encrypt(addressToJson(a).toString()))
             put("used", System.currentTimeMillis())
         }
         val db = writableDatabase
@@ -188,6 +298,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
 
     fun deleteAddress(guid: String) {
         writableDatabase.delete("addresses", "guid=?", arrayOf(guid))
+        forget()
     }
 
     fun cards(): List<SavedCard> =
@@ -201,7 +312,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
         readableDatabase.rawQuery("SELECT guid, name, number, month, year FROM cards ORDER BY used DESC", null).use { c ->
             buildList {
                 while (c.moveToNext()) {
-                    val number = Crypto.decrypt(c.getString(2)) ?: continue
+                    val number = decrypt(c.getString(2)) ?: continue
                     add(Card(c.getString(0), c.getString(1) ?: "", number, c.getString(3) ?: "", c.getString(4) ?: ""))
                 }
             }
@@ -212,7 +323,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
         if (digits.length < 12) return
         val v = ContentValues().apply {
             put("name", card.name)
-            put("number", Crypto.encrypt(digits))
+            put("number", encrypt(digits))
             put("last4", digits.takeLast(4))
             put("month", card.expirationMonth)
             put("year", card.expirationYear)
@@ -226,6 +337,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
 
     fun deleteCard(guid: String) {
         writableDatabase.delete("cards", "guid=?", arrayOf(guid))
+        forget()
     }
 
     private fun addressValues(a: Address) = listOf(
@@ -284,7 +396,7 @@ class Vault private constructor(context: Context) : SQLiteOpenHelper(context, "v
         var n = 0
         readableDatabase.rawQuery("SELECT host, origin, username, password FROM logins ORDER BY host", null).use { c ->
             while (c.moveToNext()) {
-                val pass = Crypto.decrypt(c.getString(3)) ?: continue
+                val pass = decrypt(c.getString(3)) ?: continue
                 w.write(Csv.row(c.getString(0), c.getString(1), c.getString(2), pass, ""))
                 n++
             }

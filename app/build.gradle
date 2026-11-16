@@ -85,6 +85,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-process:2.11.0'
     implementation 'com.google.android.gms:play-services-fido:21.3.1'
     implementation 'org.yaml:snakeyaml:2.2'
+    implementation 'com.lambdapioneer.argon2kt:argon2kt:1.6.0'
     implementation 'androidx.media3:media3-common:1.11.1'
     implementation 'androidx.media3:media3-datasource:1.11.1'
     implementation 'androidx.media3:media3-decoder:1.11.1'

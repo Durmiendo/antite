@@ -8,11 +8,11 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
-import dev.antite.browser.Auth
 import dev.antite.browser.Browser
 import dev.antite.browser.DialogButton
 import dev.antite.browser.FormField
 import dev.antite.browser.UiDialog
+import dev.antite.browser.unlockSecrets
 import dev.antite.browser.data.SavedLogin
 import dev.antite.browser.l10n.T
 import dev.antite.engine.Address
@@ -34,7 +34,7 @@ internal fun PasswordsPage(b: Browser, nav: Nav) {
         logins.forEach { l ->
             item(key = l.guid) {
                 SettingRow(l.host, l.username.ifEmpty { T.passwordNoUsername }, onClick = {
-                    Auth.require(b.activity, T.passwordsShow, { nav.push(l.host) { LoginPage(b, it, l) } }, {})
+                    b.unlockSecrets(T.passwordsShow, { nav.push(l.host) { LoginPage(b, it, l) } }, {})
                 })
             }
         }
@@ -52,7 +52,7 @@ internal fun PasswordsPage(b: Browser, nav: Nav) {
         item { SettingRow(T.passwordsImport, T.passwordsImportSummary, onClick = { importCsv(b) { revision++ } }) }
         item {
             SettingRow(T.passwordsExport, T.passwordsExportSummary, onClick = {
-                Auth.require(b.activity, T.passwordsExportAuth, { exportCsv(b) }, {})
+                b.unlockSecrets(T.passwordsExportAuth, { exportCsv(b) }, {})
             })
         }
     }
@@ -143,7 +143,7 @@ internal fun CardsPage(b: Browser, nav: Nav) {
                 SettingRow(c.label, c.name, onClick = {
                     b.show(UiDialog.Items(c.label, listOf(
                         DialogButton(T.actionEdit) {
-                            Auth.require(b.activity, T.cardEdit, {
+                            b.unlockSecrets(T.cardEdit, {
                                 b.activity.lifecycleScope.launch {
                                     b.vault.io { fullCards() }.firstOrNull { it.guid == c.guid }?.let(::form)
                                 }
