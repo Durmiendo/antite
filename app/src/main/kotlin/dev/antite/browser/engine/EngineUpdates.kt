@@ -68,9 +68,19 @@ object EngineUpdates {
 
     private class Fetched(val engine: Offer?, val shell: ShellOffer?)
 
+    // An index is a few KB; a source answering with endless data must not fill the memory.
+    private const val MAX_INDEX_BYTES = 1 shl 20
+    private const val MAX_SIG_BYTES = 4096
+
+    internal fun readLimited(input: InputStream, max: Int): ByteArray {
+        val bytes = input.readNBytes(max + 1)
+        if (bytes.size > max) throw IOException("response larger than $max bytes")
+        return bytes
+    }
+
     private fun fetch(context: Context, source: Source): Fetched {
-        val json = fetcher.open(source.url).use(InputStream::readBytes)
-        val sig = fetcher.open("${source.url}.sig").use(InputStream::readBytes)
+        val json = fetcher.open(source.url).use { readLimited(it, MAX_INDEX_BYTES) }
+        val sig = fetcher.open("${source.url}.sig").use { readLimited(it, MAX_SIG_BYTES) }
         val st = state(context)
         val key = "serial.${source.id}"
         val index = EngineIndex.verify(json, sig, EngineIndex.publicKey(source.key), st.getLong(key, 0))
@@ -108,7 +118,7 @@ object EngineUpdates {
     // Debug mode: what an index at any address offers, without checking its signature; nothing is remembered.
     fun fromAddress(context: Context, url: String): Updates {
         if (!debugEnabled(context)) throw IOException(T.engineDebugOff)
-        val index = EngineIndex.unsigned(debugFetcher.open(url).use(InputStream::readBytes))
+        val index = EngineIndex.unsigned(debugFetcher.open(url).use { readLimited(it, MAX_INDEX_BYTES) })
         val abi = Abi.current ?: throw IOException(T.engineUnknownAbi(arch = System.getProperty("os.arch")))
         val source = Source("debug", T.engineDebugSource, url, "", enabled = false)
         val engine = index.choose(abi, dev.antite.engine.BuildConfig.ENGINE_API, BuildConfig.VERSION_CODE)?.let { Offer(it, abi, source) }
