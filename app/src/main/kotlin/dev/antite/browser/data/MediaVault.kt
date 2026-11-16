@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -84,9 +85,9 @@ class MediaVault(private val context: Context) {
                 save()
             }.isSuccess
             if (!ok) file(item).delete()
-            else if (deleteOriginal) {
-                runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) }
-                Db.get(context).io { deleteDownload(e.id) }
+            else if (deleteOriginal && deleteFile(Uri.parse(uri))) {
+                // The row stays while its file does, so the downloads list keeps showing what is on the device.
+                runCatching { Db.get(context).io { deleteDownload(e.id) } }
             }
             main.post { done(ok) }
             refresh()
@@ -115,9 +116,12 @@ class MediaVault(private val context: Context) {
                 target
             }.getOrNull()
             if (uri != null) {
-                Db.get(context).io {
-                    val id = addDownload(item.name, item.mime, item.source)
-                    finishDownload(id, uri.toString(), DownloadService.DONE, item.size)
+                // The file is back in Downloads either way; only its row in the list may be missing.
+                runCatching {
+                    Db.get(context).io {
+                        val id = addDownload(item.name, item.mime, item.source)
+                        finishDownload(id, uri.toString(), DownloadService.DONE, item.size)
+                    }
                 }
                 remove(item)
             }
@@ -133,6 +137,13 @@ class MediaVault(private val context: Context) {
             refresh()
         }
     }
+
+    // A file saved where the user chose is a document (SAF), which ContentResolver.delete does not remove.
+    private fun deleteFile(uri: Uri): Boolean = runCatching {
+        val cr = context.contentResolver
+        if (DocumentsContract.isDocumentUri(context, uri)) DocumentsContract.deleteDocument(cr, uri)
+        else cr.delete(uri, null, null) > 0
+    }.getOrDefault(false)
 
     // The private copy goes with the entry: nothing hidden stays behind after a restore or a delete.
     private fun remove(item: Item) {
