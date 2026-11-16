@@ -56,6 +56,11 @@ class Downloads(private val b: Browser) {
     }
 
     private fun save(body: InputStream, name: String, mime: String, chosen: Uri?, total: Long, source: String) {
+        // Without it "Open" stops working for a file saved where the user chose once the device restarts.
+        if (chosen != null) runCatching {
+            b.activity.contentResolver.takePersistableUriPermission(chosen,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
         b.toast(T.downloadStarted(name = name))
         askNotifications()
         b.activity.lifecycleScope.launch {
