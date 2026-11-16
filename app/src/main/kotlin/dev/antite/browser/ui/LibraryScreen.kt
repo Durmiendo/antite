@@ -1,19 +1,13 @@
 package dev.antite.browser.ui
 
 import android.text.format.DateUtils
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,10 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.Browser
 import dev.antite.browser.DialogButton
@@ -179,24 +170,7 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
         PageScaffold(title, { b.overlay = dev.antite.browser.Overlay.NONE }, actions = {
             if (kind != LibraryKind.BOOKMARKS) TextButton(onClick = ::clearAll) { Text(T.actionClear, color = p.accent) }
         }) {
-            item {
-                Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().height(44.dp)
-                        .background(p.pill, RoundedCornerShape(22.dp)).padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Ico(R.drawable.ic_search, size = 20)
-                    BasicTextField(filter, { filter = it }, singleLine = true, cursorBrush = SolidColor(p.accent),
-                        textStyle = TextStyle(color = p.text, fontSize = 16.sp),
-                        modifier = Modifier.weight(1f).padding(start = 10.dp),
-                        decorationBox = { inner ->
-                            Box(contentAlignment = Alignment.CenterStart) {
-                                if (filter.isEmpty()) Text(T.librarySearch, color = p.textSecondary, fontSize = 16.sp)
-                                inner()
-                            }
-                        })
-                }
-            }
+            item { SearchField(filter) { filter = it } }
             if (loaded && items.isEmpty()) note(empty)
             if (kind == LibraryKind.DOWNLOADS && b.prefs.int("dlLayout", 0) == 1) {
                 downloadBlocks(b, items, { open(it, false) }, ::actions)

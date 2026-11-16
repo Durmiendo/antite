@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.RadioButton
@@ -35,7 +37,9 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,10 +53,32 @@ fun Ico(@DrawableRes res: Int, tint: Color = LocalPalette.current.icon, size: In
 }
 
 @Composable
-fun IconBtn(@DrawableRes res: Int, description: String, enabled: Boolean = true, onClick: () -> Unit) {
+fun IconBtn(@DrawableRes res: Int, description: String, enabled: Boolean = true, tint: Color? = null, onClick: () -> Unit) {
     val p = LocalPalette.current
     IconButton(onClick = onClick, enabled = enabled) {
-        Icon(painterResource(res), contentDescription = description, tint = if (enabled) p.icon else p.iconDisabled)
+        Icon(painterResource(res), contentDescription = description, tint = tint ?: if (enabled) p.icon else p.iconDisabled)
+    }
+}
+
+// The rounded search row above a list (library pages, secure storage).
+@Composable
+fun SearchField(value: String, onChange: (String) -> Unit) {
+    val p = LocalPalette.current
+    Row(
+        Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().height(44.dp)
+            .background(p.pill, RoundedCornerShape(22.dp)).padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Ico(R.drawable.ic_search, size = 20)
+        BasicTextField(value, onChange, singleLine = true, cursorBrush = SolidColor(p.accent),
+            textStyle = TextStyle(color = p.text, fontSize = 16.sp),
+            modifier = Modifier.weight(1f).padding(start = 10.dp),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Text(T.librarySearch, color = p.textSecondary, fontSize = 16.sp)
+                    inner()
+                }
+            })
     }
 }
 

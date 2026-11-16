@@ -97,6 +97,9 @@ dependencies {
     implementation 'androidx.activity:activity-compose:1.13.0'
     // Pull down to refresh over the page view (ui/PageRefresh.kt).
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    // The secure storage viewer: video with the library player, zoomable images (ui/MediaVault.kt).
+    implementation 'androidx.media3:media3-ui:1.11.1'
+    implementation 'me.saket.telephoto:zoomable:0.14.0'
     implementation 'sh.calvin.reorderable:reorderable:3.1.0'
     implementation 'com.caverock:androidsvg-aar:1.4'
     testImplementation 'junit:junit:4.13.2'
