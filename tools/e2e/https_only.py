@@ -42,7 +42,7 @@ def serve():
 
 
 def force_resolve(d, value):
-    out = d.shell(f"am instrument -w -e class dev.antite.browser.GeckoPrefTool "
+    out = d.shell(f"am instrument -w -e class dev.antite.browser.e2etools.GeckoPrefTool "
                   f"-e pref network.dns.forceResolve -e value {value} -e type string {RUNNER}")
     if "OK (1 test)" not in out:
         d.fail(f"could not set the Gecko pref: {out.strip()[-300:]}")

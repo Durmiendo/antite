@@ -1,6 +1,7 @@
-package dev.antite.browser
+package dev.antite.browser.e2etools
 
 import androidx.test.core.app.ActivityScenario
+import dev.antite.browser.MainActivity
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertNotEquals
@@ -10,7 +11,7 @@ import org.junit.runner.RunWith
 
 // Not a test: sets or clears one Gecko pref in the app process for e2e scripts, which have no other way to reach
 // Gecko prefs (the engine is loaded from files, Waydroid has no root). The pref is kept in prefs.js.
-//   am instrument -w -e class dev.antite.browser.GeckoPrefTool -e pref NAME -e value VALUE|clear [-e type string] ...
+//   am instrument -w -e class dev.antite.browser.e2etools.GeckoPrefTool -e pref NAME -e value VALUE|clear [-e type string] ...
 @RunWith(AndroidJUnit4::class)
 class GeckoPrefTool {
     @Test

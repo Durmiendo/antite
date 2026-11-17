@@ -1,4 +1,4 @@
-package dev.antite.browser
+package dev.antite.browser.e2etools
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -11,7 +11,7 @@ import java.io.File
 
 // Not a test of its own: lets an e2e script look at the secure storage folder, which adb cannot read. Fails if any
 // file there holds the marker text in the open or is not an encrypted one.
-//   am instrument -w -e class dev.antite.browser.VaultDiskTool -e marker TEXT ...
+//   am instrument -w -e class dev.antite.browser.e2etools.VaultDiskTool -e marker TEXT ...
 @RunWith(AndroidJUnit4::class)
 class VaultDiskTool {
     @Test

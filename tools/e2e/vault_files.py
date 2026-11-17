@@ -99,7 +99,7 @@ def main():
 
         print("3. nothing in the storage folder is readable on the disk")
         d.install(a.test_apk)
-        out = d.shell(f"am instrument -w -e class {PACKAGE}.VaultDiskTool -e marker MARKER-{stamp} "
+        out = d.shell(f"am instrument -w -e class {PACKAGE}.e2etools.VaultDiskTool -e marker MARKER-{stamp} "
                       f"{PACKAGE}.test/androidx.test.runner.AndroidJUnitRunner", check=False)
         if "OK (1 test)" not in out:
             d.fail("storage files on the disk: " + out)
