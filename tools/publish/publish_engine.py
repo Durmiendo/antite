@@ -9,6 +9,9 @@ was built with, writes engines.json and engines.json.sig to --out (default: repo
 upload. With --shell it also builds the signed release shell (versionCode from shellVersionCode) and offers it in
 the index; without it the shell entry of the existing index is kept. Nothing is uploaded or pushed.
 
+The release is built from HEAD of a clean tree, and the script tags that commit (engine-VERSION for a new adapter,
+shell-CODE with --shell), so a release's source archive is the code its files were built from.
+
 The index expires EXPIRES_DAYS after signing and phones refuse it afterwards, so it must be published again
 before that; --resign only re-signs the existing index with a new serial and expiry, without building anything.
 """
@@ -37,6 +40,22 @@ def prop(name, path="gradle.properties"):
         if line.startswith(name + "="):
             return line.split("=", 1)[1].strip()
     raise KeyError(name)
+
+
+def git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def require_clean():
+    if git("status", "--porcelain"):
+        sys.exit("the tree has changes: commit them first, the release is built from HEAD and tagged there")
+
+
+def check_tag(tag, head):
+    found = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}^{{commit}}"],
+                           capture_output=True, text=True).stdout.strip()
+    if found and found != head:
+        sys.exit(f"tag {tag} already points at {found[:7]}, not at HEAD {head[:7]}")
 
 
 def shell_version_code():
@@ -134,6 +153,8 @@ def main():
         print(f"\nUpload: {index_path} and {index_path}.sig -> repository root ({prop('engineIndexUrl')})")
         return
 
+    require_clean()
+    head = git("rev-parse", "HEAD")
     gecko = a.gecko or prop("geckoviewVersion")
     revision = int(prop("adapterRevision"))
     version = gecko if revision == 0 else f"{gecko}.{revision}"
@@ -148,7 +169,11 @@ def main():
     # A published engine version is never rebuilt: its files are pinned by hash. Adapter changes need a new
     # adapterRevision, which phones see as a newer engine.
     adapter = None
-    if previous and previous["version"] == version and previous["api"] == api:
+    new_adapter = not (previous and previous["version"] == version and previous["api"] == api)
+    tags = ([tag] if new_adapter else []) + ([f"shell-{shell_version_code()}"] if a.shell else [])
+    for t in tags:
+        check_tag(t, head)
+    if not new_adapter:
         print(f"1. engine {version} is already published, its adapter is kept")
         adapter_entry = previous["adapter"]
     else:
@@ -208,9 +233,19 @@ def main():
     }
     if shell:
         index["shell"] = shell
+    if git("rev-parse", "HEAD") != head or git("status", "--porcelain", "--untracked-files=no"):
+        sys.exit("the tree changed during the build")
+    for t in tags:
+        git("tag", "-f", t, head)
     os.makedirs(a.out, exist_ok=True)
     write_index(index_path, stamp(index, old["serial"]))
 
+    if tags:
+        refs = " ".join(f"refs/tags/{t}" for t in tags)
+        print(f"\nTagged {head[:7]}: {', '.join(tags)}. Push the commit and the tags before creating the releases:")
+        print(f"  git push origin {head[:7]}:main {refs}")
+        for t in tags:
+            print(f"  gh release create {t} --verify-tag ...")
     print("\nUpload:")
     if adapter:
         print(f"  {adapter} -> release {tag} ({entry['adapter']['url'][0]})")
