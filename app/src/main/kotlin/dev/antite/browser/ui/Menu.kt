@@ -101,9 +101,10 @@ fun BrowserMenu(b: Browser) {
         return
     }
     val bookmarked = web && t.bookmarked
-    MenuPopup(open, close, scroll, listOf(
+    MenuPopup(open, close, scroll, listOfNotNull(
         TopIcon(R.drawable.ic_arrow_forward, T.menuForward, t.canGoForward) { b.ensureSession(t).goForward() },
-        TopIcon(if (bookmarked) R.drawable.ic_star_fill1 else R.drawable.ic_star,
+        if (!Browser.BOOKMARKS_ENABLED) null
+        else TopIcon(if (bookmarked) R.drawable.ic_star_fill1 else R.drawable.ic_star,
             if (bookmarked) T.menuBookmarkRemove else T.menuBookmarkAdd, web) { b.toggleBookmark(t) },
         TopIcon(R.drawable.ic_download, T.menuSavePdf, web) { b.downloads.savePdf(t) },
         TopIcon(R.drawable.ic_info, T.menuPageInfo, true) { b.pageInfo() },
@@ -121,8 +122,8 @@ fun BrowserMenu(b: Browser) {
         MenuEntry.Line,
         if (b.prefs.bool("vaultInMenu", true)) MenuEntry.Item(R.drawable.ic_shield_lock, T.menuVault) { b.showVault() } else null,
         MenuEntry.Item(R.drawable.ic_download_done, T.menuDownloads) { b.showLibrary(LibraryKind.DOWNLOADS) },
-        MenuEntry.Item(R.drawable.ic_star, T.menuBookmarks) { b.showLibrary(LibraryKind.BOOKMARKS) },
-        MenuEntry.Item(R.drawable.ic_folder, T.menuBookmarkAll) { b.bookmarkAllTabs() },
+        if (!Browser.BOOKMARKS_ENABLED) null else MenuEntry.Item(R.drawable.ic_star, T.menuBookmarks) { b.showLibrary(LibraryKind.BOOKMARKS) },
+        if (!Browser.BOOKMARKS_ENABLED) null else MenuEntry.Item(R.drawable.ic_folder, T.menuBookmarkAll) { b.bookmarkAllTabs() },
         MenuEntry.Item(R.drawable.ic_devices, T.menuRecentTabs) { b.showLibrary(LibraryKind.CLOSED) },
         MenuEntry.Item(R.drawable.ic_extension, T.menuExtensions) { b.openExtensionsMenu() },
         MenuEntry.Line,

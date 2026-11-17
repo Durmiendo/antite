@@ -192,7 +192,7 @@ fun Suggestions(b: Browser, modifier: Modifier) {
             local = emptyList()
             return@LaunchedEffect
         }
-        local = if (incognito) emptyList() else b.db.io { suggest(text, 5) }
+        local = if (incognito) emptyList() else b.db.io { suggest(text, 5, Browser.BOOKMARKS_ENABLED) }
         if (!b.prefs.bool("searchSuggest", true)) return@LaunchedEffect
         if (incognito && !b.prefs.bool("searchSuggestIncognito", false)) return@LaunchedEffect
         delay(150)

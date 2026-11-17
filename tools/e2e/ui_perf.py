@@ -1,4 +1,4 @@
-"""Frame times of the main transitions, started from the new tab page: menu, bookmarks, settings, tab switcher,
+"""Frame times of the main transitions, started from the new tab page: menu, history, settings, tab switcher,
 each opened and closed again.
 
 Usage: python3 -I tools/e2e/ui_perf.py --serial HOST:PORT [--times 10]
@@ -51,7 +51,7 @@ def main():
         return lambda: d.shell(f"input tap {x} {y}")
 
     back = lambda: d.shell("input keyevent BACK")
-    scenarios = [("menu", None), ("bookmarks", "Закладки"), ("settings", "Настройки"), ("switcher", switcher)]
+    scenarios = [("menu", None), ("history", "История"), ("settings", "Настройки"), ("switcher", switcher)]
     results = {}
     for name, xy in scenarios:
         opened, closed = [], []

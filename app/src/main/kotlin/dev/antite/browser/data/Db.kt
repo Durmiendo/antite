@@ -130,11 +130,11 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "anti
         return score.entries.sortedByDescending { it.value }.take(limit).map { Site(it.key, roots[it.key]!!, titles[it.key]) }
     }
 
-    fun suggest(text: String, limit: Int): List<Entry> {
+    fun suggest(text: String, limit: Int, bookmarks: Boolean): List<Entry> {
         val f = "%$text%"
         val seen = HashSet<String>()
         val out = ArrayList<Entry>()
-        readableDatabase.rawQuery(
+        if (bookmarks) readableDatabase.rawQuery(
             "SELECT id, url, title, created, 'b' FROM bookmarks WHERE url LIKE ? OR title LIKE ? LIMIT ?",
             arrayOf(f, f, limit.toString()),
         ).entries().forEach { if (seen.add(it.url ?: "")) out += it }

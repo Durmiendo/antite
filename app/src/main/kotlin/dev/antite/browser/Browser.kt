@@ -72,6 +72,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
         // Page translation is off until it works well (user, 10.11.2026); this one switch brings it back.
         const val TRANSLATION_ENABLED = false
+
+        // Bookmarks are off: the user does not use them (17.11.2026); the data stays in the database.
+        const val BOOKMARKS_ENABLED = false
         private const val UBO_URL = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
     }
 
