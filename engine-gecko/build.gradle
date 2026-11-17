@@ -38,6 +38,7 @@ tasks.register('adapterPackage') {
     def out = layout.buildDirectory.file("outputs/engine/gecko-$version-adapter.zip")
     def geckoAar = configurations.geckoAar
     def sdkDir = androidComponents.sdkComponents.sdkDirectory
+    def buildToolsVersion = android.buildToolsVersion
     def api = engineApi
     inputs.file(aar)
     inputs.files(geckoAar)
@@ -54,8 +55,7 @@ tasks.register('adapterPackage') {
         extract(aar.get().asFile, 'classes.jar', adapterJar)
         extract(geckoAar.singleFile, 'classes.jar', geckoJar)
         def sdk = sdkDir.get().asFile
-        def buildTools = new File(sdk, 'build-tools').listFiles().findAll { new File(it, 'd8').exists() }.max { it.name }
-        def d8 = new File(buildTools, 'd8').path
+        def d8 = new File(sdk, "build-tools/$buildToolsVersion/d8").path
         def cmd = [d8, '--release', '--min-api', '30', '--lib', new File(sdk, 'platforms/android-36/android.jar').path,
                    '--output', new File(w, 'dex').path, adapterJar.path, geckoJar.path]
         def p = new ProcessBuilder(cmd).redirectErrorStream(true).start()
@@ -69,7 +69,9 @@ tasks.register('adapterPackage') {
         zipFile.parentFile.mkdirs()
         new java.util.zip.ZipOutputStream(new FileOutputStream(zipFile)).withCloseable { zos ->
             def put = { String name, byte[] bytes ->
-                zos.putNextEntry(new java.util.zip.ZipEntry(name)); zos.write(bytes); zos.closeEntry()
+                def e = new java.util.zip.ZipEntry(name)
+                e.timeLocal = java.time.LocalDateTime.of(1980, 2, 1, 0, 0)
+                zos.putNextEntry(e); zos.write(bytes); zos.closeEntry()
             }
             put('engine.json', json.getBytes('UTF-8'))
             new File(w, 'dex').listFiles().sort { it.name }.each { put(it.name, it.bytes) }
