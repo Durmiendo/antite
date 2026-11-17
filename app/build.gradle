@@ -76,7 +76,7 @@ configurations {
 dependencies {
     implementation project(':engine-api')
     // GeckoView's own dependencies stay in the shell; GeckoView itself comes with the engine package.
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.4.20'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.4.21'
     implementation 'androidx.annotation:annotation:1.11.0'
     implementation 'androidx.annotation:annotation-experimental:1.6.0'
     implementation 'androidx.collection:collection:1.6.0'
