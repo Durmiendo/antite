@@ -15,11 +15,13 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 
-class TabStore(context: Context) {
+class TabStore(dir: File, private val warn: (String, Throwable?) -> Unit = { m, e -> Log.w("Antite", m, e) }) {
+    constructor(context: Context) : this(context.filesDir)
+
     data class Loaded(val tabs: List<Tab>, val selected: Long)
 
-    private val file = File(context.filesDir, "tabs.json")
-    private val thumbs = File(context.filesDir, "thumbs").apply { mkdirs() }
+    private val file = File(dir, "tabs.json")
+    private val thumbs = File(dir, "thumbs").apply { mkdirs() }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val io = Dispatchers.IO.limitedParallelism(1)
@@ -44,7 +46,9 @@ class TabStore(context: Context) {
             }
             Loaded(tabs, root.optLong("selected"))
         } catch (e: Exception) {
-            Log.w("Antite", "tabs.json unreadable, starting fresh", e)
+            // Kept aside, so the next save does not overwrite the only copy of the tabs.
+            file.renameTo(File(file.path + ".bad"))
+            warn("tabs.json unreadable, kept as tabs.json.bad, starting fresh", e)
             Loaded(emptyList(), 0)
         }
     }
@@ -73,9 +77,9 @@ class TabStore(context: Context) {
                     out.write(json.toByteArray())
                     out.fd.sync()
                 }
-                if (!tmp.renameTo(file)) Log.e("Antite", "tabs.json rename failed")
+                if (!tmp.renameTo(file)) warn("tabs.json rename failed", null)
             } catch (e: Exception) {
-                Log.e("Antite", "tabs.json write failed", e)
+                warn("tabs.json write failed", e)
             }
         }
     }
