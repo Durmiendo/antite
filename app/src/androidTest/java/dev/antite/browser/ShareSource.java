@@ -35,7 +35,8 @@ public class ShareSource extends ContentProvider {
         String name = name(uri);
         if (!name.endsWith(".png")) return name.getBytes(StandardCharsets.UTF_8);
         Bitmap b = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
-        b.eraseColor(0xff285ac8);
+        // A colour of its own per name, so a check can tell one picture from another on the screen.
+        b.eraseColor(0xff000000 | (name.hashCode() & 0x00ffffff));
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         b.compress(Bitmap.CompressFormat.PNG, 100, out);
         return out.toByteArray();

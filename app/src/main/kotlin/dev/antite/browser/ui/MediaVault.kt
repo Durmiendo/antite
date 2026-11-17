@@ -275,9 +275,12 @@ private fun VaultTile(b: Browser, i: MediaVault.Item, modifier: Modifier, open: 
 
 @Composable
 private fun VaultThumb(b: Browser, i: MediaVault.Item, modifier: Modifier) {
-    // Asked again once a file from before the encryption has been encrypted.
-    val thumb by produceState(vaultThumbs.get(i.id), i.id, i.id in b.mediaVault.pending) {
-        if (value == null) value = withContext(Dispatchers.IO) { thumbnail(b.mediaVault, i) }?.also { vaultThumbs.put(i.id, it) }
+    val waiting = i.id in b.mediaVault.pending
+    // Held per file: a tile handed another file (the next one slides in when a file moves away) must not keep the
+    // old picture, which produceState would. Asked again once a file from before the encryption has been encrypted.
+    var thumb by remember(i.id) { mutableStateOf(vaultThumbs.get(i.id)) }
+    LaunchedEffect(i.id, waiting) {
+        if (thumb == null) thumb = withContext(Dispatchers.IO) { thumbnail(b.mediaVault, i) }?.also { vaultThumbs.put(i.id, it) }
     }
     val bmp = thumb
     if (bmp != null) {
