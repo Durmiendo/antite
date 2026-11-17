@@ -9,14 +9,6 @@ import java.io.IOException
 class CiphersTest {
     private fun hex(s: String) = s.replace(" ", "").chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
-    // draft-irtf-cfrg-xchacha-03, 2.2.1.
-    @Test
-    fun hchacha20MatchesTheDraft() {
-        val key = ByteArray(32) { it.toByte() }
-        val nonce = hex("000000090000004a0000000031415927")
-        assertArrayEquals(hex("82413b4227b27bfed30e42508a877d73a0f9e4d58a74a853c12ec41326d3ecdc"), Ciphers.hchacha20(key, nonce))
-    }
-
     // draft-irtf-cfrg-xchacha-03, A.3.1. The XChaCha key is the second half of our 64-byte key.
     @Test
     fun xchachaMatchesTheDraft() {

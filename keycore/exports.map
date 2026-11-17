@@ -1,0 +1,6 @@
+{
+  global:
+    Java_dev_antite_keys_KeyCore_*;
+  local:
+    *;
+};

@@ -19,9 +19,31 @@ android {
         testInstrumentationRunnerArguments notPackage: 'dev.antite.browser.e2etools'
         // One APK for every ABI Mozilla builds GeckoView for; the shell's own native code is tiny.
         ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }
+        externalNativeBuild { cmake { arguments '-DANDROID_STL=none' } }
         def publisherKey = rootProject.file('keys/publisher.pub.pem').readLines().findAll { !it.startsWith('-----') }.join('')
         buildConfigField 'String', 'PUBLISHER_KEY', "\"$publisherKey\""
         buildConfigField 'String', 'ENGINE_INDEX_URL', "\"$engineIndexUrl\""
+    }
+
+    // JVM tests encrypt too: through the host build of the native key core, as in :keyring.
+    testOptions {
+        unitTests.all {
+            dependsOn ':keyring:hostKeyCore'
+            systemProperty 'antite.keycore', project(':keyring').layout.buildDirectory.file('keycore-host/libkeycore.so').get().asFile.path
+            jvmArgs '--enable-native-access=ALL-UNNAMED'
+        }
+    }
+
+    // The golden files of the formats, read on the device by KeyCoreDeviceTest.
+    sourceSets { androidTest { resources.srcDirs += '../keyring/src/test/resources' } }
+
+    // The native key core (keycore/, decision 0013).
+    ndkVersion '29.0.14206865'
+    externalNativeBuild {
+        cmake {
+            path '../keycore/CMakeLists.txt'
+            version '4.1.2'
+        }
     }
 
     def keysDir = findProperty('antite.keysDir')
@@ -97,7 +119,6 @@ dependencies {
     implementation 'org.yaml:snakeyaml:2.2'
     // Records of the encrypted logs: generated serializers, no query language.
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.12.0'
-    implementation 'com.lambdapioneer.argon2kt:argon2kt:1.6.0'
     implementation 'androidx.media3:media3-common:1.11.1'
     implementation 'androidx.media3:media3-datasource:1.11.1'
     implementation 'androidx.media3:media3-decoder:1.11.1'

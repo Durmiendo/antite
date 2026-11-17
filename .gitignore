@@ -30,3 +30,4 @@ docs/
 *.keystore
 *.key.pem
 password
+.cxx/

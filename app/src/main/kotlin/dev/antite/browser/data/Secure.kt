@@ -3,10 +3,9 @@ package dev.antite.browser.data
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import com.lambdapioneer.argon2kt.Argon2Kt
-import com.lambdapioneer.argon2kt.Argon2Mode
 import dev.antite.keys.Cipher256
 import dev.antite.keys.Disk
+import dev.antite.keys.KeyCore
 import dev.antite.keys.KeyRing
 import dev.antite.keys.RealDisk
 import java.io.File
@@ -98,16 +97,8 @@ object Secure {
 
     // The password goes in through a direct buffer that is zeroed here; the library keeps no copy of it.
     object Argon2 : KeyRing.Kdf {
-        override fun derive(password: ByteArray, salt: ByteArray, params: KeyRing.KdfParams): ByteArray {
-            val pw = ByteBuffer.allocateDirect(password.size).put(password).also { it.flip() }
-            val s = ByteBuffer.allocateDirect(salt.size).put(salt).also { it.flip() }
-            try {
-                val r = Argon2Kt().hash(Argon2Mode.ARGON2_ID, pw, s, params.iterations, params.memoryKib, params.parallelism, Cipher256.KEY)
-                return r.rawHashAsByteArray().also { r.rawHash.let { h -> h.clear(); while (h.hasRemaining()) h.put(0) } }
-            } finally {
-                pw.clear()
-                while (pw.hasRemaining()) pw.put(0)
-            }
-        }
+        override fun derive(password: ByteArray, salt: ByteArray, params: KeyRing.KdfParams): ByteArray =
+            KeyCore.argon2id(password, salt, params.iterations, params.memoryKib, params.parallelism, Cipher256.KEY)
+                ?: throw IOException("Argon2id refused its parameters")
     }
 }

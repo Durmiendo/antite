@@ -1,0 +1,33 @@
+bearssl 0.6
+https://bearssl.org/bearssl-0.6.tar.gz
+sha256 6705bba1714961b41a728dfc5debbe348d2966c117649392f8c8139efc83ff14
+
+LICENSE.txt
+inc/bearssl.h
+inc/bearssl_aead.h
+inc/bearssl_block.h
+inc/bearssl_ec.h
+inc/bearssl_hash.h
+inc/bearssl_hmac.h
+inc/bearssl_kdf.h
+inc/bearssl_pem.h
+inc/bearssl_prf.h
+inc/bearssl_rand.h
+inc/bearssl_rsa.h
+inc/bearssl_ssl.h
+inc/bearssl_x509.h
+src/aead/gcm.c
+src/codec/ccopy.c
+src/codec/dec32be.c
+src/codec/dec32le.c
+src/codec/dec64be.c
+src/codec/enc32be.c
+src/codec/enc32le.c
+src/codec/enc64be.c
+src/config.h
+src/hash/ghash_ctmul64.c
+src/inner.h
+src/symcipher/aes_common.c
+src/symcipher/aes_ct64.c
+src/symcipher/aes_ct64_ctr.c
+src/symcipher/aes_ct64_enc.c

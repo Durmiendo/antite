@@ -22,3 +22,17 @@ dependencies {
     testImplementation 'org.json:json:20260814'
     testImplementation 'junit:junit:4.13.2'
 }
+
+// The JVM tests run the ciphers in a host build of the native key core.
+def hostCore = layout.buildDirectory.dir("keycore-host")
+tasks.register("hostKeyCore", Exec) {
+    def src = rootProject.file("keycore")
+    inputs.dir(src)
+    outputs.dir(hostCore)
+    commandLine "sh", "-c", "cmake -S '${src}' -B '${hostCore.get().asFile}' -DCMAKE_BUILD_TYPE=Release >/dev/null && cmake --build '${hostCore.get().asFile}' >/dev/null"
+}
+tasks.withType(Test).configureEach {
+    dependsOn "hostKeyCore"
+    systemProperty "antite.keycore", hostCore.get().file("libkeycore.so").asFile.path
+    jvmArgs "--enable-native-access=ALL-UNNAMED"
+}
