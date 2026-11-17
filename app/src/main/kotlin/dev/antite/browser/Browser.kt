@@ -220,7 +220,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         if (sel != null) switchTo(sel)
     }
 
-    fun incognitoCount(incognito: Boolean) = tabs.count { it.incognito == incognito }
+    // Tabs behind a lock are not counted anywhere: the count would tell how many there are.
+    fun incognitoCount(incognito: Boolean) = tabs.count { it.incognito == incognito && !tabLocked(it) }
 
     fun newTabAndFocus(incognito: Boolean, category: String? = if (incognito) null else current?.category) {
         openTab("about:blank", incognito, null, true, category)

@@ -127,9 +127,10 @@ fun TabSwitcher(b: Browser, open: Boolean) {
         if (open && b.switcherPage == Categories.INCOGNITO && b.incognitoLocked) b.unlockIncognito()
         if (open) b.categories.byId(b.switcherPage)?.let(b::unlockCategory)
     }
-    fun count(key: String) = when (key) {
-        Categories.ALL -> b.tabs.count { !it.incognito }
-        Categories.INCOGNITO -> b.tabs.count { it.incognito }
+    fun count(key: String): Int? = when {
+        key == Categories.INCOGNITO && b.incognitoLocked || b.categoryLocked(key) -> null
+        key == Categories.ALL -> b.tabs.count { !it.incognito && !b.tabLocked(it) }
+        key == Categories.INCOGNITO -> b.tabs.count { it.incognito }
         else -> b.tabs.count { !it.incognito && it.category == key }
     }
     val drop = remember { ChipDrop() }
@@ -154,7 +155,7 @@ fun TabSwitcher(b: Browser, open: Boolean) {
                 }
             }
             if (b.prefs.bool("tabCountTotal", true)) {
-                val n = b.tabs.size
+                val n = b.tabs.count { !b.tabLocked(it) }
                 Text(if (n >= 100) ":D" else n.toString(), color = p.textSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(start = 8.dp, end = 4.dp))
             }

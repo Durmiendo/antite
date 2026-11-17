@@ -97,3 +97,33 @@ def toolbar_bottom(d):
     while y < img.height and img.getpixel((x, y)) < 200:
         y += 1
     return y
+
+
+def chip_count(d, name):
+    """The number drawn right of a strip chip's name, or None."""
+    nodes = d.nodes()
+    label = next((n for n in nodes if n.get("text") == name and d.bounds(n)[1] < 260), None)
+    if label is None:
+        return None
+    x1, y1, x2, y2 = d.bounds(label)
+    for n in nodes:
+        t = n.get("text") or ""
+        bx1, by1, bx2, by2 = d.bounds(n)
+        # A hundred tabs and more are drawn as ":D".
+        if (t.isdigit() or t == ":D") and abs((by1 + by2) - (y1 + y2)) < 20 and 0 <= bx1 - x2 < 60:
+            return int(t) if t.isdigit() else 100
+    return None
+
+
+def set_each_count(d, on):
+    """The switch row exposes no checked state, so the strip tells whether counts are drawn."""
+    open_switcher(d)
+    shown = chip_count(d, "Все") is not None
+    d.shell("input keyevent BACK")
+    time.sleep(1)
+    if shown == on:
+        return
+    open_tabs_settings(d)
+    d.scroll_to("Число вкладок у каждой категории")
+    d.tap("Число вкладок у каждой категории", exact=True)
+    to_browser(d)

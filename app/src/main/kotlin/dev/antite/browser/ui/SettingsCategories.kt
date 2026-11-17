@@ -40,7 +40,7 @@ internal fun categoriesPage(b: Browser) = SettingsPage(T.categoriesMine) { nav -
         mark(c.name, null, "category:${c.id}")
         item(key = "category:${c.id}") {
             Marked("category:${c.id}") {
-                SettingRow(c.name, T.categoryTabs(count = b.tabs.count { !it.incognito && it.category == c.id }),
+                SettingRow(c.name, if (b.categoryLocked(c.id)) null else T.categoryTabs(count = b.tabs.count { !it.incognito && it.category == c.id }),
                     onClick = { nav.push(c.name) { n -> CategoryPage(b, n, c) } }, leading = { CategoryBadge(b, c) })
             }
         }
@@ -62,7 +62,7 @@ internal fun containersPage(b: Browser) = SettingsPage(T.containersTitle) { nav 
         mark(c.name, null, "container:${c.id}")
         item(key = "container:${c.id}") {
             Marked("container:${c.id}") {
-                SettingRow(c.name, T.categoryTabs(count = b.tabs.count { it.container == c.id }),
+                SettingRow(c.name, T.categoryTabs(count = b.tabs.count { it.container == c.id && !b.tabLocked(it) }),
                     onClick = { nav.push(c.name) { n -> ContainerPage(b, n, c) } },
                     leading = { Box(Modifier.size(32.dp).clip(CircleShape).background(Color(c.color))) })
             }
