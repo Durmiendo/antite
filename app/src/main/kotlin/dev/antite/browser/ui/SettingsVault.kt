@@ -34,7 +34,6 @@ internal fun vaultSettingsPage(b: Browser) = SettingsPage(T.vaultTitle) { nav ->
         }
     }
     choice(b, nav, T.vaultLock, "vaultLock", Options.vaultLocks, 0, false)
-    page(b, nav, keysPage(b), keysSummary(b))
     infoToggle(b, T.vaultDeleteOriginal, T.vaultDeleteOriginalSummary, "vaultDeleteOriginal", true)
     toggle(b, T.vaultInMenu, null, "vaultInMenu", true, false)
 }

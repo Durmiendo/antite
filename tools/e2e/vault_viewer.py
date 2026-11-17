@@ -53,10 +53,10 @@ def serve(name, body):
 
 
 def set_vault_lock(d, label):
-    """Settings > Privacy > Secure storage > lock: the video must keep the storage open after the app is left."""
+    """Settings > Security > Secure storage > lock: the video must keep the storage open after the app is left."""
     to_browser(d)
     open_settings(d)
-    d.tap("Конфиденциальность и безопасность", exact=True)
+    d.tap("Безопасность", exact=True)
     d.scroll_to("Защищённое хранилище")
     d.tap("Защищённое хранилище", exact=True)
     d.tap("Блокировать хранилище", exact=True)

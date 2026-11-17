@@ -189,7 +189,8 @@ internal fun LazyListScope.categories(b: Browser, nav: Nav) {
     page(b, nav, searchHomePage(b), T.settingsCatSearchSummary, R.drawable.ic_search)
     page(b, nav, appearancePage(b), T.settingsCatAppearanceSummary, R.drawable.ic_palette)
     page(b, nav, tabsPage(b), T.settingsTabsSummary, R.drawable.ic_tab)
-    page(b, nav, privacyPage(b), T.settingsPrivacySummary, R.drawable.ic_shield_lock)
+    page(b, nav, securityPage(b), T.settingsSecuritySummary, R.drawable.ic_shield_lock)
+    page(b, nav, privacyPage(b), T.settingsPrivacySummary, R.drawable.ic_incognito)
     page(b, nav, autofillPage(b), T.settingsCatAutofillSummary, R.drawable.ic_key)
     nav(nav, T.settingsLanguages, T.settingsLanguagesSummary, R.drawable.ic_translate) { LanguagesPage(b, it) }
     page(b, nav, downloadsPage(b), when (b.prefs.int("dlTarget", 0)) {
@@ -197,7 +198,6 @@ internal fun LazyListScope.categories(b: Browser, nav: Nav) {
         Downloads.TARGET_ASK -> T.dlTargetAsk
         else -> if (b.prefs.bool("dlAsk", false)) T.settingsDownloadsAsk else T.settingsDownloadsDefault
     }, R.drawable.ic_download)
-    page(b, nav, accessibilityPage(b), T.settingsAccessibilitySummary, R.drawable.ic_accessibility_new)
     page(b, nav, systemPage(b), T.settingsCatSystemSummary, R.drawable.ic_devices)
     page(b, nav, aboutPage(b), T.settingsAboutSummary, R.drawable.ic_info)
 }
@@ -227,10 +227,14 @@ internal fun appearancePage(b: Browser) = SettingsPage(T.settingsCatAppearance) 
     section(T.settingsToolbar)
     toggle(b, T.toolbarHideOnScroll, T.toolbarHideOnScrollSummary, "toolbarHide", true, false)
     toggle(b, T.toolbarHideNavBar, T.toolbarHideNavBarSummary, "navBarHide", true, false)
-    choice(b, nav, T.toolbarNavDeadZone, "navDeadZone", Options.navDeadZones, 2, false)
-    note(T.toolbarNavDeadZoneNote)
-    section(T.settingsTabs)
-    choice(b, nav, T.tabsLayout, "tabLayout", Options.tabLayouts, 0, false)
+    // Only matters while the navigation bar hides with the toolbar.
+    if (b.prefs.bool("navBarHide", true)) {
+        choice(b, nav, T.toolbarNavDeadZone, "navDeadZone", Options.navDeadZones, 2, false)
+        note(T.toolbarNavDeadZoneNote)
+    }
+    section(T.settingsAccessibility)
+    toggle(b, T.a11yForceZoom, T.a11yForceZoomSummary, "forceZoom", false, true)
+    toggle(b, T.a11yDoubleTapZoom, null, "doubleTapZoom", true, true)
 }
 
 internal fun autofillPage(b: Browser) = SettingsPage(T.settingsCatAutofill) { nav ->
@@ -373,21 +377,21 @@ internal fun HomePage(b: Browser, nav: Nav) {
 }
 
 internal fun tabsPage(b: Browser) = SettingsPage(T.settingsTabs) { nav ->
+    section(T.tabsSectionOpen)
     choice(b, nav, T.tabsStartup, "startup", Options.startup, 0, false)
     choice(b, nav, T.tabsExternal, "external", Options.external, 0, false)
     toggle(b, T.tabsDesktopDefault, T.tabsDesktopDefaultSummary, "desktopDefault", false, false)
+    section(T.tabsSectionMemory)
     choice(b, nav, T.tabsLive, "liveTabs", Options.liveTabs, 2, false)
     note(T.tabsLiveNote)
+    section(T.tabsSectionSwitcher)
+    choice(b, nav, T.tabsLayout, "tabLayout", Options.tabLayouts, 0, false)
+    toggle(b, T.tabsCountTotal, null, "tabCountTotal", true, false)
+    toggle(b, T.tabsCountEach, null, "tabCountEach", false, false)
     section(T.settingsCategories)
     page(b, nav, categoriesPage(b), T.categoriesSummary(count = b.categories.list.size))
     page(b, nav, incognitoPage(b), T.incognitoSummary)
+    section(T.tabsSectionSiteData)
     page(b, nav, containersPage(b), T.containersSummary(count = b.containers.list.size))
-    toggle(b, T.tabsCountTotal, null, "tabCountTotal", true, false)
-    toggle(b, T.tabsCountEach, null, "tabCountEach", false, false)
 }
 
-internal fun accessibilityPage(b: Browser) = SettingsPage(T.settingsAccessibility) {
-    toggle(b, T.a11yForceZoom, T.a11yForceZoomSummary,
-        "forceZoom", false, true)
-    toggle(b, T.a11yDoubleTapZoom, null, "doubleTapZoom", true, true)
-}

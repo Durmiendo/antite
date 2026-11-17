@@ -56,7 +56,7 @@ def toggle_https_only(d):
     d.tap("Настройки", exact=True)
     d.wait("Поиск по настройкам", exact=True)
     time.sleep(1)
-    d.tap("Конфиденциальность и безопасность", exact=True)
+    d.tap("Безопасность", exact=True)
     time.sleep(1)
     d.tap("Всегда использовать безопасные подключения", exact=True)
     time.sleep(1)

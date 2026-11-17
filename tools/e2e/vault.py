@@ -80,10 +80,7 @@ def password_dialog(d, text, twice=False):
 def open_keys(d):
     to_browser(d)
     open_settings(d)
-    d.tap("Конфиденциальность и безопасность", exact=True)
-    time.sleep(1)
-    d.scroll_to("Защищённое хранилище")
-    d.tap("Защищённое хранилище", exact=True)
+    d.tap("Безопасность", exact=True)
     time.sleep(1)
     d.scroll_to("Шифрование и ключи")
     d.tap("Шифрование и ключи", exact=True)

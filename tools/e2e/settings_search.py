@@ -33,23 +33,23 @@ def main():
     d.wait("Меню", timeout=30, exact=True)
     time.sleep(2)
     open_settings(d)
-    for category in ("Поиск и главная", "Внешний вид", "Конфиденциальность и безопасность", "Система"):
+    for category in ("Поиск и главная", "Внешний вид", "Безопасность", "Конфиденциальность", "Система"):
         d.scroll_to(category)
 
     search(d, "WebRTC")
-    d.wait("Конфиденциальность и безопасность › Конфиденциальность", exact=True)
+    d.wait("Конфиденциальность › Отслеживание", exact=True)
     d.tap("WebRTC", exact=True)
-    d.wait("Конфиденциальность и безопасность", exact=True)
+    d.wait("Конфиденциальность", exact=True)
     if d.find("WebRTC", exact=True) is None:
         d.fail("the result's page does not show its row")
     d.shell("input keyevent BACK")
     time.sleep(1)
-    d.wait("Конфиденциальность и безопасность › Конфиденциальность", exact=True)
+    d.wait("Конфиденциальность › Отслеживание", exact=True)
 
     # A row two pages deep: Privacy > Site settings.
     d.tap("Очистить", exact=True)
     search(d, "JavaScript")
-    d.wait("Конфиденциальность и безопасность › Настройки сайтов", exact=False)
+    d.wait("Конфиденциальность › Настройки сайтов", exact=False)
 
     d.tap("Очистить", exact=True)
     search(d, "qqqzz")

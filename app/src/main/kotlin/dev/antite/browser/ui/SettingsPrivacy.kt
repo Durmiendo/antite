@@ -12,10 +12,8 @@ import dev.antite.browser.l10n.T
 import dev.antite.browser.openUboDashboard
 import dev.antite.engine.BackgroundService
 
-internal fun privacyPage(b: Browser) = SettingsPage(T.settingsPrivacy) { nav ->
+internal fun securityPage(b: Browser) = SettingsPage(T.settingsSecurity) { nav ->
     val doh = b.prefs.index("doh", Options.doh, 0)
-    action(T.menuClearData, T.privacyClearSummary, "row:clearData", b::clearDataDialog)
-    section(T.privacySecurity)
     toggle(b, T.privacyHttpsOnly,
         T.privacyHttpsOnlySummary, "httpsOnly", false, true)
     b.engine.backgroundServices.firstOrNull { it.id == BackgroundService.SAFE_BROWSING }?.let { sb ->
@@ -23,9 +21,15 @@ internal fun privacyPage(b: Browser) = SettingsPage(T.settingsPrivacy) { nav ->
             T.privacySafeBrowsingSummary,
             b.prefs.serviceKey(sb.id), sb.defaultEnabled, true)
     }
-    page(b, nav, vaultSettingsPage(b), keysSummary(b), R.drawable.ic_shield_lock)
     nav(nav, T.privacySecureDns, Options.doh[doh].label) { DnsPage(b, it) }
-    section(T.privacyPrivacy)
+    section(T.privacyStorageKeys)
+    page(b, nav, vaultSettingsPage(b), null)
+    page(b, nav, keysPage(b), keysSummary(b))
+}
+
+internal fun privacyPage(b: Browser) = SettingsPage(T.settingsPrivacy) { nav ->
+    action(T.menuClearData, T.privacyClearSummary, "row:clearData", b::clearDataDialog)
+    section(T.privacyTrackingSection)
     choice(b, nav, T.privacyTracking, "tracking", Options.tracking, 0, true)
     choice(b, nav, T.privacyCookies, "cookies", Options.cookies, 0, true)
     choice(b, nav, T.privacyFingerprint, "fingerprint", Options.fingerprint, 0, true)
