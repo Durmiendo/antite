@@ -1,5 +1,7 @@
 package dev.antite.browser.transfer
 
+import dev.antite.browser.data.KeyRing
+import dev.antite.browser.data.Secure
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.EOFException
@@ -7,6 +9,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
+import java.nio.CharBuffer
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
@@ -18,48 +21,83 @@ class WrongPasswordException : IOException("wrong password or damaged file")
 
 object BackupCipher {
     private val MAGIC = "ANTITEBK".toByteArray(Charsets.US_ASCII)
-    private const val VERSION: Byte = 1
-    private const val HEADER_SIZE = 8 + 1 + 4 + 16 + 8
+    private const val VERSION: Byte = 2
+    private const val LEGACY: Byte = 1
+    private const val HEADER_SIZE = 8 + 1 + 4 + 4 + 1 + 16 + 8
+    private const val LEGACY_HEADER_SIZE = 8 + 1 + 4 + 16 + 8
     const val CHUNK = 1 shl 20
-    var iterations = 600_000
+    var kdf: KeyRing.Kdf = Secure.Argon2
+    var params = KeyRing.DEFAULT_KDF
 
-    // A crafted file could ask for so many rounds that checking the password takes minutes.
+    // A crafted file could ask for so much work or memory that checking the password takes minutes or kills the app.
     private const val MAX_ITERATIONS = 2_000_000
+    private val MAX_PARAMS = KeyRing.KdfParams(16, 256 * 1024, 8)
 
-    private fun key(password: CharArray, salt: ByteArray, iterations: Int): SecretKeySpec {
+    private fun legacyKey(password: CharArray, salt: ByteArray, iterations: Int): SecretKeySpec {
         val spec = PBEKeySpec(password, salt, iterations, 256)
         val bytes = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
         spec.clearPassword()
         return SecretKeySpec(bytes, "AES")
     }
 
+    private fun key(password: CharArray, salt: ByteArray, params: KeyRing.KdfParams): SecretKeySpec {
+        val encoded = Charsets.UTF_8.newEncoder().encode(CharBuffer.wrap(password))
+        val bytes = ByteArray(encoded.remaining()).also { encoded.get(it) }
+        encoded.clear()
+        while (encoded.hasRemaining()) encoded.put(0)
+        val derived = try {
+            kdf.derive(bytes, salt, params)
+        } finally {
+            bytes.fill(0)
+        }
+        return SecretKeySpec(derived, 0, 32, "AES").also { derived.fill(0) }
+    }
+
     fun encrypt(out: OutputStream, password: CharArray): OutputStream {
         val random = SecureRandom()
         val salt = ByteArray(16).also(random::nextBytes)
         val nonceBase = ByteArray(8).also(random::nextBytes)
-        val header = ByteBuffer.allocate(HEADER_SIZE).put(MAGIC).put(VERSION).putInt(iterations).put(salt).put(nonceBase).array()
+        val p = params
+        val header = ByteBuffer.allocate(HEADER_SIZE).put(MAGIC).put(VERSION)
+            .putInt(p.iterations).putInt(p.memoryKib).put(p.parallelism.toByte()).put(salt).put(nonceBase).array()
         out.write(header)
-        return ChunkWriter(out, key(password, salt, iterations), header, nonceBase)
+        return ChunkWriter(out, key(password, salt, p), header, nonceBase)
     }
 
     fun decrypt(input: InputStream, password: CharArray): InputStream {
         val data = DataInputStream(input)
-        val header = ByteArray(HEADER_SIZE)
+        val start = ByteArray(9)
         try {
-            data.readFully(header)
+            data.readFully(start)
         } catch (e: EOFException) {
             throw IOException("not an Antite backup")
         }
-        val b = ByteBuffer.wrap(header)
-        val magic = ByteArray(8).also { b.get(it) }
-        if (!magic.contentEquals(MAGIC)) throw IOException("not an Antite backup")
-        val version = b.get()
-        if (version != VERSION) throw IOException("unsupported backup version $version")
-        val iterations = b.getInt()
-        if (iterations !in 1..MAX_ITERATIONS) throw IOException("bad header")
-        val salt = ByteArray(16).also { b.get(it) }
+        if (!start.copyOf(8).contentEquals(MAGIC)) throw IOException("not an Antite backup")
+        val version = start[8]
+        val size = when (version) {
+            VERSION -> HEADER_SIZE
+            LEGACY -> LEGACY_HEADER_SIZE
+            else -> throw IOException("unsupported backup version $version")
+        }
+        val header = start.copyOf(size)
+        try {
+            data.readFully(header, 9, size - 9)
+        } catch (e: EOFException) {
+            throw IOException("not an Antite backup")
+        }
+        val b = ByteBuffer.wrap(header, 9, size - 9)
+        val key = if (version == LEGACY) {
+            val iterations = b.getInt()
+            if (iterations !in 1..MAX_ITERATIONS) throw IOException("bad header")
+            legacyKey(password, ByteArray(16).also { b.get(it) }, iterations)
+        } else {
+            val p = KeyRing.KdfParams(b.getInt(), b.getInt(), b.get().toInt())
+            if (p.iterations !in 1..MAX_PARAMS.iterations || p.memoryKib !in 8..MAX_PARAMS.memoryKib ||
+                p.parallelism !in 1..MAX_PARAMS.parallelism) throw IOException("bad header")
+            key(password, ByteArray(16).also { b.get(it) }, p)
+        }
         val nonceBase = ByteArray(8).also { b.get(it) }
-        return ChunkReader(data, key(password, salt, iterations), header, nonceBase)
+        return ChunkReader(data, key, header, nonceBase)
     }
 
     private fun nonce(base: ByteArray, index: Int) = ByteBuffer.allocate(12).put(base).putInt(index).array()

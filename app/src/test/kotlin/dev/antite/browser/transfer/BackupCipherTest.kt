@@ -1,18 +1,29 @@
 package dev.antite.browser.transfer
 
+import dev.antite.browser.data.KeyRing
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.security.MessageDigest
 import kotlin.random.Random
 
 class BackupCipherTest {
+    private val asked = ArrayList<KeyRing.KdfParams>()
+
     @Before
     fun fastKdf() {
-        BackupCipher.iterations = 1000
+        BackupCipher.kdf = KeyRing.Kdf { password, salt, params ->
+            asked += params
+            MessageDigest.getInstance("SHA-512").digest(password + salt + params.toString().toByteArray())
+        }
+        BackupCipher.params = KeyRing.KdfParams(2, 64, 1)
     }
 
     private fun seal(plain: ByteArray, password: String): ByteArray {
@@ -41,7 +52,7 @@ class BackupCipherTest {
     @Test
     fun truncationAtChunkBoundaryIsRejected() {
         val sealed = seal(Random(2).nextBytes(2 * BackupCipher.CHUNK + 10), "p")
-        val header = 37
+        val header = 42
         val firstChunk = 4 + BackupCipher.CHUNK + 16
         assertThrows(WrongPasswordException::class.java) { open(sealed.copyOf(header + firstChunk), "p") }
         assertThrows(WrongPasswordException::class.java) { open(sealed.copyOf(sealed.size - 1), "p") }
@@ -66,10 +77,36 @@ class BackupCipherTest {
     }
 
     @Test
-    fun hugeIterationCountIsRefusedBeforeDerivingTheKey() {
-        val sealed = seal(byteArrayOf(1, 2, 3), "p")
-        java.nio.ByteBuffer.wrap(sealed).putInt(9, 10_000_000)
-        val e = assertThrows(IOException::class.java) { open(sealed, "p") }
-        org.junit.Assert.assertEquals("bad header", e.message)
+    fun hugeWorkIsRefusedBeforeDerivingTheKey() {
+        for ((offset, value) in listOf(9 to 1000, 13 to 4 * 1024 * 1024, 13 to 0)) {
+            val sealed = seal(byteArrayOf(1, 2, 3), "p")
+            ByteBuffer.wrap(sealed).putInt(offset, value)
+            asked.clear()
+            val e = assertThrows(IOException::class.java) { open(sealed, "p") }
+            assertEquals("bad header", e.message)
+            assertTrue(asked.isEmpty())
+        }
+    }
+
+    @Test
+    fun keyComesFromTheParametersInTheFile() {
+        val sealed = seal(byteArrayOf(5, 6), "p")
+        BackupCipher.params = KeyRing.KdfParams(3, 128, 2)
+        asked.clear()
+        assertArrayEquals(byteArrayOf(5, 6), open(sealed, "p"))
+        assertEquals(listOf(KeyRing.KdfParams(2, 64, 1)), asked)
+    }
+
+    @Test
+    fun newFilesAreVersion2() {
+        assertEquals(2, seal(byteArrayOf(), "p")[8].toInt())
+    }
+
+    // Written by build 16 (PBKDF2, 1000 rounds); old backups must still open.
+    @Test
+    fun version1BackupStillOpens() {
+        val v1 = "414e54495445424b01000003e86013061dfd8431ed43a2546b34d52874d07ebf4c91150abc000000200884c4466c44c2dcdeab8dd0fc12e6d0daa0e58cf308f832d9c4b90662f6a1dc".chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        assertEquals("version 1 backup", String(open(v1, "old")))
+        assertThrows(WrongPasswordException::class.java) { open(v1, "new") }
     }
 }

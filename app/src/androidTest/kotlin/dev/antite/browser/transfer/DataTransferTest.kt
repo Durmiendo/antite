@@ -39,7 +39,7 @@ class DataTransferTest {
 
     @Before
     fun setUp() {
-        BackupCipher.iterations = 1000
+        BackupCipher.params = KeyRing.KdfParams(1, 64, 1)
         base = File(context.cacheDir, "transfer-test").apply { deleteRecursively(); mkdirs() }
         src = File(base, "src")
         dst = File(base, "dst")
