@@ -1,4 +1,4 @@
-package dev.antite.browser.data
+package dev.antite.keys
 
 import java.io.File
 import java.io.IOException
@@ -14,7 +14,10 @@ import java.security.MessageDigest
 //   header: "ANTLOG01", version, log id (16), slot 0, slot 1, padding to HEADER
 //   slot:   length 1, box(seq 8, count 8, last hash 32), aad = log id + slot number
 //   record: length 4, box(record), aad = log id + number 8 + previous hash
-class EncryptedLog(private val file: File, private val key: ByteArray, private val cipher: () -> Cipher256) {
+class EncryptedLog(private val file: File, key: ByteArray, private val cipher: () -> Cipher256) {
+    // Its own copy: the caller may wipe its key, and close() wipes this one.
+    private val key = key.copyOf()
+
     class DamagedException(message: String) : IOException(message)
 
     companion object {
@@ -88,20 +91,28 @@ class EncryptedLog(private val file: File, private val key: ByteArray, private v
         }
     }
 
-    fun append(record: ByteArray) {
+    fun append(record: ByteArray) = appendAll(listOf(record))
+
+    // Several records with one sync of the disk: a stop in the middle keeps the whole ones before it.
+    fun appendAll(records: List<ByteArray>) {
         check(opened) { "read the log first" }
-        val boxed = Ciphers.box(cipher(), key, record, aad(count, lastHash))
+        if (records.isEmpty()) return
         RandomAccessFile(file, "rw").use { f ->
             f.seek(end)
-            f.writeInt(boxed.size)
-            f.write(boxed)
+            for (r in records) {
+                val boxed = Ciphers.box(cipher(), key, r, aad(count, lastHash))
+                f.writeInt(boxed.size)
+                f.write(boxed)
+                end += 4 + boxed.size
+                count++
+                lastHash = sha256(boxed)
+            }
             f.fd.sync()
-            end += 4 + boxed.size
-            count++
-            lastHash = sha256(boxed)
             writeSlot(f)
         }
     }
+
+    fun close() = key.fill(0)
 
     // The log written again with only these records, under a new id: aside first, then renamed over the old one.
     fun rewrite(records: List<ByteArray>) {
@@ -109,7 +120,8 @@ class EncryptedLog(private val file: File, private val key: ByteArray, private v
         val next = EncryptedLog(tmp, key, cipher)
         tmp.delete()
         next.read()
-        records.forEach(next::append)
+        next.appendAll(records)
+        next.close()
         if (!tmp.renameTo(file)) throw IOException("cannot replace ${file.name}")
         logId = next.logId
         seq = next.seq

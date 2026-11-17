@@ -1,11 +1,20 @@
 package dev.antite.browser.ui
 
 import android.text.format.DateUtils
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -22,7 +31,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.Browser
 import dev.antite.browser.DialogButton
@@ -31,6 +42,7 @@ import dev.antite.browser.LibraryKind
 import dev.antite.browser.R
 import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
+import dev.antite.browser.data.Categories
 import dev.antite.browser.data.Db
 import dev.antite.browser.data.Entry
 import dev.antite.browser.l10n.T
@@ -58,7 +70,7 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
     val downloadsRevision = b.downloads.revision.intValue
     suspend fun load(k: LibraryKind, f: String) = b.db.io {
         when (k) {
-            LibraryKind.HISTORY -> history(f, 2000)
+            LibraryKind.HISTORY -> b.historyOr(emptyList()) { list(b.historyCategories(), f, 2000) }
             LibraryKind.BOOKMARKS -> bookmarks(f)
             LibraryKind.CLOSED -> closed(f)
             LibraryKind.DOWNLOADS -> downloads(f)
@@ -67,7 +79,9 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
     LaunchedEffect(Unit) {
         for (k in LibraryKind.entries) if (k !in lists) lists[k] = load(k, "")
     }
-    LaunchedEffect(kind, filter, reload, downloadsRevision, shown) {
+    val scope = b.historyScope
+    val scopeLocked = kind == LibraryKind.HISTORY && b.categoryLocked(scope.takeIf { it != Categories.ALL })
+    LaunchedEffect(kind, filter, reload, downloadsRevision, shown, scope, scopeLocked) {
         if (!shown && kind in lists) return@LaunchedEffect
         if (filter.isEmpty()) {
             lists[kind] = load(kind, "")
@@ -129,7 +143,7 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
             LibraryKind.HISTORY -> listOf(
                 DialogButton(T.openInNewTab) { open(e, true) },
                 DialogButton(T.actionCopyLink) { b.activity.copy(e.url ?: "") },
-                DialogButton(T.libraryDeleteFromHistory) { change { deleteHistory(e.id) } },
+                DialogButton(T.libraryDeleteFromHistory) { change { b.historyOr(Unit) { delete(e) } } },
             )
             LibraryKind.BOOKMARKS -> listOf(
                 DialogButton(T.openInNewTab) { open(e, true) },
@@ -158,7 +172,7 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
     }
 
     fun clearAll() = when (kind) {
-        LibraryKind.HISTORY -> b.confirm(T.libraryClearHistory, T.actionDelete) { change { clearHistory() } }
+        LibraryKind.HISTORY -> b.confirm(T.libraryClearHistory, T.actionDelete) { change { b.eraseHistory(b.historyCategories()) } }
         LibraryKind.CLOSED -> change { clearClosed() }
         LibraryKind.DOWNLOADS -> b.confirm(T.libraryClearDownloads, T.actionClear) {
             change { clearDownloads() }
@@ -171,12 +185,15 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
             if (kind != LibraryKind.BOOKMARKS) TextButton(onClick = ::clearAll) { Text(T.actionClear, color = p.accent) }
         }) {
             item { SearchField(filter) { filter = it } }
-            if (loaded && items.isEmpty()) note(empty)
+            if (kind == LibraryKind.HISTORY && b.categories.list.isNotEmpty()) item { HistoryScope(b) }
+            if (scopeLocked) b.categories.byId(scope)?.let { note(T.categoryLocked(name = it.name)) }
+            else if (loaded && items.isEmpty()) note(empty)
             if (kind == LibraryKind.DOWNLOADS && b.prefs.int("dlLayout", 0) == 1) {
                 downloadBlocks(b, items, { open(it, false) }, ::actions)
                 return@PageScaffold
             }
-            items(items, key = { it.id }) { e ->
+            // History of several categories together may repeat an id: the category keeps keys apart.
+            items(items, key = { "${it.extra}/${it.id}" }) { e ->
                 val host = Urls.host(e.url)
                 val sub = when (kind) {
                     LibraryKind.HISTORY -> "$host · ${ago(e.time)}"
@@ -196,6 +213,31 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
                         }
                     },
                 )
+            }
+        }
+    }
+}
+
+// Whose history the page lists: all open categories together or one of them; a locked one asks to be opened.
+@Composable
+private fun HistoryScope(b: Browser) {
+    val p = LocalPalette.current
+    val all = listOf(Categories.ALL to T.tabsAll) + b.categories.list.map { it.id to it.name }
+    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(all, key = { it.first }) { (key, name) ->
+            val selected = b.historyScope == key
+            val locked = key != Categories.ALL && b.categoryLocked(key)
+            Row(
+                Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(if (selected) p.accent else Color.Transparent)
+                    .then(if (selected) Modifier else Modifier.border(1.dp, p.divider, RoundedCornerShape(17.dp)))
+                    .clickable {
+                        b.historyScope = key
+                        if (locked) b.categories.byId(key)?.let(b::unlockCategory)
+                    }.padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (locked) Ico(R.drawable.ic_shield_lock, if (selected) p.background else p.text, 16, Modifier.padding(end = 4.dp))
+                Text(name, color = if (selected) p.background else p.text, fontSize = 14.sp, maxLines = 1)
             }
         }
     }

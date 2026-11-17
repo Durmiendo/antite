@@ -1,4 +1,4 @@
-package dev.antite.browser.data
+package dev.antite.keys
 
 import java.io.Closeable
 import java.io.File

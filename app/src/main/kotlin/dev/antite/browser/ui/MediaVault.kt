@@ -78,6 +78,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import dev.antite.keys.VaultFile
 import kotlinx.coroutines.launch
 import me.saket.telephoto.zoomable.rememberZoomableState
 import me.saket.telephoto.zoomable.zoomable
@@ -88,7 +89,6 @@ import dev.antite.browser.R
 import dev.antite.browser.UiDialog
 import dev.antite.browser.FormField
 import dev.antite.browser.data.MediaVault
-import dev.antite.browser.data.VaultFile
 import dev.antite.browser.l10n.T
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay

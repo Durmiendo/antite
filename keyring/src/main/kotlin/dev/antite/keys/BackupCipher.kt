@@ -1,7 +1,5 @@
-package dev.antite.browser.transfer
+package dev.antite.keys
 
-import dev.antite.browser.data.KeyRing
-import dev.antite.browser.data.Secure
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.EOFException
@@ -26,7 +24,6 @@ object BackupCipher {
     private const val HEADER_SIZE = 8 + 1 + 4 + 4 + 1 + 16 + 8
     private const val LEGACY_HEADER_SIZE = 8 + 1 + 4 + 16 + 8
     const val CHUNK = 1 shl 20
-    var kdf: KeyRing.Kdf = Secure.Argon2
     var params = KeyRing.DEFAULT_KDF
 
     // A crafted file could ask for so much work or memory that checking the password takes minutes or kills the app.
@@ -40,7 +37,7 @@ object BackupCipher {
         return SecretKeySpec(bytes, "AES")
     }
 
-    private fun key(password: CharArray, salt: ByteArray, params: KeyRing.KdfParams): SecretKeySpec {
+    private fun key(kdf: KeyRing.Kdf, password: CharArray, salt: ByteArray, params: KeyRing.KdfParams): SecretKeySpec {
         val encoded = Charsets.UTF_8.newEncoder().encode(CharBuffer.wrap(password))
         val bytes = ByteArray(encoded.remaining()).also { encoded.get(it) }
         encoded.clear()
@@ -53,7 +50,7 @@ object BackupCipher {
         return SecretKeySpec(derived, 0, 32, "AES").also { derived.fill(0) }
     }
 
-    fun encrypt(out: OutputStream, password: CharArray): OutputStream {
+    fun encrypt(out: OutputStream, password: CharArray, kdf: KeyRing.Kdf): OutputStream {
         val random = SecureRandom()
         val salt = ByteArray(16).also(random::nextBytes)
         val nonceBase = ByteArray(8).also(random::nextBytes)
@@ -61,10 +58,10 @@ object BackupCipher {
         val header = ByteBuffer.allocate(HEADER_SIZE).put(MAGIC).put(VERSION)
             .putInt(p.iterations).putInt(p.memoryKib).put(p.parallelism.toByte()).put(salt).put(nonceBase).array()
         out.write(header)
-        return ChunkWriter(out, key(password, salt, p), header, nonceBase)
+        return ChunkWriter(out, key(kdf, password, salt, p), header, nonceBase)
     }
 
-    fun decrypt(input: InputStream, password: CharArray): InputStream {
+    fun decrypt(input: InputStream, password: CharArray, kdf: KeyRing.Kdf): InputStream {
         val data = DataInputStream(input)
         val start = ByteArray(9)
         try {
@@ -94,7 +91,7 @@ object BackupCipher {
             val p = KeyRing.KdfParams(b.getInt(), b.getInt(), b.get().toInt())
             if (p.iterations !in 1..MAX_PARAMS.iterations || p.memoryKib !in 8..MAX_PARAMS.memoryKib ||
                 p.parallelism !in 1..MAX_PARAMS.parallelism) throw IOException("bad header")
-            key(password, ByteArray(16).also { b.get(it) }, p)
+            key(kdf, password, ByteArray(16).also { b.get(it) }, p)
         }
         val nonceBase = ByteArray(8).also { b.get(it) }
         return ChunkReader(data, key, header, nonceBase)

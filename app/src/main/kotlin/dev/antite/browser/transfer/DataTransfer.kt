@@ -3,10 +3,11 @@ package dev.antite.browser.transfer
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import dev.antite.browser.data.Db
-import dev.antite.browser.data.KeyRing
 import dev.antite.browser.data.Secure
 import dev.antite.browser.data.Vault
 import dev.antite.browser.l10n.T
+import dev.antite.keys.BackupCipher
+import dev.antite.keys.KeyRing
 import org.json.JSONObject
 import java.io.File
 import java.io.FilterInputStream
@@ -44,11 +45,11 @@ object DataTransfer {
         work.deleteRecursively()
         work.mkdirs()
         try {
-            val keys = KeyRing.DOMAINS.map { d -> File(work, d).also { it.writeBytes(ring.key(d)) } }
+            val keys = KeyRing.DOMAINS.map { d -> File(work, d).also { f -> ring.withKey(d) { f.writeBytes(it) } } }
             val files = collect(root).filter { (rel, _) -> !isEngine(rel) }
             val total = files.sumOf { it.second.length() }
             var done = 0L
-            ZipOutputStream(BackupCipher.encrypt(out, password)).use { zip ->
+            ZipOutputStream(BackupCipher.encrypt(out, password, Secure.Argon2)).use { zip ->
                 zip.putNextEntry(ZipEntry(MANIFEST))
                 zip.write(JSONObject()
                     .put("format", FORMAT)
@@ -89,7 +90,7 @@ object DataTransfer {
         stage.mkdirs()
         try {
             val counted = CountingStream(input) { progress(Progress(it, total)) }
-            val plain = BackupCipher.decrypt(counted, password)
+            val plain = BackupCipher.decrypt(counted, password, Secure.Argon2)
             ZipInputStream(plain).use { zip ->
                 val first = zip.nextEntry ?: throw IOException("empty backup")
                 if (first.name != MANIFEST) throw IOException("no manifest")
@@ -124,8 +125,7 @@ object DataTransfer {
             keyDir.deleteRecursively()
             // A backup from before the key ring holds its secrets in the open: they are sealed with this device's key.
             if (keys[KeyRing.SECRETS] == null) File(stage, VAULT).takeIf { it.exists() }?.let { v ->
-                val k = ring.key(KeyRing.SECRETS)
-                rewriteSecrets(v) { Vault.seal(k, Secure.cipher(context), it) }
+                ring.withKey(KeyRing.SECRETS) { k -> rewriteSecrets(v) { Vault.seal(k, Secure.cipher(context), it) } }
             }
             File(stage, SETTINGS).takeIf { it.exists() }?.let { f -> f.writeText(f.readText().replace(DEBUG_INSTALL, "")) }
             replace(root, stage)

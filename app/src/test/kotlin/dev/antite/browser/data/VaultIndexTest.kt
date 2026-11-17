@@ -2,6 +2,7 @@ package dev.antite.browser.data
 
 import dev.antite.browser.data.MediaVault.Folder
 import dev.antite.browser.data.MediaVault.Item
+import dev.antite.keys.Cipher256
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

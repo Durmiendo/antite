@@ -1,4 +1,4 @@
-package dev.antite.browser.data
+package dev.antite.keys
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals

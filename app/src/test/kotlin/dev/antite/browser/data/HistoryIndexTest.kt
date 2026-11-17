@@ -44,7 +44,7 @@ class HistoryIndexTest {
     }
 
     @Test
-    fun deleteAndClear() {
+    fun delete() {
         val h = index()
         h.apply(Event.Visit("https://a.example/", null, clock))
         h.apply(Event.Visit("https://b.example/", null, clock))
@@ -52,8 +52,6 @@ class HistoryIndexTest {
         assertEquals("https://a.example/", h.urlOf(id))
         h.apply(Event.Delete("https://a.example/"))
         assertArrayEquals(booleanArrayOf(false, true), h.visited(listOf("https://a.example/", "https://b.example/")))
-        h.apply(Event.Clear)
-        assertEquals(0, h.size)
     }
 
     @Test

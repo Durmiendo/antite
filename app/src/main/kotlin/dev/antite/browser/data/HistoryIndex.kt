@@ -14,7 +14,6 @@ class HistoryIndex(private val now: () -> Long = System::currentTimeMillis) {
         data class Visit(val url: String, val title: String?, val at: Long) : Event
         data class Title(val url: String, val title: String) : Event
         data class Delete(val url: String) : Event
-        data object Clear : Event
         // One page as a whole: what a compacted log holds.
         data class Page(val url: String, val title: String?, val visits: Int, val last: Long) : Event
     }
@@ -46,12 +45,13 @@ class HistoryIndex(private val now: () -> Long = System::currentTimeMillis) {
             }
             is Event.Title -> if (e.title.isNotEmpty()) pages[e.url]?.title = e.title
             is Event.Delete -> pages.remove(e.url)
-            Event.Clear -> pages.clear()
             is Event.Page -> pages[e.url] = Page(nextId++, e.url, e.title, e.visits, e.last)
         }
     }
 
     private fun live() = (now() - KEEP_MS).let { cutoff -> pages.values.filter { it.last >= cutoff } }
+
+    fun has(url: String) = pages.containsKey(url)
 
     fun urlOf(id: Long): String? = pages.values.firstOrNull { it.id == id }?.url
 

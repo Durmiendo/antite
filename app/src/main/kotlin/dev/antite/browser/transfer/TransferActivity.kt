@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.antite.browser.MainActivity
-import dev.antite.browser.data.KeyRing
 import dev.antite.browser.data.Prefs
 import dev.antite.browser.data.Secure
 import dev.antite.browser.l10n.T
@@ -37,6 +36,8 @@ import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.LocalPalette
 import dev.antite.browser.ui.SecretField
 import dev.antite.browser.ui.SecretInput
+import dev.antite.keys.KeyRing
+import dev.antite.keys.WrongPasswordException
 import java.io.FileNotFoundException
 import java.io.IOException
 import kotlin.concurrent.thread

@@ -1,4 +1,4 @@
-package dev.antite.browser.data
+package dev.antite.keys
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -170,5 +170,37 @@ class KeyRingTest {
         r.install(KeyRing.HISTORY, k.copyOf())
         r.lock()
         assertArrayEquals(k, ring().key(KeyRing.HISTORY))
+    }
+
+    // Leaving the app locks the ring from the main thread while a background thread may be sealing with a key: the lock
+    // waits for the work, and only then wipes the key.
+    @Test
+    fun lockWaitsForWorkWithAKey() {
+        val r = ring().apply { create() }
+        val started = java.util.concurrent.CountDownLatch(1)
+        val seen = ArrayList<Byte>()
+        val worker = Thread {
+            r.withKey(KeyRing.VAULT) { k ->
+                started.countDown()
+                Thread.sleep(300)
+                seen += k[0]
+                seen += k[63]
+            }
+        }
+        val before = r.key(KeyRing.VAULT).copyOf()
+        worker.start()
+        started.await()
+        r.lock()
+        worker.join()
+        assertEquals(listOf(before[0], before[63]), seen)
+    }
+
+    @Test
+    fun keyFilesAreReplacedWhole() {
+        val r = ring().apply { create() }
+        r.setMode(KeyRing.Mode.BOTH, pw("p"))
+        assertFalse(File(tmp.root, "vault.json.tmp").exists())
+        assertFalse(File(tmp.root, "password.json.tmp").exists())
+        assertTrue(org.json.JSONObject(File(tmp.root, "vault.json").readText()).getInt("gen") > 1)
     }
 }

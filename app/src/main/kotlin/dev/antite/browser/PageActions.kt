@@ -109,7 +109,7 @@ fun Browser.clearData(cache: Boolean, siteData: Boolean, permissions: Boolean, h
     if (history) {
         activity.lifecycleScope.launch {
             db.io {
-                clearHistory()
+                eraseHistory(listOf<String?>(null) + categories.list.map { it.id })
                 clearClosed()
             }
         }

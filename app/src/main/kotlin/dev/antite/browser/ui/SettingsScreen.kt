@@ -33,10 +33,11 @@ import dev.antite.browser.data.Categories
 import dev.antite.browser.data.CustomValues
 import dev.antite.browser.data.Option
 import dev.antite.browser.data.Options
+import dev.antite.browser.data.Secure
 import dev.antite.browser.l10n.T
 import dev.antite.browser.service.Downloads
-import dev.antite.browser.transfer.BackupCipher
-import dev.antite.browser.transfer.WrongPasswordException
+import dev.antite.keys.BackupCipher
+import dev.antite.keys.WrongPasswordException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -355,7 +356,7 @@ internal fun importAll(b: Browser) = b.activity.openDocument(listOf("application
         b.activity.lifecycleScope.launch {
             val error = withContext(Dispatchers.Default) {
                 try {
-                    b.activity.contentResolver.openInputStream(uri)!!.use { BackupCipher.decrypt(it, password).read() }
+                    b.activity.contentResolver.openInputStream(uri)!!.use { BackupCipher.decrypt(it, password, Secure.Argon2).read() }
                     null
                 } catch (e: WrongPasswordException) {
                     T.transferWrongPassword

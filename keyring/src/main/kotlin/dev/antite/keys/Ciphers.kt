@@ -1,4 +1,4 @@
-package dev.antite.browser.data
+package dev.antite.keys
 
 import java.io.IOException
 import java.nio.ByteBuffer

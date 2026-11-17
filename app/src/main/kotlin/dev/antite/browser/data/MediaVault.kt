@@ -15,6 +15,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.antite.browser.service.DownloadService
 import dev.antite.browser.service.Downloads
+import dev.antite.keys.Cipher256
+import dev.antite.keys.Ciphers
+import dev.antite.keys.Durable
+import dev.antite.keys.KeyRing
+import dev.antite.keys.VaultFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -102,7 +107,7 @@ class MediaVault(
         unreadable = false
         runCatching {
             when {
-                index.exists() -> readIndex(ring.key(KeyRing.VAULT)).let(::apply)
+                index.exists() -> ring.withKey(KeyRing.VAULT, ::readIndex).let(::apply)
                 v1Index.exists() -> apply(readV1Index())
                 oldIndex.exists() -> items = VaultIndex.parseItems(JSONArray(oldIndex.readText()))
             }
@@ -167,8 +172,11 @@ class MediaVault(
 
     private fun indexBytes(): ByteArray = VaultIndex.encode(items, folders, synchronized(fileKeys) { HashMap(fileKeys) })
 
+    // Under the ring's hold on the key: leaving the app cannot wipe it while the index is sealed with it.
+    private fun save() = ring.withKey(KeyRing.VAULT, ::save)
+
     // Written aside and renamed: a failure in the middle leaves the previous index.
-    private fun save(dataKey: ByteArray = ring.key(KeyRing.VAULT)) {
+    private fun save(dataKey: ByteArray) {
         if (!opened) throw KeyRing.LockedException()
         if (unreadable) throw java.io.IOException("the vault index could not be read")
         val plain = indexBytes()
@@ -181,7 +189,7 @@ class MediaVault(
         } finally {
             plain.fill(0)
         }
-        if (!tmp.renameTo(index)) throw java.io.IOException("cannot replace the vault index")
+        Durable.rename(tmp, index)
         oldIndex.delete()
     }
 

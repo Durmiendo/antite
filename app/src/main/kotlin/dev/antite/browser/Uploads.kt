@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import dev.antite.browser.data.MediaVault
-import dev.antite.browser.data.VaultFile
+import dev.antite.keys.VaultFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File

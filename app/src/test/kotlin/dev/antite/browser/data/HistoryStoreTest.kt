@@ -1,6 +1,9 @@
 package dev.antite.browser.data
 
 import dev.antite.browser.data.HistoryIndex.Event
+import dev.antite.keys.CategoryKeys
+import dev.antite.keys.Cipher256
+import dev.antite.keys.Ciphers
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,7 +22,7 @@ class HistoryStoreTest {
     private var clock = 1_800_000_000_000L
     private val domain = Ciphers.randomBytes(Cipher256.KEY)
     private val keyDir get() = File(tmp.root, "keys")
-    private fun keys() = CategoryKeys(keyDir, { domain }) { Cipher256.AES }
+    private fun keys() = CategoryKeys(keyDir, { op -> op(domain) }) { Cipher256.AES }
     private fun store(k: CategoryKeys = keys()) = HistoryStore(File(tmp.root, "history"), k::key, { Cipher256.XCHACHA }) { clock }
 
     @Test
@@ -57,15 +60,33 @@ class HistoryStoreTest {
         assertEquals(listOf("a.example"), store().frequent(null, emptySet(), 5).map { it.host })
     }
 
+    // Old pages come in even where pages were visited since (a start with the key ring locked put the move off),
+    // and a page visited since keeps its own counts.
     @Test
-    fun importFillsOnlyAnEmptyCategory() {
-        val pages = listOf(Event.Page("https://old.example/", "Old", 4, clock - 1000))
+    fun importAddsOnlyPagesNotThereYet() {
         val s = store()
-        s.import("work", pages)
-        s.visit("home", "https://x.example/", null)
-        s.import("home", pages)
-        assertEquals(listOf("https://old.example/"), store().list(listOf("work"), null, 10).map { it.url })
-        assertEquals(listOf("https://x.example/"), store().list(listOf("home"), null, 10).map { it.url })
+        s.visit("work", "https://both.example/", "New")
+        s.import("work", listOf(
+            Event.Page("https://old.example/", "Old", 4, clock - 1000),
+            Event.Page("https://both.example/", "Stale", 9, clock - 5000),
+        ))
+        val back = store().list(listOf("work"), null, 10).associate { it.url to it.title }
+        assertEquals(mapOf("https://old.example/" to "Old", "https://both.example/" to "New"), back)
+    }
+
+    // A log that cannot be read is put aside and the category starts again: history must not stop for good.
+    @Test
+    fun aDamagedLogIsKeptAsideAndHistoryGoesOn() {
+        store().visit("work", "https://a.example/", null)
+        val f = File(tmp.root, "history/work.log")
+        val bytes = f.readBytes()
+        bytes[bytes.size - 5] = (bytes[bytes.size - 5].toInt() xor 1).toByte()
+        File(tmp.root, "history/-.log").delete()
+        f.writeBytes(bytes.copyOf(300) + bytes.copyOfRange(300, bytes.size))
+        val s = store()
+        s.visit("work", "https://b.example/", null)
+        assertEquals(listOf("https://b.example/"), store().list(listOf("work"), null, 10).map { it.url })
+        assertTrue(File(tmp.root, "history/work.log.bad").exists())
     }
 
     @Test
@@ -78,17 +99,7 @@ class HistoryStoreTest {
         k.forget("work")
         assertFalse(File(tmp.root, "history/work.log").exists())
         File(tmp.root, "history/work.log").writeBytes(copy)
-        assertThrows(IOException::class.java) { store().visited("work", listOf("https://secret.example/")) }
-    }
-
-    @Test
-    fun categoryKeysAreRandomAndSealed() {
-        val k = keys()
-        val a = k.key("a").copyOf()
-        assertFalse(a.contentEquals(k.key("b")))
-        assertArrayEquals(a, keys().key("a"))
-        assertThrows(IOException::class.java) {
-            CategoryKeys(keyDir, { Ciphers.randomBytes(Cipher256.KEY) }) { Cipher256.AES }.key("a")
-        }
+        assertFalse(store().visited("work", listOf("https://secret.example/")).single())
+        assertTrue("the unreadable copy is put aside", File(tmp.root, "history/work.log.bad").exists())
     }
 }

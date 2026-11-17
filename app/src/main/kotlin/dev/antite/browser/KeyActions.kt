@@ -2,10 +2,10 @@ package dev.antite.browser
 
 import android.os.Handler
 import android.os.Looper
-import dev.antite.browser.data.Cipher256
-import dev.antite.browser.data.KeyRing
 import dev.antite.browser.data.Secure
 import dev.antite.browser.l10n.T
+import dev.antite.keys.Cipher256
+import dev.antite.keys.KeyRing
 import java.nio.CharBuffer
 import kotlin.concurrent.thread
 
@@ -69,6 +69,8 @@ fun Browser.unlockSecrets(reason: String, ok: () -> Unit, cancelled: () -> Unit 
 fun Browser.lockKeys() {
     if (!ring.mode.usesPassword) return
     mediaVault.close()
+    history.close()
+    categoryKeys.lock()
     ring.lock()
 }
 

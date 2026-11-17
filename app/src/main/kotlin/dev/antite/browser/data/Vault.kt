@@ -10,6 +10,9 @@ import dev.antite.browser.Urls
 import dev.antite.engine.Address
 import dev.antite.engine.Card
 import dev.antite.engine.Login
+import dev.antite.keys.Cipher256
+import dev.antite.keys.Ciphers
+import dev.antite.keys.KeyRing
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -94,21 +97,21 @@ class Vault private constructor(private val context: Context) : SQLiteOpenHelper
         db.rawQuery("PRAGMA secure_delete=ON", null).use { it.moveToFirst() }
     }
 
-    // The secrets key; on first use also finishes a stopped key replacement and moves values of the version before
-    // the key ring over. Throws KeyRing.LockedException while a password is needed.
-    private fun key(): ByteArray {
-        if (!ready) {
-            ring.recover(KeyRing.SECRETS) { k -> firstValue()?.let { v -> runCatching { open(k, v) }.isSuccess } ?: true }
-            val k = ring.key(KeyRing.SECRETS)
-            var left = 0
+    // On first use finishes a stopped key replacement and moves values of the version before the key ring over.
+    // Throws KeyRing.LockedException while a password is needed.
+    private fun key() {
+        ring.key(KeyRing.SECRETS)
+        if (ready) return
+        ring.recover(KeyRing.SECRETS) { k -> firstValue()?.let { v -> runCatching { open(k, v) }.isSuccess } ?: true }
+        var left = 0
+        ring.withKey(KeyRing.SECRETS) { k ->
             rewrite { v ->
                 if (!isLegacy(Base64.decode(v, Base64.NO_WRAP))) null
                 else runCatching { seal(k, cipher(), open(k, v)) }.getOrNull().also { if (it == null) left++ }
             }
-            if (left == 0) Secure.legacyMoved(context, "secrets")
-            ready = true
         }
-        return ring.key(KeyRing.SECRETS)
+        if (left == 0) Secure.legacyMoved(context, "secrets")
+        ready = true
     }
 
     // Values of the version before the key ring start with "D" in base64 (their first byte is 12).
@@ -151,13 +154,20 @@ class Vault private constructor(private val context: Context) : SQLiteOpenHelper
     // A new cipher setting: values are sealed again, under a new key as well.
     fun recrypt() = forget()
 
-    private fun encrypt(plain: String) = seal(key(), cipher(), plain)
+    // The key is used under the ring's hold, so leaving the app cannot wipe it half way.
+    private fun <R> withKey(block: (ByteArray) -> R): R {
+        key()
+        return ring.withKey(KeyRing.SECRETS, block)
+    }
+
+    private fun encrypt(plain: String) = withKey { seal(it, cipher(), plain) }
 
     private fun decrypt(stored: String?): String? {
         if (stored == null) return null
-        val k = key()
+        // A locked ring throws here, out of the catch below: the caller asks for the password.
+        key()
         return try {
-            open(k, stored)
+            ring.withKey(KeyRing.SECRETS) { open(it, stored) }
         } catch (e: IOException) {
             android.util.Log.w("Antite", "secret unreadable", e)
             null

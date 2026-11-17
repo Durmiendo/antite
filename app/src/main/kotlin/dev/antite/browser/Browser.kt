@@ -1,5 +1,6 @@
 package dev.antite.browser
 
+import android.util.Log
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
 import android.content.Intent
@@ -19,6 +20,8 @@ import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.data.Categories
 import dev.antite.browser.data.Db
 import dev.antite.browser.data.Entry
+import dev.antite.browser.data.HistoryStore
+import dev.antite.browser.data.Secure
 import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.data.IconCache
 import dev.antite.browser.data.MediaVault
@@ -46,6 +49,10 @@ import dev.antite.engine.EngineView
 import dev.antite.engine.Prompt
 import dev.antite.engine.TabCallbacks
 import dev.antite.engine.TabOptions
+import dev.antite.keys.CategoryKeys
+import dev.antite.keys.KeyRing
+import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.launch
 
 enum class Overlay { NONE, SWITCHER, SETTINGS, LIBRARY, VAULT }
@@ -125,6 +132,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     val translation get() = if (TRANSLATION_ENABLED) engine.translation else null
     val defaultBrowser = DefaultBrowserOffer(activity, prefs, ::toast)
     val vaultAccess = VaultAccess(this)
+    val categoryKeys = CategoryKeys(File(activity.filesDir, "history/keys"), { ring.withKey(KeyRing.HISTORY, it) }, { Secure.cipher(activity) })
+    val history = HistoryStore(File(activity.filesDir, "history"), categoryKeys::key, { Secure.cipher(activity) })
+    // The history page shows this: Categories.ALL or a category id.
+    var historyScope by mutableStateOf(Categories.ALL)
     // The tab whose last picture is drawn over the page while it loads again after being lost in the background.
     var restoreCover by mutableStateOf<Tab?>(null)
         internal set
@@ -182,9 +193,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     suspend fun loadNtp() {
         val hidden = prefs.stringSet("hiddenHosts")
         val count = prefs.pick("ntpFrequent", Options.frequentSites, 3, Options.customFrequent)
+        val category = current?.category
         val (pins, frequent) = db.io {
             val list = pins()
-            list to frequent(hidden + list.map { Urls.host(it.url) }, count)
+            list to historyOr(emptyList()) { frequent(category, hidden + list.map { Urls.host(it.url) }, count) }
         }
         ntpPins = pins
         ntpFrequent = frequent
@@ -206,7 +218,50 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     // ---------------------------------------------------------------- tabs
 
+    // History works only while the key ring can give its key: with a password mode, after it is unlocked. Until then
+    // nothing is recorded or shown, instead of failing.
+    fun <R> historyOr(fallback: R, block: HistoryStore.() -> R): R = try {
+        history.block()
+    } catch (e: IOException) {
+        Log.w("Antite", "history unavailable", e)
+        fallback
+    }
+
+    // Their logs and keys go: what was recorded cannot be read again, even from a copy of the files. Needs no key.
+    fun eraseHistory(categories: Collection<String?>) = categories.forEach {
+        history.forget(it)
+        categoryKeys.forget(HistoryStore.nameOf(it))
+    }
+
+    // What the history page lists for its scope: a locked category lists nothing until it is opened.
+    fun historyCategories(): List<String?> = when (val s = historyScope) {
+        Categories.ALL -> openCategories()
+        else -> when {
+            categories.byId(s) == null -> openCategories()
+            categoryLocked(s) -> emptyList()
+            else -> listOf(s)
+        }
+    }
+
+    // Categories whose history "Все" shows: those open now, and the tabs outside any category.
+    fun openCategories(): List<String?> = listOf<String?>(null) + categories.list.filter { !categoryLocked(it.id) }.map { it.id }
+
+    // Before this store, history was one SQLite table: it goes into every category, as the user decided, then the table
+    // is emptied. Tried again on the next start while the key ring is locked.
+    private suspend fun moveOldHistory() {
+        if (prefs.bool("historyMoved", false)) return
+        val moved = db.io {
+            val pages = oldHistory()
+            historyOr(false) {
+                (listOf<String?>(null) + categories.list.map { it.id }).forEach { import(it, pages) }
+                true
+            }.also { if (it) dropOldHistory() }
+        }
+        if (moved) prefs.edit { putBoolean("historyMoved", true) }
+    }
+
     fun restore() {
+        activity.lifecycleScope.launch { moveOldHistory() }
         val loaded = store.load()
         tabs.addAll(loaded.tabs)
         val sel = tabs.firstOrNull { it.id == loaded.selected } ?: tabs.lastOrNull()
@@ -473,7 +528,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         if (switcherPage == c.id) switcherPage = Categories.ALL
         scheduleSave()
         activity.lifecycleScope.launch {
-            db.io { clearPinCategory(c.id) }
+            db.io {
+                clearPinCategory(c.id)
+                eraseHistory(listOf(c.id))
+            }
             ntpRevision++
         }
     }
@@ -580,6 +638,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun showLibrary(kind: LibraryKind) {
         libraryKind = kind
+        if (kind == LibraryKind.HISTORY) historyScope = current?.takeIf { !it.incognito }?.category ?: Categories.ALL
         overlay = Overlay.LIBRARY
         setToolbarHidden(0f)
     }

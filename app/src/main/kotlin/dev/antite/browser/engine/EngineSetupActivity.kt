@@ -40,7 +40,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import dev.antite.browser.data.KeyRing
 import dev.antite.browser.data.Options
 import dev.antite.browser.data.Secure
 import dev.antite.browser.l10n.L10n
@@ -50,6 +49,7 @@ import dev.antite.browser.ui.RadioRow
 import dev.antite.browser.ui.SecretField
 import dev.antite.browser.ui.SecretInput
 import dev.antite.browser.ui.SwitchRow
+import dev.antite.keys.KeyRing
 import kotlin.concurrent.thread
 
 class EngineSetupActivity : ComponentActivity() {

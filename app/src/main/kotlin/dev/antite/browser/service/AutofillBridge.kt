@@ -1,11 +1,11 @@
 package dev.antite.browser.service
 
-import dev.antite.browser.data.KeyRing
 import dev.antite.browser.data.Vault
 import dev.antite.engine.Address
 import dev.antite.engine.AutofillStore
 import dev.antite.engine.Card
 import dev.antite.engine.Login
+import dev.antite.keys.KeyRing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 

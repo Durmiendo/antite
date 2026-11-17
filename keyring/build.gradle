@@ -1,0 +1,23 @@
+// Keys and encrypted formats: plain Kotlin on the JVM, no Android on the classpath, so nothing of the interface or
+// the platform can reach into it. The Keystore and Argon2 come from the app through KeyRing.DeviceKeys and KeyRing.Kdf.
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+dependencies {
+    // Android has org.json built in; the key files are JSON and must keep their format.
+    compileOnly 'org.json:json:20260814'
+    testImplementation 'org.json:json:20260814'
+    testImplementation 'junit:junit:4.13.2'
+}

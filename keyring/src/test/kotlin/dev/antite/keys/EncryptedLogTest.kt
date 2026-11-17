@@ -1,4 +1,4 @@
-package dev.antite.browser.data
+package dev.antite.keys
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -121,6 +121,18 @@ class EncryptedLogTest {
         assertTrue(!File(file().path + ".new").exists())
         l.append(rec(10))
         assertEquals(listOf("record 7", "record 9", "record 10"), texts(log().read()))
+    }
+
+    // The caller wiping its key must not leave the log writing under a key of zeros.
+    @Test
+    fun theLogKeepsItsOwnCopyOfTheKey() {
+        val k = key.copyOf()
+        val l = EncryptedLog(file(), k) { Cipher256.AES }
+        l.read()
+        l.append(rec(0))
+        k.fill(0)
+        l.append(rec(1))
+        assertEquals(listOf("record 0", "record 1"), texts(log().read()))
     }
 
     private fun recordStarts(bytes: ByteArray): List<Int> {

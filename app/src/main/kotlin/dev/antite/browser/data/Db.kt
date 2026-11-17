@@ -5,7 +5,6 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import android.net.Uri
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,7 +16,6 @@ data class Site(val host: String, val url: String, val title: String?)
 class Db private constructor(context: Context) : SQLiteOpenHelper(context, "antite.db", null, VERSION) {
     companion object {
         const val VERSION = 4
-        private const val HISTORY_KEEP_MS = 90L * 24 * 3600 * 1000
 
         @Volatile
         private var instance: Db? = null
@@ -108,82 +106,24 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "anti
         writableDatabase.execSQL("UPDATE pins SET pos=? WHERE id=?", arrayOf(a.time, b.id))
     }
 
-    fun frequent(skipHosts: Set<String>, limit: Int): List<Site> {
-        val score = LinkedHashMap<String, Int>()
-        val titles = HashMap<String, String>()
-        val roots = HashMap<String, String>()
-        val cutoff = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
-        readableDatabase.rawQuery(
-            "SELECT url, title, visits FROM history WHERE visited>? ORDER BY visits DESC LIMIT 500",
-            arrayOf(cutoff.toString()),
-        ).use { c ->
-            while (c.moveToNext()) {
-                val u = Uri.parse(c.getString(0))
-                val host = u.host ?: continue
-                val h = host.removePrefix("www.")
-                if (h in skipHosts) continue
-                if (h !in score) roots[h] = "${u.scheme}://$host/"
-                score[h] = (score[h] ?: 0) + c.getInt(2)
-                if (h !in titles && c.getString(1) != null) titles[h] = c.getString(1)
-            }
-        }
-        return score.entries.sortedByDescending { it.value }.take(limit).map { Site(it.key, roots[it.key]!!, titles[it.key]) }
-    }
-
-    fun suggest(text: String, limit: Int, bookmarks: Boolean): List<Entry> {
+    fun bookmarkSuggestions(text: String, limit: Int): List<Entry> {
         val f = "%$text%"
-        val seen = HashSet<String>()
-        val out = ArrayList<Entry>()
-        if (bookmarks) readableDatabase.rawQuery(
+        return readableDatabase.rawQuery(
             "SELECT id, url, title, created, 'b' FROM bookmarks WHERE url LIKE ? OR title LIKE ? LIMIT ?",
             arrayOf(f, f, limit.toString()),
-        ).entries().forEach { if (seen.add(it.url ?: "")) out += it }
-        readableDatabase.rawQuery(
-            "SELECT id, url, title, visited, 'h' FROM history WHERE url LIKE ? OR title LIKE ? " +
-                "ORDER BY (url LIKE ?) DESC, visits DESC, visited DESC LIMIT ?",
-            arrayOf(f, f, "%://$text%", (limit * 2).toString()),
-        ).entries().forEach { if (out.size < limit && seen.add(it.url ?: "")) out += it }
-        return out
+        ).entries()
     }
 
-    fun visit(url: String, title: String?) {
-        val db = writableDatabase
-        val v = ContentValues().apply {
-            put("url", url)
-            put("visited", System.currentTimeMillis())
-            if (!title.isNullOrEmpty()) put("title", title)
+    // The history table of the time before the encrypted history, for moving it over.
+    fun oldHistory(): List<HistoryIndex.Event.Page> =
+        readableDatabase.rawQuery("SELECT url, title, visits, visited FROM history", null).use { c ->
+            buildList { while (c.moveToNext()) add(HistoryIndex.Event.Page(c.getString(0), c.getString(1), c.getInt(2), c.getLong(3))) }
         }
-        if (db.update("history", v, "url=?", arrayOf(url)) == 0) {
-            db.insert("history", null, v)
-        } else {
-            db.execSQL("UPDATE history SET visits=visits+1 WHERE url=?", arrayOf(url))
-        }
-    }
 
-    fun title(url: String, title: String) {
-        if (title.isEmpty()) return
-        writableDatabase.update("history", ContentValues().apply { put("title", title) }, "url=?", arrayOf(url))
-    }
-
-    fun visited(urls: List<String>): BooleanArray {
-        val db = readableDatabase
-        return BooleanArray(urls.size) { i ->
-            db.rawQuery("SELECT 1 FROM history WHERE url=? LIMIT 1", arrayOf(urls[i])).use { it.moveToFirst() }
-        }
-    }
-
-    fun history(filter: String?, limit: Int): List<Entry> {
-        writableDatabase.delete("history", "visited<?",
-            arrayOf((System.currentTimeMillis() - HISTORY_KEEP_MS).toString()))
-        return query("SELECT id, url, title, visited, NULL FROM history", "visited", filter, limit)
-    }
-
-    fun deleteHistory(id: Long) {
-        writableDatabase.delete("history", "id=?", arrayOf(id.toString()))
-    }
-
-    fun clearHistory() {
+    // Emptied, and the file rewritten, so the addresses do not linger in its free pages.
+    fun dropOldHistory() {
         writableDatabase.delete("history", null, null)
+        writableDatabase.execSQL("VACUUM")
     }
 
     fun isBookmarked(url: String): Boolean =

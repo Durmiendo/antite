@@ -5,7 +5,7 @@ incognito tabs.
 
 Usage: python3 -I tools/e2e/tab_categories.py --serial SERIAL
 
-Needs example.com among the frequent sites (visited before) and no incognito tabs. Latin names only: adb input text
+Opens example.com in the category for its frequent sites. Needs no incognito tabs. Latin names only: adb input text
 cannot type Cyrillic. Leaves the per-category count off and no category or pin behind.
 """
 import argparse
@@ -141,6 +141,15 @@ def main():
     time.sleep(1)
 
     print("4. a pin tied to the category opens there")
+    # Frequent sites come from the history of the tab's category: the new one has none until a page is opened in it.
+    d.tap("Меню", exact=True)
+    d.tap("Новая вкладка", exact=True)
+    time.sleep(2)
+    d.tap("Введите запрос или URL", exact=True)
+    time.sleep(1)
+    d.type("https://example.com/")
+    d.shell("input keyevent 66")
+    time.sleep(4)
     d.tap("Меню", exact=True)
     d.tap("Новая вкладка", exact=True)
     time.sleep(2)

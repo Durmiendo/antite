@@ -35,7 +35,7 @@ jobs:
       - name: Android SDK
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.2" "platforms;android-36" "build-tools;36.0.0" > /dev/null
       - name: Build and unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest :engine-gecko:adapterPackage
+        run: ./gradlew --no-daemon :keyring:test testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest :engine-gecko:adapterPackage
       - name: Test reports
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

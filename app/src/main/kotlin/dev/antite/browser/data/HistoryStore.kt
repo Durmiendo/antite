@@ -1,6 +1,8 @@
 package dev.antite.browser.data
 
 import dev.antite.browser.data.HistoryIndex.Event
+import dev.antite.keys.Cipher256
+import dev.antite.keys.EncryptedLog
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromByteArray
@@ -42,7 +44,6 @@ class HistoryStore(
         is Event.Visit -> Rec(1, e.url, e.title, e.at)
         is Event.Title -> Rec(2, e.url, e.title)
         is Event.Delete -> Rec(3, e.url)
-        Event.Clear -> Rec(4)
         is Event.Page -> Rec(5, e.url, e.title, e.last, e.visits)
     })
 
@@ -51,7 +52,6 @@ class HistoryStore(
             1 -> Event.Visit(r.url, r.title, r.at)
             2 -> Event.Title(r.url, r.title ?: "")
             3 -> Event.Delete(r.url)
-            4 -> Event.Clear
             5 -> Event.Page(r.url, r.title, r.visits, r.at)
             else -> null
         }
@@ -60,9 +60,19 @@ class HistoryStore(
     private fun file(name: String) = File(dir, "$name.log")
 
     private fun book(name: String): Book = books.getOrPut(name) {
-        val log = EncryptedLog(file(name), keyOf(name), cipher)
+        val key = keyOf(name)
+        var log = EncryptedLog(file(name), key, cipher)
+        val records = try {
+            log.read()
+        } catch (e: EncryptedLog.DamagedException) {
+            // Put aside rather than lost or stuck: the category's history starts again.
+            log.close()
+            file(name).renameTo(File(file(name).path + ".bad"))
+            log = EncryptedLog(file(name), key, cipher)
+            log.read()
+        }
         val index = HistoryIndex(now)
-        log.read().forEach { r -> decode(r)?.let(index::apply) }
+        records.forEach { r -> decode(r)?.let(index::apply) }
         Book(log, index)
     }
 
@@ -100,34 +110,32 @@ class HistoryStore(
     }
 
     @Synchronized
-    fun clear(categories: Collection<String?>) = categories.map(::nameOf).distinct().forEach { write(it, Event.Clear) }
-
-    @Synchronized
     fun suggest(category: String?, text: String, limit: Int) = book(nameOf(category)).index.suggest(text, limit)
 
     @Synchronized
     fun frequent(category: String?, skipHosts: Set<String>, limit: Int) = book(nameOf(category)).index.frequent(skipHosts, limit)
 
-    // Pages from before this store, put into a category's log at once (an empty log only).
+    // Pages from before this store, added where the category has not got them yet.
     @Synchronized
     fun import(category: String?, pages: List<Event.Page>) {
-        val name = nameOf(category)
-        val b = book(name)
-        if (b.index.size > 0 || pages.isEmpty()) return
-        b.log.rewrite(pages.map(::encode))
-        pages.forEach(b.index::apply)
-        b.index.compacted()
+        val b = book(nameOf(category))
+        val fresh = pages.filter { !b.index.has(it.url) }
+        b.log.appendAll(fresh.map(::encode))
+        fresh.forEach(b.index::apply)
     }
 
     // The category is gone: its log is deleted (its key goes with the category's key file).
     @Synchronized
     fun forget(category: String?) {
         val name = nameOf(category)
-        books.remove(name)
+        books.remove(name)?.log?.close()
         file(name).delete()
     }
 
-    // Logs stay on the disk; they are read again, with their keys, on next use.
+    // Logs stay on the disk; they are read again, with their keys, on next use. Their copies of the keys are wiped.
     @Synchronized
-    fun close() = books.clear()
+    fun close() {
+        books.values.forEach { it.log.close() }
+        books.clear()
+    }
 }

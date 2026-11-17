@@ -8,14 +8,14 @@ import androidx.compose.runtime.setValue
 import dev.antite.browser.Browser
 import dev.antite.browser.FormField
 import dev.antite.browser.changePassword
-import dev.antite.browser.data.Cipher256
-import dev.antite.browser.data.KeyRing
 import dev.antite.browser.data.Options
 import dev.antite.browser.data.Secure
 import dev.antite.browser.l10n.T
 import dev.antite.browser.ring
 import dev.antite.browser.setCipher
 import dev.antite.browser.setKeyMode
+import dev.antite.keys.Cipher256
+import dev.antite.keys.KeyRing
 
 // The parameters of the secure storage: how it is entered, when it locks back, what happens to the original file,
 // the menu entry, and the keys and cipher behind it and the saved passwords.

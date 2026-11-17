@@ -1,6 +1,5 @@
-package dev.antite.browser.transfer
+package dev.antite.keys
 
-import dev.antite.browser.data.KeyRing
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -16,10 +15,11 @@ import kotlin.random.Random
 
 class BackupCipherTest {
     private val asked = ArrayList<KeyRing.KdfParams>()
+    private lateinit var kdf: KeyRing.Kdf
 
     @Before
     fun fastKdf() {
-        BackupCipher.kdf = KeyRing.Kdf { password, salt, params ->
+        kdf = KeyRing.Kdf { password, salt, params ->
             asked += params
             MessageDigest.getInstance("SHA-512").digest(password + salt + params.toString().toByteArray())
         }
@@ -28,12 +28,12 @@ class BackupCipherTest {
 
     private fun seal(plain: ByteArray, password: String): ByteArray {
         val out = ByteArrayOutputStream()
-        BackupCipher.encrypt(out, password.toCharArray()).use { it.write(plain) }
+        BackupCipher.encrypt(out, password.toCharArray(), kdf).use { it.write(plain) }
         return out.toByteArray()
     }
 
     private fun open(sealed: ByteArray, password: String): ByteArray =
-        BackupCipher.decrypt(ByteArrayInputStream(sealed), password.toCharArray()).use { it.readBytes() }
+        BackupCipher.decrypt(ByteArrayInputStream(sealed), password.toCharArray(), kdf).use { it.readBytes() }
 
     @Test
     fun roundTripsAcrossChunkBoundaries() {

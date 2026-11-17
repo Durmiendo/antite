@@ -3,12 +3,14 @@ package dev.antite.browser.transfer
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import dev.antite.browser.data.Cipher256
-import dev.antite.browser.data.Ciphers
-import dev.antite.browser.data.KeyRing
 import dev.antite.browser.data.Secure
 import dev.antite.browser.data.Vault
-import dev.antite.browser.data.VaultFile
+import dev.antite.keys.BackupCipher
+import dev.antite.keys.Cipher256
+import dev.antite.keys.Ciphers
+import dev.antite.keys.KeyRing
+import dev.antite.keys.VaultFile
+import dev.antite.keys.WrongPasswordException
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -134,7 +136,7 @@ class DataTransferTest {
             it.execSQL("INSERT INTO logins VALUES ('a', 'pw-alice')")
         }
         val out = ByteArrayOutputStream()
-        ZipOutputStream(BackupCipher.encrypt(out, "secret".toCharArray())).use { zip ->
+        ZipOutputStream(BackupCipher.encrypt(out, "secret".toCharArray(), Secure.Argon2)).use { zip ->
             zip.putNextEntry(ZipEntry("manifest.json"))
             zip.write(("{\"format\":1,\"package\":\"${context.packageName}\"}").toByteArray())
             zip.putNextEntry(ZipEntry("databases/vault.db"))

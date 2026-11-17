@@ -49,7 +49,8 @@ internal class TabSession(private val b: Browser, val t: Tab) : TabCallbacks {
         t.title = title
         if (!t.incognito) {
             val url = t.url
-            b.activity.lifecycleScope.launch { b.db.io { title(url, title) } }
+            val category = t.category
+            b.activity.lifecycleScope.launch { b.db.io { b.historyOr(Unit) { title(category, url, title) } } }
         }
         b.scheduleSave()
     }
@@ -133,12 +134,14 @@ internal class TabSession(private val b: Browser, val t: Tab) : TabCallbacks {
     override fun onVisit(url: String, title: String?): Boolean {
         if (t.incognito || !Urls.isWeb(url)) return false
         val name = if (t.url == url) t.title else null
-        b.activity.lifecycleScope.launch { b.db.io { visit(url, name) } }
+        val category = t.category
+        b.activity.lifecycleScope.launch { b.db.io { b.historyOr(Unit) { visit(category, url, name) } } }
         return true
     }
 
     override fun isVisited(urls: List<String>, done: (BooleanArray) -> Unit) {
-        b.activity.lifecycleScope.launch { done(b.db.io { visited(urls) }) }
+        val category = t.category
+        b.activity.lifecycleScope.launch { done(b.db.io { b.historyOr(BooleanArray(urls.size)) { visited(category, urls) } }) }
     }
 
     override fun onContextMenu(info: ContextInfo) {

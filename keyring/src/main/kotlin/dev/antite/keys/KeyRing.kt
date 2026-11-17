@@ -1,4 +1,4 @@
-package dev.antite.browser.data
+package dev.antite.keys
 
 import org.json.JSONObject
 import java.io.File
@@ -62,11 +62,7 @@ class KeyRing(private val dir: File, private val device: DeviceKeys, private val
 
     private fun alias(domain: String, gen: Int) = "$prefix-$domain-$gen"
 
-    private fun write(f: File, o: JSONObject) {
-        val tmp = File(f.path + ".tmp")
-        tmp.writeText(o.toString())
-        if (!tmp.renameTo(f)) throw IOException("cannot replace ${f.name}")
-    }
+    private fun write(f: File, o: JSONObject) = Durable.replace(f, o.toString().toByteArray())
 
     private fun b64(b: ByteArray) = Base64.getEncoder().encodeToString(b)
     private fun unb64(s: String) = Base64.getDecoder().decode(s)
@@ -126,6 +122,10 @@ class KeyRing(private val dir: File, private val device: DeviceKeys, private val
         }
         return unseal(domain, JSONObject(domainFile(domain).readText())).also { keys[domain] = it }
     }
+
+    // The domain's key for the length of block: lock() waits for it, so a key is never wiped while it is in use.
+    @Synchronized
+    fun <R> withKey(domain: String, block: (ByteArray) -> R): R = block(key(domain))
 
     @Synchronized
     fun unlock(password: ByteArray) {
@@ -200,7 +200,7 @@ class KeyRing(private val dir: File, private val device: DeviceKeys, private val
         val fresh = Ciphers.randomBytes(Cipher256.KEY)
         write(nextFile(domain), seal(domain, gen, m, fresh))
         rewrite(old, fresh)
-        if (!nextFile(domain).renameTo(domainFile(domain))) throw IOException("cannot replace the $domain key")
+        Durable.rename(nextFile(domain), domainFile(domain))
         destroy(domain, current)
         old.fill(0)
         keys[domain] = fresh
@@ -214,7 +214,7 @@ class KeyRing(private val dir: File, private val device: DeviceKeys, private val
         val k = runCatching { unseal(domain, o) }.getOrNull()
         if (k != null && works(k)) {
             val current = JSONObject(domainFile(domain).readText())
-            if (!next.renameTo(domainFile(domain))) throw IOException("cannot replace the $domain key")
+            Durable.rename(next, domainFile(domain))
             destroy(domain, current)
             keys.remove(domain)?.fill(0)
             keys[domain] = k

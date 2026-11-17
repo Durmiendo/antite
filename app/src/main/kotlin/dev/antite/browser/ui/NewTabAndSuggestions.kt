@@ -192,7 +192,12 @@ fun Suggestions(b: Browser, modifier: Modifier) {
             local = emptyList()
             return@LaunchedEffect
         }
-        local = if (incognito) emptyList() else b.db.io { suggest(text, 5, Browser.BOOKMARKS_ENABLED) }
+        val category = b.current?.category
+        local = if (incognito) emptyList() else b.db.io {
+            val marks = if (Browser.BOOKMARKS_ENABLED) bookmarkSuggestions(text, 5) else emptyList()
+            val seen = marks.mapNotNull { it.url }.toHashSet()
+            (marks + b.historyOr(emptyList()) { suggest(category, text, 10) }.filter { seen.add(it.url ?: "") }).take(5)
+        }
         if (!b.prefs.bool("searchSuggest", true)) return@LaunchedEffect
         if (incognito && !b.prefs.bool("searchSuggestIncognito", false)) return@LaunchedEffect
         val suggest = b.prefs.suggestUrl ?: return@LaunchedEffect
