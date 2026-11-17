@@ -1,0 +1,28 @@
+// Architecture checks over the sources of the whole repository: layers, sizes, coupling. Known breaches live in
+// baseline.txt, which may only shrink.
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
+
+tasks.withType(Test).configureEach {
+    systemProperty "antite.repo", rootProject.projectDir.path
+    inputs.files(fileTree(rootProject.projectDir) {
+        include 'app/src/main/**/*.kt', 'keyring/src/main/**/*.kt', 'engine-*/src/main/**/*.kt', 'keycore/src/**/*.c'
+    })
+    inputs.file("baseline.txt")
+}
