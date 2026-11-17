@@ -7,3 +7,5 @@ to bring it back.
   `Browser.TRANSLATION_ENABLED`.
 - Reader mode: removed from the menu on 2026-11-07.
 - Tab groups: removed from the menu on 2026-11-07; tab categories took their place.
+- Shell updates without the system confirmation: off since 2026-11-17, every update shows the system installer
+  dialog. Back: `USER_ACTION_NOT_REQUIRED` in `ShellInstaller.install`.
