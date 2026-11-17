@@ -108,9 +108,10 @@ object Options {
     )
 }
 
-class Prefs(context: Context) {
-    val sp: SharedPreferences = context.getSharedPreferences("antite", Context.MODE_PRIVATE)
-    private val appContext = context.applicationContext
+class Prefs(val sp: SharedPreferences, private val systemDark: () -> Boolean) {
+    constructor(context: Context) : this(context.getSharedPreferences("antite", Context.MODE_PRIVATE), {
+        (context.applicationContext.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    })
 
     val revision = mutableIntStateOf(0)
 
@@ -174,8 +175,7 @@ class Prefs(context: Context) {
     fun isDark(): Boolean = when (theme) {
         ColorScheme.DARK -> true
         ColorScheme.LIGHT -> false
-        ColorScheme.SYSTEM -> (appContext.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
+        ColorScheme.SYSTEM -> systemDark()
     }
 
     fun isOled(): Boolean = bool("oled", false)

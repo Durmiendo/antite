@@ -1,13 +1,18 @@
 package dev.antite.browser.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import dev.antite.browser.l10n.T
 import dev.antite.engine.Engine
 import dev.antite.engine.PermissionDefault
+import dev.antite.engine.PermissionStore
 import dev.antite.engine.PermissionValue
 import dev.antite.engine.SitePermission
 
-class SitePerms(context: Context, private val prefs: Prefs, private val engine: Engine) {
+class SitePerms(private val sites: SharedPreferences, private val prefs: Prefs, private val store: PermissionStore) {
+    constructor(context: Context, prefs: Prefs, engine: Engine) :
+        this(context.getSharedPreferences("siteperms", Context.MODE_PRIVATE), prefs, engine.permissions)
+
     // Texts are read when shown, so they follow the interface language.
     class Cat(
         val key: String,
@@ -73,12 +78,11 @@ class SitePerms(context: Context, private val prefs: Prefs, private val engine: 
         }
     }
 
-    private val sites = context.getSharedPreferences("siteperms", Context.MODE_PRIVATE)
 
     fun wipeLegacyOnce() {
         if (prefs.sp.getBoolean("permsWiped", false)) return
-        engine.permissions.list { list ->
-            list.filter { it.permission != SitePermission.TRACKING_EXCEPTION }.forEach(engine.permissions::remove)
+        store.list { list ->
+            list.filter { it.permission != SitePermission.TRACKING_EXCEPTION }.forEach(store::remove)
             prefs.edit { putBoolean("permsWiped", true) }
         }
     }
@@ -121,13 +125,13 @@ class SitePerms(context: Context, private val prefs: Prefs, private val engine: 
             BLOCK -> PermissionValue.BLOCK
             else -> PermissionValue.ASK
         }
-        engine.permissions.list { list ->
+        store.list { list ->
             list.filter { !it.privateMode && it.permission in c.engineKinds && Vault.hostOf(it.origin) == host }
-                .forEach { engine.permissions.set(it.origin, it.permission, v) }
+                .forEach { store.set(it.origin, it.permission, v) }
             if (v == PermissionValue.ASK) return@list
             for (kind in c.engineKinds) {
-                engine.permissions.set("https://$host", kind, v)
-                engine.permissions.set("http://$host", kind, v)
+                store.set("https://$host", kind, v)
+                store.set("http://$host", kind, v)
             }
         }
     }
@@ -148,8 +152,8 @@ class SitePerms(context: Context, private val prefs: Prefs, private val engine: 
     fun forgetSite(host: String) {
         sites.edit().apply { ALL.forEach { remove("${it.key}|$host") } }.apply()
         prefs.revision.intValue++
-        engine.permissions.list { list ->
-            list.filter { Vault.hostOf(it.origin) == host }.forEach(engine.permissions::remove)
+        store.list { list ->
+            list.filter { Vault.hostOf(it.origin) == host }.forEach(store::remove)
         }
     }
 
