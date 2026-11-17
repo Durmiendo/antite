@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags: ['shell-*', 'engine-*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-disabled: true
+      - name: Android SDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.2" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+      - name: Build
+        env:
+          APK_P12: ${{ secrets.ANTITE_APK_P12 }}
+          APK_PASSWORD: ${{ secrets.ANTITE_APK_PASSWORD }}
+        run: |
+          prop() { grep "^$1=" gradle.properties | cut -d= -f2; }
+          mkdir -p out
+          case "$TAG" in
+            shell-*)
+              code="${TAG#shell-}"
+              [ "$code" = "$(prop shellVersionCode)" ] || { echo "tag $TAG, shellVersionCode $(prop shellVersionCode)"; exit 1; }
+              [ -n "$APK_P12" ] && [ -n "$APK_PASSWORD" ] || { echo "signing secrets are not set"; exit 1; }
+              keys="$RUNNER_TEMP/keys"
+              mkdir -m 700 "$keys"
+              printf '%s' "$APK_P12" | base64 -d > "$keys/apk.p12"
+              printf '%s' "$APK_PASSWORD" > "$keys/password"
+              ./gradlew --no-daemon assembleRelease -Pantite.keysDir="$keys"
+              rm -rf "$keys"
+              cp app/build/outputs/apk/release/app-release.apk "out/antite-$code.apk"
+              ;;
+            engine-*)
+              rev="$(prop adapterRevision)"; gecko="$(prop geckoviewVersion)"
+              version="$gecko"; [ "$rev" = 0 ] || version="$gecko.$rev"
+              [ "$TAG" = "engine-$version" ] || { echo "tag $TAG, engine version $version"; exit 1; }
+              ./gradlew --no-daemon :engine-gecko:adapterPackage
+              cp "engine-gecko/build/outputs/engine/gecko-$version-adapter.zip" out/
+              ;;
+          esac
+          (cd out && sha256sum *) | tee sha256.txt
+      # A published file is pinned by hash in the index: never replace it, only check it is the same build.
+      - name: Release
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            mkdir published
+            gh release download "$TAG" --dir published
+            for f in out/*; do
+              cmp "$f" "published/$(basename "$f")" || { echo "$(basename "$f") differs from the published file"; exit 1; }
+            done
+            echo "published files match this build"
+          else
+            gh release create "$TAG" --verify-tag --draft --title "$TAG" --notes "Built by CI from $(git rev-parse --short HEAD). SHA-256:
+          $(cat sha256.txt)" out/*
+          fi

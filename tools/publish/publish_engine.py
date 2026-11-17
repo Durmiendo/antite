@@ -242,10 +242,10 @@ def main():
 
     if tags:
         refs = " ".join(f"refs/tags/{t}" for t in tags)
-        print(f"\nTagged {head[:7]}: {', '.join(tags)}. Push the commit and the tags before creating the releases:")
+        print(f"\nTagged {head[:7]}: {', '.join(tags)}. Push the commit and the tags:")
         print(f"  git push origin {head[:7]}:main {refs}")
-        for t in tags:
-            print(f"  gh release create {t} --verify-tag ...")
+        print("CI (.github/workflows/release.yml) builds the files again and makes draft releases; their SHA-256 must")
+        print("match the index below before the drafts are published.")
     print("\nUpload:")
     if adapter:
         print(f"  {adapter} -> release {tag} ({entry['adapter']['url'][0]})")
