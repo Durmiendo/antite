@@ -119,6 +119,9 @@ internal class GeckoTab(
 
     override fun goForward() = session.goForward()
 
+    override fun setPriority(high: Boolean) =
+        session.setPriorityHint(if (high) GeckoSession.PRIORITY_HIGH else GeckoSession.PRIORITY_DEFAULT)
+
     override fun setActive(active: Boolean) {
         session.setActive(active)
         engine.runtime.webExtensionController.setTabActive(session, active)

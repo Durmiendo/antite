@@ -29,6 +29,9 @@ interface EngineTab {
 
     fun setActive(active: Boolean)
 
+    // A hint to the system: the process of the tab in front is the last one it kills. An adapter without it ignores it.
+    fun setPriority(high: Boolean) {}
+
     fun exitFullscreen()
 
     fun purgeHistory()

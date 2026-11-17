@@ -311,7 +311,10 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun switchTo(t: Tab) {
         val prev = current
-        if (prev != null && prev !== t) prev.engineTab?.setActive(false)
+        if (prev != null && prev !== t) prev.engineTab?.apply {
+            setActive(false)
+            setPriority(false)
+        }
         urlFocused = false
         if (restoreCover !== t) restoreCover = null
         current = t
@@ -319,6 +322,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val s = ensureSession(t)
         engineView?.show(s)
         s.setActive(true)
+        s.setPriority(true)
         lastScrollY = -1
         pageScrollY = 0
         setToolbarHidden(0f)
