@@ -340,12 +340,19 @@ class VaultCore(
 
     // The private copy goes with the entry: nothing hidden stays behind after a restore or a delete. The index is
     // written under a new data key, so the file's key cannot be read back from any old copy of the index.
-    fun remove(item: Item) {
-        items = items.filter { it.id != item.id }
-        forgetKey(item.id)
+    fun remove(item: Item) = removeAll(listOf(item))
+
+    // Many at once under one new data key: one rotation however many files go.
+    fun removeAll(gone: List<Item>) {
+        if (gone.isEmpty()) return
+        val ids = gone.map { it.id }.toSet()
+        items = items.filter { it.id !in ids }
+        ids.forEach(::forgetKey)
         saveRotated()
-        erase(file(item))
-        erase(thumbFile(item))
-        erase(oldFile(item))
+        for (item in gone) {
+            erase(file(item))
+            erase(thumbFile(item))
+            erase(oldFile(item))
+        }
     }
 }

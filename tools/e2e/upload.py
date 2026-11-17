@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
 from nav import to_browser  # noqa: E402
-from vault import open_vault, reset, row_actions  # noqa: E402
+from vault import open_vault, reset, file_action  # noqa: E402
 
 PORT = 8781
 
@@ -134,7 +134,7 @@ def main():
         if received[:1] != [secret.encode()]:
             d.fail(f"the storage file did not reach the site: {received[:1]!r}")
         open_vault(d)
-        row_actions(d, secret, "Удалить")
+        file_action(d, secret, "Удалить")
         d.tap("Удалить", exact=True)
         to_browser(d)
         print("OK")

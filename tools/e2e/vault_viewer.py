@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
 from nav import open_settings, to_browser  # noqa: E402
-from vault import open_downloads, open_vault, row_actions, wait_media  # noqa: E402
+from vault import open_downloads, open_vault, row_actions, wait_media, file_action  # noqa: E402
 
 PORT = 8787
 
@@ -126,7 +126,7 @@ def main():
         d.wait(name, exact=True)
         print("4. back to the grid with the search kept")
 
-        row_actions(d, name, "Удалить")
+        file_action(d, name, "Удалить")
         d.tap("Удалить", exact=True)
         time.sleep(1)
     finally:

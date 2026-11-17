@@ -1,5 +1,5 @@
 """Secure storage, files from outside: a picture shared by another app lands in the storage and opens there; a file
-picked with "Добавить файлы" lands in the open folder; folders filter the grid; nothing in the storage folder is
+picked with "+" > "Добавить файлы" lands in the open folder; folders filter the grid; nothing in the storage folder is
 readable on the disk; the files are still there after the app is restarted.
 
 Usage: python3 -I tools/e2e/vault_files.py --serial HOST:PORT --test-apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
@@ -15,7 +15,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
 from nav import to_browser  # noqa: E402
-from vault import media_size, open_vault, row_actions  # noqa: E402
+from vault import media_size, open_vault, file_action, add_menu, new_folder  # noqa: E402
 
 FOLDER = "Docs"
 
@@ -39,7 +39,7 @@ def push(d, out, name, data):
 def delete_from_vault(d, name):
     if d.find(name, exact=True) is None:
         return
-    row_actions(d, name, "Удалить")
+    file_action(d, name, "Удалить")
     d.tap("Удалить", exact=True)
     time.sleep(1)
 
@@ -74,14 +74,9 @@ def main():
         time.sleep(1)
 
         print("2. a file picked with the add button lands in the open folder")
-        d.tap("Новая папка", exact=True)
-        d.type(FOLDER)
-        d.tap("Сохранить", exact=True)
-        time.sleep(1)
+        new_folder(d, FOLDER)
         d.wait("В этой папке пока нет файлов", exact=True)
-        add = [n for n in d.nodes() if n.get("content-desc") == "Добавить файлы"]
-        x, y = d.center(add[0])
-        d.shell(f"input tap {x} {y}")
+        add_menu(d, "Добавить файлы")
         time.sleep(3)
         d.tap(note, timeout=20)
         d.wait(FOLDER, timeout=20, exact=True)

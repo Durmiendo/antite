@@ -53,3 +53,22 @@ vault-next = Next
 vault-back10 = Back 10 seconds
 vault-forward10 = Forward 10 seconds
 vault-lock-after = After { $minutes } min of inactivity
+vault-selected = Selected: { $count }
+vault-select-all = Select all
+vault-share = Share
+vault-rename = Rename
+vault-file-name = File name
+vault-info = Details
+vault-info-text = Type: { $type }
+    Size: { $size }
+    Added: { $date }
+    Folder: { $folder }
+vault-more = More
+vault-sort = Sort
+vault-sort-date = Newest first
+vault-sort-name = By name
+vault-sort-size = Largest first
+vault-moved = Moved: { $count }
+vault-restored-count = Restored to downloads: { $count }
+vault-delete-count-confirm = Delete from the storage for good: { $count }?
+vault-add = Add

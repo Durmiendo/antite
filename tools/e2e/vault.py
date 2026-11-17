@@ -38,6 +38,41 @@ def row_actions(d, name, action):
     d.fail(f"no {action!r} on the long press of {name!r}")
 
 
+def file_action(d, name, action):
+    """A file of the storage: a long press selects it, "Ещё" of the selection holds every action."""
+    for _ in range(3):
+        long_press(d, name)
+        more = [n for n in d.nodes() if n.get("content-desc") == "Ещё"]
+        if more:
+            x, y = d.center(more[0])
+            d.shell(f"input tap {x} {y}")
+            time.sleep(0.5)
+            if d.find(action, exact=True) is not None:
+                d.tap(action, exact=True)
+                return
+            d.shell("input keyevent 4")
+    d.fail(f"no {action!r} for the selected {name!r}")
+
+
+def add_menu(d, item):
+    """"+" at the top of the storage, then one of its choices."""
+    plus = [n for n in d.nodes() if n.get("content-desc") == "Добавить"]
+    if not plus:
+        d.fail("no add button")
+    x, y = d.center(plus[0])
+    d.shell(f"input tap {x} {y}")
+    time.sleep(0.5)
+    d.tap(item, exact=True)
+
+
+def new_folder(d, name):
+    """A folder in the open one, through "+"."""
+    add_menu(d, "Новая папка")
+    d.type(name)
+    d.tap("Сохранить", exact=True)
+    time.sleep(1)
+
+
 def wait_media(d, name, size, what, timeout=20):
     end = time.time() + timeout
     while media_size(d, name) != size:

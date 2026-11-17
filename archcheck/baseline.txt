@@ -33,10 +33,8 @@ logic-ui engine-api/src/main/kotlin/dev/antite/engine/Engine.kt android.view.Vie
 size app/src/main/kotlin/dev/antite/browser/Browser.kt 698
 size app/src/main/kotlin/dev/antite/browser/data/Vault.kt 417
 size app/src/main/kotlin/dev/antite/browser/ui/BrowserScreen.kt 721
-size app/src/main/kotlin/dev/antite/browser/ui/MediaVault.kt 592
 size app/src/main/kotlin/dev/antite/browser/ui/SettingsScreen.kt 433
 size engine-gecko/src/main/kotlin/dev/antite/engine/gecko/GeckoEngine.kt 677
-ui-storage app/src/main/kotlin/dev/antite/browser/ui/MediaVault.kt dev.antite.keys.VaultFile
 ui-storage app/src/main/kotlin/dev/antite/browser/ui/SettingsScreen.kt dev.antite.keys.BackupCipher
 ui-storage app/src/main/kotlin/dev/antite/browser/ui/SettingsScreen.kt dev.antite.keys.WrongPasswordException
 ui-storage app/src/main/kotlin/dev/antite/browser/ui/SettingsVault.kt dev.antite.keys.Cipher256

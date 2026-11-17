@@ -23,6 +23,7 @@ class VaultCrashTest {
     private val content = mapOf(
         "a" to ByteArray(70_000) { (it % 251).toByte() },
         "b" to ByteArray(3_000) { (it % 13).toByte() },
+        "c" to ByteArray(5_000) { (it % 7).toByte() },
     )
 
     private fun core(d: CrashDisk, device: CrashDevice, cipher: Cipher256 = Cipher256.XCHACHA) = VaultCore(
@@ -100,6 +101,20 @@ class VaultCrashTest {
             assertHolds(got, got.keys, where)
             assertTrue(where, "a" in got)
             if (finished) assertFalse(where, "b" in got)
+            assertNoStrays(d, device, where)
+        },
+    )
+
+    @Test
+    fun deletingSeveralAtOnce() = Crashes.everywhere(
+        setup = withFiles("a", "b", "c"),
+        action = { d, device -> opened(d, device).let { c -> c.removeAll(c.items.filter { it.name != "c" }) } },
+        check = { d, device, finished, where ->
+            val got = listed(d, device, where)
+            assertHolds(got, got.keys, where)
+            // One index write takes both out: never one without the other.
+            assertTrue("$where: ${got.keys}", got.keys == setOf("a", "b", "c") || got.keys == setOf("c"))
+            if (finished) assertEquals(where, setOf("c"), got.keys)
             assertNoStrays(d, device, where)
         },
     )

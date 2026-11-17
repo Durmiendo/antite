@@ -18,7 +18,7 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
 from nav import to_browser  # noqa: E402
-from vault import media_size, open_downloads, open_vault, row_actions, wait_media  # noqa: E402
+from vault import media_size, open_downloads, open_vault, row_actions, wait_media, file_action  # noqa: E402
 
 PORT = 8786
 
@@ -82,7 +82,7 @@ def main():
         d.wait(name, exact=True)
         print("3. the storage shows the picture")
 
-        row_actions(d, name, "Вернуть в загрузки")
+        file_action(d, name, "Вернуть в загрузки")
         wait_media(d, name, len(image), "the file did not come back to downloads")
         time.sleep(1)
         if d.find(name, exact=True) is not None:
@@ -94,7 +94,7 @@ def main():
         row_actions(d, name, "В защищённое хранилище")
         wait_media(d, name, None, "the public file stayed after the second move")
         open_vault(d)
-        row_actions(d, name, "Удалить")
+        file_action(d, name, "Удалить")
         d.tap("Удалить", exact=True)
         time.sleep(1)
         if d.find(name, exact=True) is not None or media_size(d, name) is not None:

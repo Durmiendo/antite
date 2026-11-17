@@ -31,6 +31,9 @@ import java.io.OutputStream
 // app's private folder, encrypted (VaultFile), so other apps and the gallery do not see
 // it. Every file has its own key; names, folders and those keys live in the index, sealed by the vault data key of the
 // key ring. Deleting a file replaces the data key, so the file's key is gone for good with the old one.
+// What reads a file of the storage, for the interface: it needs no part of the key ring for that.
+typealias VaultReader = dev.antite.keys.VaultFile.Reader
+
 class MediaVault(
     private val context: Context,
     dir: File = File(context.filesDir, "vault"),
@@ -99,6 +102,7 @@ class MediaVault(
     // Forgets the index and wipes the file keys; used when the key ring locks.
     @Synchronized
     fun close() {
+        VaultShare.revokeAll(context)
         core.close()
         show()
         pending = emptySet()
@@ -224,50 +228,61 @@ class MediaVault(
     }
 
     // Back to the downloads list: a new file appears in the public Downloads folder and in the gallery.
-    fun restore(item: Item, done: (Boolean) -> Unit) {
+    // Back to the downloads list: a new file appears in the public Downloads folder and in the gallery. The copies
+    // that made it out leave the storage together, under one new data key; done gets how many did.
+    fun restore(items: List<Item>, done: (Int) -> Unit) {
         io.launch {
-            val cr = context.contentResolver
-            val uri = runCatching {
-                val target = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, item.name)
-                    put(MediaStore.Downloads.MIME_TYPE, item.mime)
-                    put(MediaStore.Downloads.IS_PENDING, 1)
-                }) ?: throw java.io.IOException("no target")
-                try {
-                    reader(item).stream().use { input ->
-                        cr.openOutputStream(target)!!.use { output -> input.copyTo(output) }
-                    }
-                    cr.update(target, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
-                } catch (e: Exception) {
-                    runCatching { cr.delete(target, null, null) }
-                    throw e
-                }
-                target
-            }.getOrNull()
-            if (uri != null) {
-                // The file is back in Downloads either way; only its row in the list may be missing.
-                runCatching {
-                    Db.get(context).io {
-                        val id = addDownload(item.name, item.mime, item.source)
-                        finishDownload(id, uri.toString(), DownloadService.DONE, item.size)
-                    }
-                }
-                runCatching { remove(item) }.onFailure { Log.w("Antite", "vault file ${item.id} not removed", it) }
-            }
-            main.post { done(uri != null) }
+            val back = items.filter { copyOut(it) }
+            runCatching { remove(back) }.onFailure { Log.w("Antite", "vault files not removed after restore", it) }
+            main.post { done(back.size) }
             refresh()
         }
     }
 
-    fun delete(item: Item, done: () -> Unit = {}) {
+    private suspend fun copyOut(item: Item): Boolean {
+        val cr = context.contentResolver
+        val uri = runCatching {
+            val target = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, item.name)
+                put(MediaStore.Downloads.MIME_TYPE, item.mime)
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }) ?: throw java.io.IOException("no target")
+            try {
+                reader(item).stream().use { input ->
+                    cr.openOutputStream(target)!!.use { output -> input.copyTo(output) }
+                }
+                cr.update(target, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
+            } catch (e: Exception) {
+                runCatching { cr.delete(target, null, null) }
+                throw e
+            }
+            target
+        }.onFailure { Log.w("Antite", "vault file ${item.id} not restored", it) }.getOrNull() ?: return false
+        // The file is back in Downloads either way; only its row in the list may be missing.
+        runCatching {
+            Db.get(context).io {
+                val id = addDownload(item.name, item.mime, item.source)
+                finishDownload(id, uri.toString(), DownloadService.DONE, item.size)
+            }
+        }
+        return true
+    }
+
+    fun delete(items: List<Item>, done: () -> Unit = {}) {
         io.launch {
-            runCatching { remove(item) }.onFailure { Log.w("Antite", "vault file ${item.id} not deleted", it) }
+            runCatching { remove(items) }.onFailure { Log.w("Antite", "vault files not deleted", it) }
             main.post(done)
             refresh()
         }
     }
 
-    fun move(item: Item, folder: Long?) = change { core.items = core.items.map { if (it.id == item.id) it.copy(folder = folder) else it } }
+    fun move(items: List<Item>, folder: Long?) {
+        val ids = items.map { it.id }.toSet()
+        change { core.items = core.items.map { if (it.id in ids) it.copy(folder = folder) else it } }
+    }
+
+    fun rename(item: Item, name: String) =
+        change { core.items = core.items.map { if (it.id == item.id) it.copy(name = sanitize(name)) else it } }
 
     fun addFolder(name: String, parent: Long? = null, done: (Folder) -> Unit = {}) {
         val f = Folder(core.newId(), sanitize(name), parent?.takeIf { id -> folders.any { it.id == id } })
@@ -307,9 +322,9 @@ class MediaVault(
         else cr.delete(uri, null, null) > 0
     }.getOrDefault(false)
 
-    private fun remove(item: Item) {
+    private fun remove(items: List<Item>) {
         try {
-            core.remove(item)
+            core.removeAll(items)
         } finally {
             show()
         }

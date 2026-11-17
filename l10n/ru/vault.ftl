@@ -53,3 +53,22 @@ vault-next = Следующий
 vault-back10 = Назад на 10 секунд
 vault-forward10 = Вперёд на 10 секунд
 vault-lock-after = Через { $minutes } мин неактивности
+vault-selected = Выбрано: { $count }
+vault-select-all = Выделить всё
+vault-share = Поделиться
+vault-rename = Переименовать
+vault-file-name = Название файла
+vault-info = Сведения
+vault-info-text = Тип: { $type }
+    Размер: { $size }
+    Добавлен: { $date }
+    Папка: { $folder }
+vault-more = Ещё
+vault-sort = Сортировка
+vault-sort-date = Сначала новые
+vault-sort-name = По названию
+vault-sort-size = Сначала большие
+vault-moved = Перемещено: { $count }
+vault-restored-count = Возвращено в загрузки: { $count }
+vault-delete-count-confirm = Удалить из хранилища навсегда: { $count }?
+vault-add = Добавить

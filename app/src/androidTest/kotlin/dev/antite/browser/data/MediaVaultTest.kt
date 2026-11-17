@@ -167,7 +167,7 @@ class MediaVaultTest {
         vault.addFolder("Docs") { folder = it }
         waitFor("folder added") { folder != null }
         val item = addFile(vault, "a.bin", byteArrayOf(1, 2, 3))
-        vault.move(item, folder!!.id)
+        vault.move(listOf(item), folder!!.id)
         waitFor("file moved") { vault.items.single().folder == folder!!.id }
 
         val again = vault()
@@ -201,7 +201,7 @@ class MediaVaultTest {
         val oldKeyFile = File(keyDir, "vault.json").readText()
 
         var deleted = false
-        vault.delete(gone) { deleted = true }
+        vault.delete(listOf(gone)) { deleted = true }
         waitFor("deleted") { deleted }
         assertFalse(File(dir, "${gone.id}.enc").exists())
         assertThrows(IOException::class.java) { Ciphers.unbox(ring.key(KeyRing.VAULT), oldIndex, "antite-vault-index".toByteArray()) }

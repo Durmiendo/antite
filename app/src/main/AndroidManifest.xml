@@ -59,6 +59,11 @@
                 <data android:mimeType="application/*" />
             </intent-filter>
         </activity-alias>
+        <provider
+            android:name=".data.VaultShare"
+            android:authorities="${applicationId}.vaultshare"
+            android:exported="false"
+            android:grantUriPermissions="true" />
         <activity
             android:name=".engine.EngineSetupActivity"
             android:exported="false" />

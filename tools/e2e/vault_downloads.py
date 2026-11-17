@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
 from nav import open_settings, open_tabs_settings, to_browser  # noqa: E402
-from vault import media_size, open_downloads, open_vault, row_actions  # noqa: E402
+from vault import media_size, open_downloads, open_vault, file_action  # noqa: E402
 
 PORT = 8789
 BODY = b"vault download test\n" * 200
@@ -106,7 +106,7 @@ def in_vault(d, name):
     open_vault(d)
     ok = d.find(f"{name}.txt", exact=True) is not None
     if ok:
-        row_actions(d, f"{name}.txt", "Удалить")
+        file_action(d, f"{name}.txt", "Удалить")
         d.tap("Удалить", exact=True)
         time.sleep(1)
     to_browser(d)

@@ -14,7 +14,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
 from nav import to_browser  # noqa: E402
-from vault import PASSWORD, open_keys, open_vault, password_dialog, pick, reset, row_actions, type_into  # noqa: E402
+from vault import PASSWORD, open_keys, open_vault, password_dialog, pick, reset, type_into, file_action  # noqa: E402
 
 
 def main():
@@ -78,7 +78,7 @@ def main():
         to_browser(d)
         open_vault(d)
         if d.find(picture, exact=True) is not None:
-            row_actions(d, picture, "Удалить")
+            file_action(d, picture, "Удалить")
             d.tap("Удалить", exact=True)
             time.sleep(1)
         to_browser(d)

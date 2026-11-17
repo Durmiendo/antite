@@ -18,7 +18,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from vault import open_vault, row_actions  # noqa: E402
+from vault import open_vault, row_actions, file_action, new_folder  # noqa: E402
 
 FOLDER = "Moved"
 
@@ -79,10 +79,7 @@ def main():
             time.sleep(1.5)
         time.sleep(2)
         open_vault(d)
-        d.tap("Новая папка", exact=True)
-        d.type(FOLDER)
-        d.tap("Сохранить", exact=True)
-        time.sleep(1)
+        new_folder(d, FOLDER)
         d.shell("input keyevent 4")
         time.sleep(1)
         for n in names:
@@ -94,7 +91,7 @@ def main():
         order = [names[2], names[1], names[0], names[3]]
         for r in range(a.rounds):
             for n in order:
-                row_actions(d, n, "В папку…")
+                file_action(d, n, "В папку…")
                 d.tap(FOLDER, exact=True)
                 time.sleep(1.5)
                 if d.find(n, exact=True) is not None:
@@ -106,7 +103,7 @@ def main():
             d.tap(FOLDER, exact=True)
             time.sleep(1)
             for n in order:
-                row_actions(d, n, "В папку…")
+                file_action(d, n, "В папку…")
                 d.tap("В корень хранилища", exact=True)
                 time.sleep(1.5)
                 if d.find(n, exact=True) is not None:
@@ -124,12 +121,17 @@ def main():
         d.wait("Меню", timeout=30, exact=True)
         time.sleep(2)
         open_vault(d)
+        for n in names:
+            if d.find(n, exact=True) is not None:
+                file_action(d, n, "Удалить")
+                d.tap("Удалить", exact=True)
+                time.sleep(1)
         if d.find(FOLDER, exact=True) is not None:
             d.tap(FOLDER, exact=True)
             time.sleep(1)
             for n in names:
                 if d.find(n, exact=True) is not None:
-                    row_actions(d, n, "Удалить")
+                    file_action(d, n, "Удалить")
                     d.tap("Удалить", exact=True)
                     time.sleep(1)
             d.shell("input keyevent 4")
