@@ -1,7 +1,7 @@
 """Unlock to enter for a tab category: after leaving the browser its page is covered, its tabs are neither on its
 switcher page nor in "Все", no count tells how many there are, and the device unlock brings them back.
 
-Usage: python3 -I tools/e2e/category_lock.py --serial HOST:PORT
+Usage: python3 -I tools/e2e/category_lock.py --serial HOST:PORT  (with the androidTest APK installed)
 
 Sets a temporary screen lock PIN for the unlock prompts and removes it at the end. Latin names only: adb input text
 cannot type Cyrillic. Leaves no category behind and the per-category count off.
@@ -13,7 +13,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from nav import chip_count, open_switcher, open_tabs_settings, set_each_count, to_browser  # noqa: E402
+from nav import chip_count, open_switcher, open_tabs_settings, to_browser  # noqa: E402
+from prefs import no_tabs, set_prefs  # noqa: E402
 from server import ReportServer  # noqa: E402
 
 PIN = "1590"
@@ -100,13 +101,13 @@ def main():
     server.attach(d)
     d.shell(f"locksettings set-pin {PIN}")
     try:
-        d.stop()
+        no_tabs(d)
+        set_prefs(d, {"tabCountEach": True})
         # A plain page of our own: over a heavy site the screen dump comes without the browser's menu.
         d.launch(f"http://localhost:{PORT}/quiet")
         d.wait("Меню", timeout=60, exact=True)
         time.sleep(3)
         delete_category(d)
-        set_each_count(d, True)
 
         print("1. a category with one tab")
         open_category_settings(d)
@@ -198,7 +199,7 @@ def main():
             d.wait("Меню", timeout=60, exact=True)
             time.sleep(2)
             delete_category(d)
-            set_each_count(d, False)
+            set_prefs(d, {"tabCountEach": None})
         finally:
             d.shell(f"locksettings clear --old {PIN}", check=False)
             server.close()

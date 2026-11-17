@@ -19,7 +19,7 @@ jobs:
           persist-credentials: false
       - name: e2e scripts import only the shared modules
         run: |
-          shared=" device server nav engine vault frames "
+          shared=" device server nav engine vault frames prefs "
           bad=0
           for f in tools/e2e/*.py; do
             for m in $(sed -nE 's/^(from ([a-z_]+) import|import ([a-z_]+)).*/\2\3/p' "$f"); do
