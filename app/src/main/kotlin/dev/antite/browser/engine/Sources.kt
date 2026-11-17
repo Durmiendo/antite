@@ -5,7 +5,9 @@ import dev.antite.browser.BuildConfig
 import dev.antite.browser.l10n.T
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URI
 import java.security.MessageDigest
+import java.security.interfaces.ECPublicKey
 import java.util.Base64
 
 class Source(
@@ -38,6 +40,7 @@ object Sources {
         try {
             val key = EngineIndex.publicKey(b64)
             if (key.algorithm != "EC") throw SourceException(T.sourceErrorNotEc)
+            if ((key as ECPublicKey).params.curve.field.fieldSize != 256) throw SourceException(T.sourceErrorNotP256)
         } catch (e: SourceException) {
             throw e
         } catch (e: Exception) {
@@ -86,10 +89,19 @@ object Sources {
         state(context).edit().putString("sources", arr.toString()).commit()
     }
 
-    fun add(context: Context, name: String, url: String, key: String, onlyThis: Boolean = false): Source {
-        if (!url.startsWith("https://") && !url.startsWith("http://localhost:") && !url.startsWith("http://127.0.0.1:")) {
-            throw SourceException(T.sourceErrorHttps)
+    // HTTPS, or plain HTTP only to this device (a local publishing server).
+    fun acceptsUrl(url: String): Boolean {
+        val u = runCatching { URI(url) }.getOrNull() ?: return false
+        if (u.rawUserInfo != null || u.host.isNullOrEmpty()) return false
+        return when (u.scheme?.lowercase()) {
+            "https" -> true
+            "http" -> u.host == "localhost" || u.host == "127.0.0.1"
+            else -> false
         }
+    }
+
+    fun add(context: Context, name: String, url: String, key: String, onlyThis: Boolean = false): Source {
+        if (!acceptsUrl(url)) throw SourceException(T.sourceErrorHttps)
         val current = list(context)
         val s = Source("s" + System.currentTimeMillis(), name.ifBlank { android.net.Uri.parse(url).host ?: url }, url, parseKey(key), true)
         save(context, current.map { if (onlyThis) it.copy(enabled = false) else it } + s)

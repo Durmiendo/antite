@@ -25,8 +25,7 @@ object ErrorPage {
 
     // A site without HTTPS under "always use secure connections": like Chrome, the page warns and offers to go on.
     // Gecko lets any GeckoView error page add the per-site exception and reload over HTTP.
-    fun html(url: String, error: LoadError, p: Palette): String {
-        val host = Urls.host(url).ifEmpty { url }
+    fun html(url: String, error: LoadError, p: Palette, host: String = Urls.host(url).ifEmpty { url }): String {
         val insecure = error == LoadError.HTTPS_ONLY
         val title = escape(if (insecure) T.errorInsecureTitle else T.errorPageTitle)
         val reasonText = if (insecure) T.errorInsecureText(host = host) else reason(error, host)
