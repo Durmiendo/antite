@@ -142,4 +142,33 @@ class KeyRingTest {
         r.lock()
         assertTrue(held.all { it == 0.toByte() })
     }
+
+    // Rings made before the history domain get it on first use, under the mode the user chose, not the device alone.
+    @Test
+    fun aLaterDomainIsMadeOnFirstUseUnderTheCurrentMode() {
+        val r = ring().apply { create() }
+        assertFalse(File(tmp.root, "history.json").exists())
+        r.setMode(KeyRing.Mode.PASSWORD, pw("p"))
+        r.lock()
+        File(tmp.root, "history.json").delete()
+        val again = ring()
+        assertTrue(again.exists)
+        assertThrows(KeyRing.LockedException::class.java) { again.key(KeyRing.HISTORY) }
+        assertFalse(File(tmp.root, "history.json").exists())
+        again.unlock(pw("p"))
+        val h = again.key(KeyRing.HISTORY).copyOf()
+        assertEquals(KeyRing.Mode.PASSWORD.id, org.json.JSONObject(File(tmp.root, "history.json").readText()).getInt("mode"))
+        again.lock()
+        device.keys.clear()
+        assertArrayEquals(h, ring().apply { unlock(pw("p")) }.key(KeyRing.HISTORY))
+    }
+
+    @Test
+    fun aBackupKeyForAMissingDomainIsInstalled() {
+        val r = ring().apply { create() }
+        val k = Ciphers.randomBytes(Cipher256.KEY)
+        r.install(KeyRing.HISTORY, k.copyOf())
+        r.lock()
+        assertArrayEquals(k, ring().key(KeyRing.HISTORY))
+    }
 }

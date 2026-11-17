@@ -5,7 +5,7 @@ import java.io.File
 import java.io.IOException
 import java.util.Base64
 
-// The data keys: one per domain (the vault, the saved secrets), kept on the disk only wrapped
+// The data keys: one per domain (the vault, the saved secrets, the history), kept on the disk only wrapped
 // by the device key, by a key from the password, or by both. Every rotation is a new generation; the device key of
 // the old one is destroyed, which is what makes deleted data unrecoverable.
 // prefix keeps Keystore aliases apart: tests run in the app's process and must never touch its real keys.
@@ -41,7 +41,10 @@ class KeyRing(private val dir: File, private val device: DeviceKeys, private val
     companion object {
         const val VAULT = "vault"
         const val SECRETS = "secrets"
-        val DOMAINS = listOf(VAULT, SECRETS)
+        const val HISTORY = "history"
+        val DOMAINS = listOf(VAULT, SECRETS, HISTORY)
+        // Made at first start; later domains are made on first use, under the mode of that moment.
+        private val FIRST = listOf(VAULT, SECRETS)
         val DEFAULT_KDF = KdfParams(3, 64 * 1024, 2)
         private val CHECK = "antite-password-check".toByteArray()
     }
@@ -76,7 +79,7 @@ class KeyRing(private val dir: File, private val device: DeviceKeys, private val
             ?: Mode.DEVICE).also { knownMode = it }
 
     @get:Synchronized
-    val exists get() = DOMAINS.all { domainFile(it).exists() }
+    val exists get() = FIRST.all { domainFile(it).exists() }
 
     // Whether data keys can be had without a password right now.
     @get:Synchronized
@@ -104,7 +107,7 @@ class KeyRing(private val dir: File, private val device: DeviceKeys, private val
     // First start: new random data keys under the device key.
     @Synchronized
     fun create() {
-        for (d in DOMAINS) if (!domainFile(d).exists()) {
+        for (d in FIRST) if (!domainFile(d).exists()) {
             val k = Ciphers.randomBytes(Cipher256.KEY)
             write(domainFile(d), seal(d, 1, Mode.DEVICE, k))
             keys[d] = k
@@ -116,6 +119,11 @@ class KeyRing(private val dir: File, private val device: DeviceKeys, private val
     fun key(domain: String): ByteArray {
         keys[domain]?.let { return it }
         if (mode.usesPassword && kek == null) throw LockedException()
+        if (!domainFile(domain).exists()) {
+            val k = Ciphers.randomBytes(Cipher256.KEY)
+            write(domainFile(domain), seal(domain, 1, mode, k))
+            return k.also { keys[domain] = it }
+        }
         return unseal(domain, JSONObject(domainFile(domain).readText())).also { keys[domain] = it }
     }
 
@@ -224,6 +232,10 @@ class KeyRing(private val dir: File, private val device: DeviceKeys, private val
     @Synchronized
     fun install(domain: String, key: ByteArray) {
         try {
+            if (!domainFile(domain).exists()) {
+                write(domainFile(domain), seal(domain, 1, mode, key))
+                return
+            }
             val current = JSONObject(domainFile(domain).readText())
             val m = Mode.of(current.getInt("mode"))
             write(domainFile(domain), seal(domain, current.getInt("gen") + 1, m, key))

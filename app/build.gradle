@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.plugin.compose'
+    id 'org.jetbrains.kotlin.plugin.serialization'
 }
 
 android {
@@ -93,6 +94,8 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-process:2.11.0'
     implementation 'com.google.android.gms:play-services-fido:21.3.1'
     implementation 'org.yaml:snakeyaml:2.2'
+    // Records of the encrypted logs: generated serializers, no query language.
+    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.12.0'
     implementation 'com.lambdapioneer.argon2kt:argon2kt:1.6.0'
     implementation 'androidx.media3:media3-common:1.11.1'
     implementation 'androidx.media3:media3-datasource:1.11.1'
