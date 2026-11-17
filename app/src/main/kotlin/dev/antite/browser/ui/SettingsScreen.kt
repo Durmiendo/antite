@@ -294,7 +294,7 @@ internal fun systemPage(b: Browser) = SettingsPage(T.settingsCatSystem) { nav ->
         Marked("row:defaultBrowser") {
             SettingRow(T.settingsDefaultBrowser, if (isDefault) T.appName else T.settingsDefaultBrowserOther, onClick = {
                 if (isDefault) b.activity.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
-                else b.makeDefaultBrowser()
+                else b.defaultBrowser.make()
             })
         }
     }

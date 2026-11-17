@@ -2,7 +2,6 @@ package dev.antite.browser
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
-import android.app.KeyguardManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -41,7 +40,6 @@ import dev.antite.browser.service.MediaPlayback
 import dev.antite.browser.service.WebNotifications
 import dev.antite.browser.transfer.TransferActivity
 import dev.antite.browser.ui.Motion
-import dev.antite.browser.ui.vaultImported
 import dev.antite.engine.Engine
 import dev.antite.engine.EngineTab
 import dev.antite.engine.EngineView
@@ -107,7 +105,6 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }
     })
     val unlockedCategories get() = locks.unlockedCategories
-    private var vaultUnlocked by locks::vaultUnlocked
 
     // Where a full-screen page comes from in the window animation style: the last touch in the browser's own interface
     // and the tab card picked in the switcher. Read once when a page starts opening or closing, so not state.
@@ -126,7 +123,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var findResult by mutableStateOf("")
     var translateOffer by mutableStateOf<String?>(null)
     val translation get() = if (TRANSLATION_ENABLED) engine.translation else null
-    var defaultBrowserOffer by mutableStateOf(false)
+    val defaultBrowser = DefaultBrowserOffer(activity, prefs, ::toast)
+    val vaultAccess = VaultAccess(this)
     // The tab whose last picture is drawn over the page while it loads again after being lost in the background.
     var restoreCover by mutableStateOf<Tab?>(null)
         internal set
@@ -134,7 +132,6 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     // When the update source's index ran out, seconds; 0 while it is alive or the warning is postponed.
     var indexExpired by mutableStateOf(0L)
     var loginOffer by mutableStateOf<Prompt.SelectLogin?>(null)
-    private var defaultBrowserChecked = false
     var menuOpen by mutableStateOf(false)
     var suggestQuery by mutableStateOf("")
     var suggestFill by mutableStateOf<String?>(null)
@@ -514,27 +511,23 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             WebNotifications.click(intent)
             if (!needTab) return
         }
-        if (intent?.action == Intent.ACTION_SEND || intent?.action == Intent.ACTION_SEND_MULTIPLE) {
-            vaultShared(intent)
-            if (needTab) newTabAndFocus(false)
-            return
-        }
-        val data = intent?.data
-        // An explicit intent passes any scheme past the filter; javascript: would run in the open page.
-        if (data != null && data.scheme?.lowercase() !in setOf("http", "https")) {
-            toast(T.linkUnsupported(scheme = data.scheme))
-            if (needTab) newTabAndFocus(false)
-            return
-        }
-        when {
-            data != null && intent.action == Intent.ACTION_VIEW -> {
-                overlay = Overlay.NONE
-                val t = current
-                if (prefs.int("external", 0) == 1 && t != null && !t.incognito) ensureSession(t).load(data.toString())
-                else openTab(data.toString(), false, null, true)
+        when (val r = routeIntent(intent?.action, intent?.data?.toString(), intent?.data?.scheme, needTab)) {
+            is IntentRoute.Share -> {
+                vaultAccess.takeShared(intent!!)
+                if (r.needTab) newTabAndFocus(false)
             }
-            data != null && intent.action == null -> openTab(data.toString(), false, null, true)
-            needTab -> newTabAndFocus(false)
+            is IntentRoute.Unsupported -> {
+                toast(T.linkUnsupported(scheme = r.scheme))
+                if (r.needTab) newTabAndFocus(false)
+            }
+            is IntentRoute.Open -> {
+                if (r.view) overlay = Overlay.NONE
+                val t = current
+                if (r.view && prefs.int("external", 0) == 1 && t != null && !t.incognito) ensureSession(t).load(r.url)
+                else openTab(r.url, false, null, true)
+            }
+            IntentRoute.NewTab -> newTabAndFocus(false)
+            IntentRoute.Nothing -> {}
         }
     }
 
@@ -592,61 +585,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     }
 
     fun showVault() {
-        vaultRelock()
+        vaultAccess.relock()
         overlay = Overlay.VAULT
         setToolbarHidden(0f)
-    }
-
-    fun vaultRelock() {
-        if (locks.returned()) lockKeys()
-    }
-
-    // A device without a screen lock has nothing to authenticate against; the vault opens and the pages warn about it.
-    fun vaultNeedsAuth(): Boolean =
-        prefs.bool("vaultAuth", true) && activity.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true
-
-    // Open for the interface: unlocked, or there is nothing to unlock with, so no locked screen is shown. With a
-    // password key mode only the password opens it.
-    val vaultOpen: Boolean get() = if (ring.mode.usesPassword) mediaVault.opened else vaultUnlocked || !vaultNeedsAuth()
-
-    fun unlockVault(then: () -> Unit = {}) {
-        if (ring.mode.usesPassword) {
-            if (mediaVault.opened) return then()
-            return askPassword(T.keysUnlock, { vaultUnlocked = true; then() })
-        }
-        if (vaultUnlocked) return then()
-        if (!vaultNeedsAuth()) {
-            vaultUnlocked = true
-            return then()
-        }
-        Auth.require(activity, T.vaultUnlockReason, { vaultUnlocked = true; then() }, {})
-    }
-
-    // A finished download moves in: the file is copied into the app's private folder, the original is dropped.
-    fun vaultAdd(e: Entry) {
-        if (!Downloads.done(e)) return
-        mediaVault.add(e, prefs.bool("vaultDeleteOriginal", true)) { ok ->
-            downloads.revision.intValue++
-            toast(if (ok) T.vaultMovedIn else T.vaultMoveFailed)
-        }
-    }
-
-    // Files shared by another app go into the secure storage. Only content: addresses: a file: one could name the
-    // browser's own files.
-    private fun vaultShared(intent: Intent) {
-        val clip = intent.clipData
-        // The typed getters need Android 13; one file comes as a single value, several as a list.
-        @Suppress("DEPRECATION")
-        val extra = when (val v = intent.extras?.get(Intent.EXTRA_STREAM)) {
-            is android.net.Uri -> listOf(v)
-            is List<*> -> v.filterIsInstance<android.net.Uri>()
-            else -> emptyList()
-        }
-        val uris = ((0 until (clip?.itemCount ?: 0)).mapNotNull { clip?.getItemAt(it)?.uri } + extra)
-            .filter { it.scheme == "content" }.distinct()
-        if (uris.isEmpty()) return toast(T.vaultNothingShared)
-        toast(T.vaultAdding(count = uris.size))
-        mediaVault.import(uris, null, false) { added, failed -> vaultImported(added, failed) }
     }
 
     fun setToolbarHidden(h: Float) {
@@ -672,31 +613,6 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         if (!prefs.bool("toolbarHide", true)) return
         val byScroll = toolbarMotion.onScrolled(dy.toFloat())
         if (y <= 0) moveToolbar(0f) else if (byScroll) moveToolbar(hidden + dy)
-    }
-
-    // Once per start: offer to become the default browser, unless refused for good or postponed.
-    fun checkDefaultBrowserOffer() {
-        if (defaultBrowserOffer && activity.isDefaultBrowser()) defaultBrowserOffer = false
-        if (defaultBrowserChecked) return
-        defaultBrowserChecked = true
-        if (prefs.bool("defaultBrowserNever", false) || System.currentTimeMillis() < prefs.sp.getLong("defaultBrowserLater", 0)) return
-        if (activity.canBeDefaultBrowser() && !activity.isDefaultBrowser()) defaultBrowserOffer = true
-    }
-
-    fun makeDefaultBrowser() {
-        activity.requestDefaultBrowser { ok ->
-            if (ok || activity.isDefaultBrowser()) toast(T.defaultBrowserDone)
-            else toast(T.defaultBrowserFailed)
-        }
-    }
-
-    fun answerDefaultBrowser(yes: Boolean, later: Boolean) {
-        defaultBrowserOffer = false
-        when {
-            yes -> makeDefaultBrowser()
-            later -> prefs.edit { putLong("defaultBrowserLater", System.currentTimeMillis() + 3L * 24 * 3600 * 1000) }
-            else -> prefs.edit { putBoolean("defaultBrowserNever", true) }
-        }
     }
 
     fun dismissLoginOffer() {

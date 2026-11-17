@@ -138,8 +138,8 @@ class MainActivity : ComponentActivity() {
         if (::browser.isInitialized) {
             browser.restoreLostPage()
             browser.engineNews.onResume()
-            browser.checkDefaultBrowserOffer()
-            browser.vaultRelock()
+            browser.defaultBrowser.check()
+            browser.vaultAccess.relock()
             DownloadService.startWaiting(this)
             if (MediaService.playing) MediaService.update(this)
         }

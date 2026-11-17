@@ -294,10 +294,10 @@ fun BrowserScreen(b: Browser) {
             }
             b.translateOffer?.let { TranslateBar(b, it, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() })) }
             b.loginOffer?.let { if (imeInset > 0 && !b.urlFocused && b.overlay == Overlay.NONE) LoginBar(b, it, Modifier.align(Alignment.BottomCenter)) }
-            if (b.defaultBrowserOffer && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
+            if (b.defaultBrowser.shown && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
                 DefaultBrowserBar(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() }))
             }
-            if (b.indexExpired > 0 && !b.defaultBrowserOffer && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
+            if (b.indexExpired > 0 && !b.defaultBrowser.shown && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
                 IndexExpiredBar(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() }))
             }
             // Composed ahead, a little after start, so opening one only shows it.
@@ -659,9 +659,9 @@ private fun DefaultBrowserBar(b: Browser, modifier: Modifier) {
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            listOf(T.actionNo to { b.answerDefaultBrowser(yes = false, later = false) },
-                T.actionLater to { b.answerDefaultBrowser(yes = false, later = true) },
-                T.actionYes to { b.answerDefaultBrowser(yes = true, later = false) }).forEach { (label, action) ->
+            listOf(T.actionNo to { b.defaultBrowser.answer(yes = false, later = false) },
+                T.actionLater to { b.defaultBrowser.answer(yes = false, later = true) },
+                T.actionYes to { b.defaultBrowser.answer(yes = true, later = false) }).forEach { (label, action) ->
                 Text(label, color = p.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp,
                     modifier = Modifier.clickable(onClick = action).padding(12.dp))
             }

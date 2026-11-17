@@ -128,7 +128,7 @@ fun VaultScreen(b: Browser, shown: Boolean) {
             focus.clearFocus()
             viewer = it
         }
-        val viewing = viewer?.takeIf { b.vaultOpen }
+        val viewing = viewer?.takeIf { b.vaultAccess.open }
         if (viewing != null) {
             BackHandler(enabled = shown) { viewer = null }
             VaultViewer(b, viewing, { viewer = null }, viewable)
@@ -143,12 +143,12 @@ private fun VaultGrid(
 ) {
     val p = LocalPalette.current
     PageScaffold(T.vaultTitle, { b.overlay = dev.antite.browser.Overlay.NONE }, actions = {
-        if (b.vaultOpen) IconBtn(R.drawable.ic_add, T.vaultAddFiles) { b.vaultImport(folder) }
+        if (b.vaultAccess.open) IconBtn(R.drawable.ic_add, T.vaultAddFiles) { b.vaultImport(folder) }
     }) {
         if (!b.ring.mode.usesPassword && b.activity.getSystemService(KeyguardManager::class.java)?.isDeviceSecure != true) {
             item { Badge(T.vaultNoLockBadge, Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
         }
-        if (!b.vaultOpen) {
+        if (!b.vaultAccess.open) {
             item {
                 Column(
                     Modifier.fillMaxWidth().padding(top = 64.dp, bottom = 24.dp),
@@ -156,7 +156,7 @@ private fun VaultGrid(
                 ) {
                     Ico(R.drawable.ic_shield_lock, size = 44, modifier = Modifier.padding(bottom = 16.dp))
                     Text(T.vaultLocked, color = p.text, fontSize = 16.sp, modifier = Modifier.padding(bottom = 16.dp))
-                    TextButton(onClick = { b.unlockVault() }) { Text(T.vaultUnlock, color = p.accent) }
+                    TextButton(onClick = { b.vaultAccess.unlock() }) { Text(T.vaultUnlock, color = p.accent) }
                 }
             }
             return@PageScaffold

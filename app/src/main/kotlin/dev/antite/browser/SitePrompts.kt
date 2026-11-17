@@ -107,7 +107,7 @@ internal fun Browser.onPrompt(t: Tab, p: Prompt) {
             var chosen = false
             show(UiDialog.Items(T.uploadFrom, listOf(
                 DialogButton(T.uploadFromDevice) { chosen = true; pickDeviceFiles(p) },
-                DialogButton(T.vaultTitle) { chosen = true; unlockVault { pickVaultFiles(p) } },
+                DialogButton(T.vaultTitle) { chosen = true; vaultAccess.unlock { pickVaultFiles(p) } },
             ), onDismiss = { if (!chosen) p.dismiss() }))
         }
         is Prompt.SaveLogin -> AutofillPrompts.saveLogin(this, p)
