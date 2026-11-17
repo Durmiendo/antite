@@ -108,3 +108,11 @@ class ToolbarMotion(private val b: Browser) {
         }
     }
 }
+
+// The navigation bar hides with the fully hidden toolbar and comes back only after the toolbar has come out by deadZone,
+// so a small scroll up does not pop it up; in between it stays as it was.
+fun navBarHidden(toolbarHidden: Float, toolbarHeight: Float, deadZone: Float, wasHidden: Boolean, hideBar: Boolean): Boolean = when {
+    toolbarHidden >= toolbarHeight -> hideBar
+    toolbarHidden <= toolbarHeight - deadZone -> false
+    else -> wasHidden
+}

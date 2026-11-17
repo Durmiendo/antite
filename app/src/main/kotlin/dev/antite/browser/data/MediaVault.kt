@@ -21,12 +21,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.URLConnection
-import java.nio.ByteBuffer
 
 // Files taken out of the downloads list, downloaded straight into it or added from other apps: the file lives in the
 // app's private folder, encrypted (VaultFile), so other apps and the gallery do not see
@@ -106,7 +104,7 @@ class MediaVault(
             when {
                 index.exists() -> readIndex(ring.key(KeyRing.VAULT)).let(::apply)
                 v1Index.exists() -> apply(readV1Index())
-                oldIndex.exists() -> items = parseItems(JSONArray(oldIndex.readText()))
+                oldIndex.exists() -> items = VaultIndex.parseItems(JSONArray(oldIndex.readText()))
             }
         }.onFailure {
             Log.w("Antite", "vault index unreadable", it)
@@ -142,70 +140,32 @@ class MediaVault(
         refresh()
     }
 
-    private class Index(val items: List<Item>, val folders: List<Folder>, val keys: Map<Long, ByteArray>)
-
-    private fun apply(i: Index) {
+    private fun apply(i: VaultIndex.Index) {
         items = i.items
         folders = i.folders
         synchronized(fileKeys) { fileKeys.putAll(i.keys) }
     }
 
-    // The sealed index: the length of the JSON, the JSON, then id and key of every file. Keys stay out of the JSON,
-    // so they never become strings that cannot be wiped.
-    private fun readIndex(dataKey: ByteArray): Index {
+    private fun readIndex(dataKey: ByteArray): VaultIndex.Index {
         val plain = Ciphers.unbox(dataKey, index.readBytes(), INDEX_AAD)
         try {
-            val buf = ByteBuffer.wrap(plain)
-            val json = ByteArray(buf.int).also { buf.get(it) }
-            val o = JSONObject(String(json))
-            json.fill(0)
-            val keys = HashMap<Long, ByteArray>()
-            while (buf.remaining() >= 8 + Cipher256.KEY) keys[buf.long] = ByteArray(Cipher256.KEY).also { buf.get(it) }
-            return Index(parseItems(o.getJSONArray("items")), parseFolders(o.getJSONArray("folders")), keys)
+            return VaultIndex.decode(plain)
         } finally {
             plain.fill(0)
         }
     }
 
     // The version 1 index: a version 1 vault file, its key wrapped by the old device key.
-    private fun readV1Index(): Index {
+    private fun readV1Index(): VaultIndex.Index {
         val k = VaultFile.v1Key(VaultFile.head(v1Index), legacyUnwrap)
         try {
-            val o = JSONObject(String(VaultFile.Reader(v1Index, k).stream().use { it.readBytes() }))
-            return Index(parseItems(o.getJSONArray("items")), parseFolders(o.getJSONArray("folders")), emptyMap())
+            return VaultIndex.decodeV1(String(VaultFile.Reader(v1Index, k).stream().use { it.readBytes() }))
         } finally {
             k.fill(0)
         }
     }
 
-    private fun parseItems(a: JSONArray): List<Item> = (0 until a.length()).map { i ->
-        val o = a.getJSONObject(i)
-        Item(o.getLong("id"), o.getString("name"), o.getString("mime"), o.getLong("size"),
-            o.getLong("time"), o.optString("source"), if (o.has("folder")) o.getLong("folder") else null)
-    }
-
-    private fun parseFolders(a: JSONArray): List<Folder> =
-        (0 until a.length()).map { i ->
-            a.getJSONObject(i).let { Folder(it.getLong("id"), it.getString("name"), if (it.has("parent")) it.getLong("parent") else null) }
-        }
-
-    private fun indexBytes(): ByteArray {
-        val a = JSONArray()
-        items.forEach { i ->
-            a.put(JSONObject()
-                .put("id", i.id).put("name", i.name).put("mime", i.mime)
-                .put("size", i.size).put("time", i.time).put("source", i.source)
-                .apply { i.folder?.let { put("folder", it) } })
-        }
-        val f = JSONArray()
-        folders.forEach { f.put(JSONObject().put("id", it.id).put("name", it.name).apply { it.parent?.let { p -> put("parent", p) } }) }
-        val json = JSONObject().put("items", a).put("folders", f).toString().toByteArray()
-        val keys = synchronized(fileKeys) { items.mapNotNull { i -> fileKeys[i.id]?.let { i.id to it } } }
-        val out = ByteBuffer.allocate(4 + json.size + keys.size * (8 + Cipher256.KEY)).putInt(json.size).put(json)
-        keys.forEach { (id, k) -> out.putLong(id).put(k) }
-        json.fill(0)
-        return out.array()
-    }
+    private fun indexBytes(): ByteArray = VaultIndex.encode(items, folders, synchronized(fileKeys) { HashMap(fileKeys) })
 
     // Written aside and renamed: a failure in the middle leaves the previous index.
     private fun save(dataKey: ByteArray = ring.key(KeyRing.VAULT)) {
@@ -508,33 +468,18 @@ class MediaVault(
     fun renameFolder(f: Folder, name: String) =
         change { folders = folders.map { if (it.id == f.id) it.copy(name = sanitize(name)) else it } }
 
-    // Its files and folders stay, one level up.
     fun deleteFolder(f: Folder) = change {
-        folders = folders.filter { it.id != f.id }.map { if (it.parent == f.id) it.copy(parent = f.parent) else it }
-        items = items.map { if (it.folder == f.id) it.copy(folder = f.parent) else it }
+        val (fs, its) = VaultIndex.deleteFolder(folders, items, f)
+        folders = fs
+        items = its
     }
 
     fun moveFolder(f: Folder, parent: Long?) {
-        // Not into itself or one of its own folders.
-        var p = parent
-        while (p != null) {
-            if (p == f.id) return
-            p = folders.firstOrNull { it.id == p }?.parent
-        }
+        if (!VaultIndex.canMove(folders, f, parent)) return
         change { folders = folders.map { if (it.id == f.id) it.copy(parent = parent) else it } }
     }
 
-    // The folder and its parents up to the top, for a path line.
-    fun path(id: Long?): List<Folder> {
-        val out = ArrayList<Folder>()
-        var cur = id
-        while (cur != null && out.size < 64) {
-            val f = folders.firstOrNull { it.id == cur } ?: break
-            out.add(0, f)
-            cur = f.parent
-        }
-        return out
-    }
+    fun path(id: Long?): List<Folder> = VaultIndex.path(folders, id)
 
     private fun change(done: () -> Unit = {}, block: () -> Unit) {
         io.launch {

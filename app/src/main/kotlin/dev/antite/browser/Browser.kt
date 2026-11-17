@@ -33,6 +33,7 @@ import dev.antite.browser.data.TabCategory
 import dev.antite.browser.data.TabContainer
 import dev.antite.browser.data.TabStore
 import dev.antite.browser.data.Vault
+import dev.antite.browser.data.nextAfterClose
 import dev.antite.browser.l10n.T
 import dev.antite.browser.service.AutofillBridge
 import dev.antite.browser.service.Downloads
@@ -40,23 +41,13 @@ import dev.antite.browser.service.MediaPlayback
 import dev.antite.browser.service.WebNotifications
 import dev.antite.browser.transfer.TransferActivity
 import dev.antite.browser.ui.Motion
-import dev.antite.browser.ui.paletteOf
 import dev.antite.browser.ui.vaultImported
-import dev.antite.engine.AndroidPermissionRequest
-import dev.antite.engine.ContentPermissionRequest
-import dev.antite.engine.ContextInfo
-import dev.antite.engine.DownloadRequest
 import dev.antite.engine.Engine
 import dev.antite.engine.EngineTab
 import dev.antite.engine.EngineView
-import dev.antite.engine.LoadError
-import dev.antite.engine.MediaEvent
-import dev.antite.engine.MediaPermissionRequest
 import dev.antite.engine.Prompt
-import dev.antite.engine.SecurityInfo
 import dev.antite.engine.TabCallbacks
 import dev.antite.engine.TabOptions
-import dev.antite.engine.TranslationState
 import kotlinx.coroutines.launch
 
 enum class Overlay { NONE, SWITCHER, SETTINGS, LIBRARY, VAULT }
@@ -86,8 +77,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     private val store = TabStore(activity)
     val downloads = Downloads(this)
     val engineNews = EngineNews(this)
-    private val media = MediaPlayback(activity)
-    private val main = Handler(Looper.getMainLooper())
+    internal val media = MediaPlayback(activity)
+    internal val main = Handler(Looper.getMainLooper())
     private val saveTask = Runnable { saveNow() }
 
     val tabs = mutableStateListOf<Tab>()
@@ -105,13 +96,18 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     val categories = Categories(activity, prefs)
     // The switcher's page: Categories.ALL, Categories.INCOGNITO or a category id.
     var switcherPage by mutableStateOf(Categories.ALL)
-    // Incognito tabs behind "unlock to enter" stay hidden until this is set; leaving the app clears it.
-    var incognitoUnlocked by mutableStateOf(false)
-    // Locked categories opened by a device unlock; closed again when the browser is left.
-    val unlockedCategories = mutableStateListOf<String>()
-    // The secure storage asks for the device unlock on open; the same lock settings govern when it closes back.
-    var vaultUnlocked by mutableStateOf(false)
-    private var vaultLeftAt = 0L
+    val locks = Locks(object : Locks.Settings {
+        override val incognitoLock get() = prefs.bool("incognitoLock", false)
+        override fun categoryLock(id: String) = categories.byId(id)?.locked == true
+        override val vaultLockOnExit get() = prefs.int("vaultLock", 0) == 0
+        override val vaultLockMinutes get() = when (prefs.int("vaultLock", 0)) {
+            1 -> 5
+            Options.vaultLocks.size -> prefs.custom("vaultLock", Options.vaultLocks.size)?.let(Options.customVaultLock)
+            else -> null
+        }
+    })
+    val unlockedCategories get() = locks.unlockedCategories
+    private var vaultUnlocked by locks::vaultUnlocked
 
     // Where a full-screen page comes from in the window animation style: the last touch in the browser's own interface
     // and the tab card picked in the switcher. Read once when a page starts opening or closing, so not state.
@@ -133,7 +129,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var defaultBrowserOffer by mutableStateOf(false)
     // The tab whose last picture is drawn over the page while it loads again after being lost in the background.
     var restoreCover by mutableStateOf<Tab?>(null)
-        private set
+        internal set
     private var restoreOnReturn: Tab? = null
     // When the update source's index ran out, seconds; 0 while it is alive or the warning is postponed.
     var indexExpired by mutableStateOf(0L)
@@ -160,8 +156,6 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var toolbarHeightPx = 0f
     var navDeadZonePx = 0f
 
-    // The navigation bar hides with the fully hidden toolbar and comes back only after the toolbar has come out by
-    // navDeadZonePx, so a small scroll up does not pop it up.
     var barsHidden by mutableStateOf(false)
         private set
     private var lastScrollY = -1
@@ -251,7 +245,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         return t
     }
 
-    private fun options(t: Tab, withState: Boolean) = TabOptions(
+    internal fun options(t: Tab, withState: Boolean) = TabOptions(
         privateMode = t.incognito,
         desktopMode = t.desktop,
         javascript = perms.decide(SitePerms.JS, Urls.siteHost(t.url)) == SitePerms.ALLOW,
@@ -261,7 +255,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     )
 
     fun ensureSession(t: Tab): EngineTab =
-        t.engineTab ?: engine.createTab(options(t, true), TabSession(t)).also { t.engineTab = it }
+        t.engineTab ?: engine.createTab(options(t, true), TabSession(this, t)).also { t.engineTab = it }
 
     fun switchTo(t: Tab) {
         val prev = current
@@ -315,7 +309,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }
         if (t === current) {
             current = null
-            val next = nextAfterClose(t, i)
+            val next = nextAfterClose(tabs, t, i)
             when {
                 next != null -> switchTo(next)
                 overlay == Overlay.SWITCHER -> {}
@@ -323,13 +317,6 @@ class Browser(val activity: MainActivity, val engine: Engine) {
             }
         }
         scheduleSave()
-    }
-
-    private fun nextAfterClose(closed: Tab, index: Int): Tab? {
-        tabs.firstOrNull { it.id == closed.parentId && it.incognito == closed.incognito }?.let { return it }
-        for (k in (minOf(index, tabs.size) - 1) downTo 0) if (tabs[k].incognito == closed.incognito) return tabs[k]
-        for (k in index until tabs.size) if (tabs[k].incognito == closed.incognito) return tabs[k]
-        return tabs.filter { !it.incognito }.maxByOrNull { it.lastUsed }
     }
 
     fun moveTab(t: Tab, toIndex: Int) {
@@ -361,7 +348,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }
     }
 
-    private fun captureSoon(t: Tab, delayMs: Long, onlyWhenLoaded: Boolean) {
+    internal fun captureSoon(t: Tab, delayMs: Long, onlyWhenLoaded: Boolean) {
         if (t !== current) return
         main.postDelayed({ if (t === current && !(onlyWhenLoaded && t.loading)) captureThumb(t) }, delayMs)
     }
@@ -424,21 +411,15 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun onStop() {
         if (prefs.bool("closeIncognito", false)) tabs.filter { it.incognito }.forEach(::closeTab)
-        incognitoUnlocked = false
-        unlockedCategories.clear()
-        vaultLeftAt = System.currentTimeMillis()
         Uploads.wipe(activity)
-        if (prefs.int("vaultLock", 0) == 0) {
-            vaultUnlocked = false
-            lockKeys()
-        }
+        if (locks.left()) lockKeys()
     }
 
-    val incognitoLocked: Boolean get() = prefs.bool("incognitoLock", false) && !incognitoUnlocked
+    val incognitoLocked: Boolean get() = locks.incognitoLocked
 
-    fun categoryLocked(id: String?): Boolean = id != null && id !in unlockedCategories && categories.byId(id)?.locked == true
+    fun categoryLocked(id: String?): Boolean = locks.categoryLocked(id)
 
-    fun tabLocked(t: Tab): Boolean = if (t.incognito) incognitoLocked else categoryLocked(t.category)
+    fun tabLocked(t: Tab): Boolean = locks.tabLocked(t.incognito, t.category)
 
     fun unlockCategory(c: TabCategory) {
         if (!categoryLocked(c.id)) return
@@ -448,7 +429,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     fun unlockIncognito(then: () -> Unit = {}, cancelled: () -> Unit = {}) {
         if (!incognitoLocked) return then()
         Auth.require(activity, T.incognitoUnlockReason, {
-            incognitoUnlocked = true
+            locks.incognitoUnlocked = true
             then()
         }, cancelled)
     }
@@ -616,17 +597,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         setToolbarHidden(0f)
     }
 
-    // "On exit" locks in onStop; "after 5 minutes" is checked once on return to the app, so a pause without leaving it
-    // (the system unlock dialog, a permission prompt) does not lock the vault again.
     fun vaultRelock() {
-        if (vaultLeftAt == 0L) return
-        val minutes = prefs.custom("vaultLock", Options.vaultLocks.size)?.let(Options.customVaultLock) ?: 5
-        val delayed = prefs.int("vaultLock", 0).let { it == 1 || it == Options.vaultLocks.size }
-        if (delayed && System.currentTimeMillis() - vaultLeftAt > minutes * 60_000L) {
-            vaultUnlocked = false
-            lockKeys()
-        }
-        vaultLeftAt = 0L
+        if (locks.returned()) lockKeys()
     }
 
     // A device without a screen lock has nothing to authenticate against; the vault opens and the pages warn about it.
@@ -684,8 +656,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun moveToolbar(h: Float) {
         hidden = h.coerceIn(0f, toolbarHeightPx)
-        if (hidden >= toolbarHeightPx) barsHidden = prefs.bool("navBarHide", true)
-        else if (hidden <= toolbarHeightPx - navDeadZonePx) barsHidden = false
+        barsHidden = navBarHidden(hidden, toolbarHeightPx, navDeadZonePx, barsHidden, prefs.bool("navBarHide", true))
     }
 
     fun onScroll(t: Tab, y: Int) {
@@ -741,169 +712,6 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     }
 
     // ---------------------------------------------------------------- engine callbacks
-
-    private inner class TabSession(val t: Tab) : TabCallbacks {
-        // A new session first loads about:blank, also when it restores a page; like Firefox, that load is ignored.
-        private var initialBlank = !Urls.isBlank(t.url)
-
-        private fun skipInitialBlank(url: String): Boolean {
-            if (!initialBlank) return false
-            if (Urls.isBlank(url)) return true
-            initialBlank = false
-            return false
-        }
-
-        override fun onLocationChange(url: String) {
-            if (skipInitialBlank(url)) return
-            t.url = url
-            refreshBookmarked(t)
-        }
-
-        override fun errorPage(url: String, error: LoadError): String {
-            if (error == LoadError.HTTPS_ONLY) t.httpsOnlyFailed = url
-            return ErrorPage.html(url, error, paletteOf(prefs.isDark(), prefs.isOled()))
-        }
-
-        override fun onTitleChange(title: String) {
-            t.title = title
-            if (!t.incognito) {
-                val url = t.url
-                activity.lifecycleScope.launch { db.io { title(url, title) } }
-            }
-            scheduleSave()
-        }
-
-        override fun onPageStart(url: String) {
-            if (skipInitialBlank(url)) return
-            if (url != t.httpsOnlyFailed) t.httpsOnlyFailed = null
-            t.loading = true
-            t.progress = 0
-            // A new page starts at the top; until Gecko reports a scroll, pull to refresh stays allowed.
-            if (t === current) pageScrollY = 0
-            if (t === current) toolbarMotion.show()
-        }
-
-        override fun onPageStop(success: Boolean) {
-            if (initialBlank) return
-            t.loading = false
-            if (t === current) pageStops++
-            captureSoon(t, 1000, true)
-        }
-
-        override fun onProgress(percent: Int) {
-            t.progress = percent
-        }
-
-        override fun onSecurityChange(info: SecurityInfo) {
-            t.secure = info.secure
-            if (info.secure) t.httpsOnlyFailed = null
-            t.securityHost = info.host
-            t.issuer = info.issuer
-        }
-
-        override fun onNavigationState(canGoBack: Boolean, canGoForward: Boolean) {
-            t.canGoBack = canGoBack
-            t.canGoForward = canGoForward
-        }
-
-        override fun onStateChange(state: String) {
-            if (t.incognito) return
-            t.state = state
-            scheduleSave()
-        }
-
-        override fun onFirstPaint() {
-            if (restoreCover === t) restoreCover = null
-            captureSoon(t, 1500, false)
-        }
-
-        override fun onScroll(y: Int) {
-            this@Browser.onScroll(t, y)
-        }
-
-        override fun onFullscreen(full: Boolean) {
-            if (t === current) activity.setFullscreen(full)
-        }
-
-        override fun onFocusRequest() {
-            if (t !== current) main.post { switchTo(t) }
-        }
-
-        override fun onCloseRequest() = closeTab(t)
-
-        override fun onCrash() = recover(t)
-
-        override fun onNewTab(url: String, create: (TabOptions, TabCallbacks) -> EngineTab): EngineTab {
-            val child = Tab.create(t.incognito)
-            child.url = url
-            child.parentId = t.id
-            // The engine requires the same storage for a window a page opens.
-            child.container = t.container
-            child.desktop = prefs.bool("desktopDefault", false)
-            tabs.add(tabs.indexOf(t) + 1, child)
-            val tab = create(options(child, false), TabSession(child))
-            child.engineTab = tab
-            main.post { switchTo(child) }
-            return tab
-        }
-
-        override fun allowJavascript(url: String) = perms.decide(SitePerms.JS, Urls.siteHost(url)) == SitePerms.ALLOW
-
-        override fun onVisit(url: String, title: String?): Boolean {
-            if (t.incognito || !Urls.isWeb(url)) return false
-            val name = if (t.url == url) t.title else null
-            activity.lifecycleScope.launch { db.io { visit(url, name) } }
-            return true
-        }
-
-        override fun isVisited(urls: List<String>, done: (BooleanArray) -> Unit) {
-            activity.lifecycleScope.launch { done(db.io { visited(urls) }) }
-        }
-
-        override fun onContextMenu(info: ContextInfo) {
-            showContextMenu(t, info)
-        }
-
-        override fun onDownload(request: DownloadRequest) = downloads.start(request, t)
-
-        override fun onPageMeta(pageUrl: String, iconUrl: String?, themeColor: Int?) {
-            if (t.incognito) return
-            // Only the tab's own site sets its icon: a late message from the page before a navigation must not.
-            val h = Urls.host(t.url)
-            if (h.isEmpty() || Urls.host(pageUrl) != h) return
-            val page = Uri.parse(t.url)
-            icons.setTheme(h, themeColor)
-            icons.onPageIcon(h, iconUrl, "${page.scheme}://${page.host}")
-        }
-
-        override fun onPrompt(prompt: Prompt) = onPrompt(t, prompt)
-
-        override fun onContentPermission(request: ContentPermissionRequest) = onContentPermission(t, request)
-
-        override fun onMediaPermission(request: MediaPermissionRequest) = onMediaPermission(t, request)
-
-        override fun onAndroidPermission(request: AndroidPermissionRequest) = askAndroidPermission(request)
-
-        override fun onTranslationOffer() {
-            if (t !== current || translation == null || !prefs.bool("translateOffer", true)) return
-            val from = t.docLang?.let { Urls.langName(it) + " → " } ?: ""
-            translateOffer = T.translateOffer(languages = from + Urls.langName(prefs.translateTarget))
-            main.postDelayed({ translateOffer = null }, 15000)
-        }
-
-        override fun onTranslationState(state: TranslationState) {
-            state.pageLanguage?.let { t.docLang = it }
-            t.translated = state.translated
-            if (state.error != null && t === current) toast(T.translateError(reason = state.error))
-        }
-
-        override fun onMedia(event: MediaEvent) {
-            activity.pip.onMedia(event, t === current)
-            media.onEvent(event, t.title, Urls.host(t.url), icons.get(Urls.host(t.url))) {
-                activity.requestNotificationPermission(true)
-            }
-        }
-    }
 
     private inner class PopupCallbacks(private val onClose: () -> Unit) : TabCallbacks by NoopTabCallbacks() {
         override fun onCloseRequest() = onClose()

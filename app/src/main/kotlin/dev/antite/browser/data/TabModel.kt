@@ -54,3 +54,12 @@ class Tab(val id: Long, val incognito: Boolean) {
             else -> T.tabNew
         }
 }
+
+// The tab shown after the current one at index is closed (tabs no longer hold it): the one that opened it, else the
+// nearest of the same kind before it, then after it; from incognito the last used normal tab when no incognito is left.
+fun nextAfterClose(tabs: List<Tab>, closed: Tab, index: Int): Tab? {
+    tabs.firstOrNull { it.id == closed.parentId && it.incognito == closed.incognito }?.let { return it }
+    for (k in (minOf(index, tabs.size) - 1) downTo 0) if (tabs[k].incognito == closed.incognito) return tabs[k]
+    for (k in index until tabs.size) if (tabs[k].incognito == closed.incognito) return tabs[k]
+    return tabs.filter { !it.incognito }.maxByOrNull { it.lastUsed }
+}
