@@ -5,6 +5,8 @@ import android.provider.DocumentsContract
 import androidx.annotation.DrawableRes
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -16,6 +18,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.Auth
 import dev.antite.browser.Browser
@@ -96,7 +99,8 @@ fun SettingsScreen(b: Browser, shown: Boolean) {
     }
     BackHandler(enabled = shown && stack.size > 1) { nav.back() }
     CompositionLocalProvider(LocalPageReset provides closes, LocalSettingTarget provides target) {
-        AnimatedContent(stack.size to stack.last() as Page,
+        // The old page fades out before the new one fades in; without a ground of its own the tab shows between them.
+        AnimatedContent(stack.size to stack.last() as Page, Modifier.fillMaxSize().background(LocalPalette.current.background),
             transitionSpec = { Motion.sharedAxisX(forward = targetState.first > initialState.first) }, label = "settings") { (_, page) ->
             page.content(nav)
         }
