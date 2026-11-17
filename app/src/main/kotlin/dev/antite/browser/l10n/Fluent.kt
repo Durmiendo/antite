@@ -1,6 +1,6 @@
 package dev.antite.browser.l10n
 
-// The subset of Fluent (projectfluent.org) the interface strings use; see docs/decisions/0005-localization.md.
+// The subset of Fluent (projectfluent.org) the interface strings use.
 // Pure Kotlin, so JVM tests run it; plural categories come from the caller.
 class Fluent(text: String) {
     private companion object {

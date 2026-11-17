@@ -150,7 +150,7 @@ def geckoManifest = tasks.register('geckoManifest', GeckoManifestTask) {
     aar.from(configurations.geckoAar)
 }
 
-// Interface strings live in l10n/<language>/*.ftl (docs/decisions/0005-localization.md). This generates object T from
+// Interface strings live in l10n/<language>/*.ftl. This generates object T from
 // the Russian files: a property per message, a function with named parameters per message with variables.
 abstract class L10nKeysTask extends DefaultTask {
     @InputDirectory

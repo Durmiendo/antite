@@ -14,7 +14,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-// The app's key ring (docs/decisions/0008) with the Android Keystore as the device key and Argon2id for passwords,
+// The app's key ring with the Android Keystore as the device key and Argon2id for passwords,
 // and the settings that go with it.
 object Secure {
     private const val STORE = "AndroidKeyStore"

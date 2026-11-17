@@ -8,7 +8,7 @@ import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-// The device key of the time before the key ring (docs/decisions/0008): only read, to move old data over, then destroyed.
+// The device key of the time before the key ring: only read, to move old data over, then destroyed.
 object Crypto {
     private const val ALIAS = "antite-vault"
     private const val STORE = "AndroidKeyStore"

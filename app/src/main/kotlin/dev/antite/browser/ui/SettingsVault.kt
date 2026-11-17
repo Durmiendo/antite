@@ -73,7 +73,7 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.infoToggle(b: Browse
     }
 }
 
-// Shared by the secure storage, the saved passwords, addresses and cards (docs/decisions/0008).
+// Shared by the secure storage, the saved passwords, addresses and cards.
 internal fun keysPage(b: Browser) = SettingsPage(T.keysTitle) { nav ->
     Secure.revision.intValue
     mark(T.keysMode, null, "keys:mode")

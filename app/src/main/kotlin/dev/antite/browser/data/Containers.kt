@@ -14,7 +14,7 @@ class TabContainer(val id: String, name: String, color: Int) {
     var color by mutableStateOf(color)
 }
 
-// Containers keep cookies and site data apart (docs/decisions/0007): tabs of one container share them only with each
+// Containers keep cookies and site data apart: tabs of one container share them only with each
 // other. The id is what the engine separates by, so it never changes.
 class Containers(private val prefs: Prefs) {
     companion object {

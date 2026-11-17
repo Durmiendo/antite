@@ -9,7 +9,7 @@ import dev.antite.browser.l10n.T
 import java.nio.CharBuffer
 import kotlin.concurrent.thread
 
-// The key ring as the interface sees it (docs/decisions/0008): asking for the password, locking, changing the mode,
+// The key ring as the interface sees it: asking for the password, locking, changing the mode,
 // the password and the cipher. Argon2 takes about a second, so everything that derives a key runs off the main thread.
 
 val Browser.ring: KeyRing get() = Secure.ring(activity)

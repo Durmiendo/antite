@@ -28,8 +28,8 @@ data class SavedCard(val guid: String, val name: String?, val last4: String, val
     val label: String get() = "•••• $last4" + if (month.isNullOrEmpty()) "" else "  $month/$year"
 }
 
-// Passwords, addresses and cards. The secret part of each row is sealed by the "secrets" data key of the key ring
-// (docs/decisions/0008); deleting or changing one replaces that key, so the old value cannot be read from any copy.
+// Passwords, addresses and cards. The secret part of each row is sealed by the "secrets" data key of the key ring;
+// deleting or changing one replaces that key, so the old value cannot be read from any copy.
 class Vault private constructor(private val context: Context) : SQLiteOpenHelper(context, "vault.db", null, VERSION) {
     private val ring = Secure.ring(context)
     private val cipher = { Secure.cipher(context) }

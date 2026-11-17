@@ -1,4 +1,4 @@
-"""Key ring with a password (docs/decisions/0008): switching the key to a password, the storage locked after leaving the
+"""Key ring with a password: switching the key to a password, the storage locked after leaving the
 app opens only with the password (a wrong one is refused), a file opens after the cipher is changed to the cascade,
 and everything goes back to the device key and AES at the end.
 

@@ -61,7 +61,7 @@ class TransferActivity : ComponentActivity() {
     private var status by mutableStateOf(T.transferWaiting)
     private var fraction by mutableStateOf<Float?>(null)
     private var finished by mutableStateOf(false)
-    // With a password key mode this process has to unlock the key ring itself (docs/decisions/0008).
+    // With a password key mode this process has to unlock the key ring itself.
     private var askKeys by mutableStateOf(false)
     private var keysError by mutableStateOf<String?>(null)
     private val keysInput = SecretInput()

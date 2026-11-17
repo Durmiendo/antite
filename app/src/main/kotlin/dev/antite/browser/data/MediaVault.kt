@@ -29,7 +29,7 @@ import java.net.URLConnection
 import java.nio.ByteBuffer
 
 // Files taken out of the downloads list, downloaded straight into it or added from other apps: the file lives in the
-// app's private folder, encrypted (VaultFile, docs/decisions/0006 and 0008), so other apps and the gallery do not see
+// app's private folder, encrypted (VaultFile), so other apps and the gallery do not see
 // it. Every file has its own key; names, folders and those keys live in the index, sealed by the vault data key of the
 // key ring. Deleting a file replaces the data key, so the file's key is gone for good with the old one.
 class MediaVault(
@@ -167,7 +167,7 @@ class MediaVault(
         }
     }
 
-    // The index of docs/decisions/0006: a version 1 vault file, its key wrapped by the old device key.
+    // The version 1 index: a version 1 vault file, its key wrapped by the old device key.
     private fun readV1Index(): Index {
         val k = VaultFile.v1Key(VaultFile.head(v1Index), legacyUnwrap)
         try {
@@ -320,7 +320,7 @@ class MediaVault(
         if (zeros()) VaultFile.wipe(f) else f.delete()
     }
 
-    // From docs/decisions/0006 to 0008, each step durable before the next, so a stop anywhere loses nothing:
+    // From version 1 to the key ring, each step durable before the next, so a stop anywhere loses nothing:
     // version 1 keys go into the new index before their headers are rewritten; an open file is encrypted under its
     // final name before it is erased. The old device key is no longer needed after that.
     private fun moveOver() {

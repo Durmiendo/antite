@@ -5,7 +5,7 @@ import java.io.File
 import java.io.IOException
 import java.util.Base64
 
-// The data keys of docs/decisions/0008: one per domain (the vault, the saved secrets), kept on the disk only wrapped
+// The data keys: one per domain (the vault, the saved secrets), kept on the disk only wrapped
 // by the device key, by a key from the password, or by both. Every rotation is a new generation; the device key of
 // the old one is destroyed, which is what makes deleted data unrecoverable.
 // prefix keeps Keystore aliases apart: tests run in the app's process and must never touch its real keys.

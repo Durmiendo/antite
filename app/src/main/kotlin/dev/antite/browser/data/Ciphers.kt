@@ -10,7 +10,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-// The ciphers of docs/decisions/0008. Keys are 64 bytes: AES takes the first half, XChaCha20 the second, the cascade
+// The ciphers of the key ring. Keys are 64 bytes: AES takes the first half, XChaCha20 the second, the cascade
 // both, so a key never has to change size when the cipher setting does.
 enum class Cipher256(val id: Int) {
     AES(1), XCHACHA(2), CASCADE(3);

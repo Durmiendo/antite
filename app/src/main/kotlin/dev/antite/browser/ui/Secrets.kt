@@ -27,7 +27,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import dev.antite.browser.UiDialog
 import dev.antite.browser.l10n.T
 
-// A password field that never turns its text into a String (docs/decisions/0008): the text lives in the EditText's
+// A password field that never turns its text into a String: the text lives in the EditText's
 // char buffer and comes out as a CharArray, after which the buffer is overwritten. The keyboard is asked not to
 // learn from it, not to suggest and not to autofill; what the keyboard itself keeps is beyond the app.
 class SecretInput {

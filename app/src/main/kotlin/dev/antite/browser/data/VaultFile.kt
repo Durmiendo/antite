@@ -8,7 +8,7 @@ import java.io.OutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 
-// The format of a file in the secure storage (docs/decisions/0006, 0008): a 70-byte header naming the cipher, then
+// The format of a file in the secure storage: a 70-byte header naming the cipher, then
 // chunks of 64 KiB, each sealed on its own, so the file can be read from any position. The file's key lives in the
 // vault index. Version 1 files carried their key in the header, wrapped by the old device key; they are read only
 // to move them over, which takes a header rewrite: their AES chunks are the same as in version 2.
@@ -195,7 +195,7 @@ object VaultFile {
     }
 
     // Overwrites the file with zeros and syncs before it is deleted. On flash memory this guarantees nothing by
-    // itself; the guarantee comes from destroying the key (docs/decisions/0008).
+    // itself; the guarantee comes from destroying the key.
     fun wipe(file: File) {
         if (!file.exists()) return
         runCatching {

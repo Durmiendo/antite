@@ -44,7 +44,7 @@ class MediaVaultTest {
 
     private fun newRing() = KeyRing(keyDir, Secure.Keystore, Secure.Argon2, prefix)
 
-    // The old device key of docs/decisions/0006, played by a mask.
+    // The device key of version 1 vaults, played by a mask.
     private val legacy: (ByteArray) -> ByteArray = { b -> ByteArray(b.size) { (b[it].toInt() xor 0x5A).toByte() } }
 
     private fun vault(r: KeyRing = ring) = MediaVault(context, dir, r, legacy, { cipher }, { false }, {})
@@ -65,7 +65,7 @@ class MediaVaultTest {
         }
     }
 
-    // A file as docs/decisions/0006 wrote it: the key wrapped in the header, AES chunks.
+    // A version 1 file: the key wrapped in the header, AES chunks.
     private fun v1File(name: String, plain: ByteArray) {
         val key32 = Ciphers.randomBytes(32)
         val blob = legacy(key32)
@@ -127,7 +127,7 @@ class MediaVaultTest {
         assertEquals(setOf(3L, 4L), vault().items.map { it.id }.toSet())
     }
 
-    // docs/decisions/0006 to 0008: the keys move into the index, the files keep their chunks.
+    // Version 1 to the key ring: the keys move into the index, the files keep their chunks.
     @Test
     fun aVersion1VaultMovesOverWithoutReencrypting() {
         val a = Random(11).nextBytes(2 * VaultFile.CHUNK + 9)
