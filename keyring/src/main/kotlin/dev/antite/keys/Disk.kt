@@ -7,6 +7,8 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.io.RandomAccessFile
 import java.nio.channels.FileChannel
+import java.nio.channels.OverlappingFileLockException
+import java.nio.file.Files
 import java.nio.file.StandardOpenOption
 
 sealed class DiskException(message: String, cause: Throwable? = null) : IOException(message, cause) {
@@ -30,17 +32,24 @@ interface Disk {
     }
 
     fun exists(f: File): Boolean
+    fun isDirectory(f: File): Boolean
     fun length(f: File): Long
     fun modified(f: File): Long
     // The files in a folder; none if there is no folder.
     fun list(dir: File): List<File>
+    // Files and folders in a folder, links left out; none if there is no folder.
+    fun children(dir: File): List<File>
+    // Makes the missing folders, each one on the disk before the next.
     fun mkdirs(dir: File)
     // WRITE makes a missing file.
     fun open(f: File, mode: Open): Handle
-    // Puts from in place of to.
+    // Puts a file in place of to; a folder only where nothing is.
     fun rename(from: File, to: File)
+    // A file or an empty folder.
     fun delete(f: File): Boolean
     fun syncFolder(dir: File)
+    // Held until closed, also against other processes; null while someone else holds it.
+    fun tryLock(f: File): Closeable?
 }
 
 fun Disk.Handle.readFully(pos: Long, b: ByteArray) {
@@ -76,6 +85,19 @@ fun Disk.renameDurably(from: File, to: File) {
 
 fun Disk.deleteDurably(f: File) {
     if (delete(f)) syncFolder(f.absoluteFile.parentFile)
+}
+
+// A file or a folder with all in it, gone once this returns.
+fun Disk.deleteTree(f: File) {
+    if (!exists(f)) return
+    if (isDirectory(f)) children(f).forEach { deleteTree(it) }
+    deleteDurably(f)
+}
+
+// Every folder under dir on the disk, so the files written into them are reachable after a power cut.
+fun Disk.syncTree(dir: File) {
+    children(dir).filter { isDirectory(it) }.forEach { syncTree(it) }
+    syncFolder(dir)
 }
 
 // Written from the start of a new or emptied file. sync = true makes close() put it on the disk first.
@@ -147,15 +169,23 @@ class RealDisk(root: File) : Disk {
 
     override fun exists(f: File) = checked(f).exists()
 
+    override fun isDirectory(f: File) = checked(f).isDirectory
+
     override fun length(f: File): Long = checked(f).let { if (it.isFile) it.length() else throw DiskException.NotFound(f.path) }
 
     override fun modified(f: File): Long = checked(f).let { if (it.exists()) it.lastModified() else throw DiskException.NotFound(f.path) }
 
-    override fun list(dir: File): List<File> = checked(dir).listFiles().orEmpty().filter { it.isFile }
+    override fun list(dir: File): List<File> = children(dir).filter { it.isFile }
+
+    override fun children(dir: File): List<File> =
+        checked(dir).listFiles().orEmpty().filter { !Files.isSymbolicLink(it.toPath()) }.sortedBy { it.name }
 
     override fun mkdirs(dir: File) {
         val d = checked(dir)
-        if (!d.isDirectory && !d.mkdirs() && !d.isDirectory) throw DiskException.Failed("cannot make ${dir.path}")
+        if (d.isDirectory) return
+        d.parentFile?.let { if (it.path.startsWith(root.path)) mkdirs(it) }
+        if (!d.mkdir() && !d.isDirectory) throw DiskException.Failed("cannot make ${dir.path}")
+        syncFolder(d.parentFile)
     }
 
     override fun open(f: File, mode: Disk.Open): Disk.Handle {
@@ -186,7 +216,8 @@ class RealDisk(root: File) : Disk {
     override fun rename(from: File, to: File) {
         val a = checked(from)
         val b = checked(to)
-        if (!a.isFile) throw DiskException.NotFound(from.path)
+        if (!a.exists()) throw DiskException.NotFound(from.path)
+        if (a.isDirectory && b.exists()) throw DiskException.Failed("${to.name} is in the way of folder ${from.name}")
         if (!a.renameTo(b)) throw DiskException.Failed("cannot rename ${from.name} to ${to.name}")
     }
 
@@ -199,5 +230,21 @@ class RealDisk(root: File) : Disk {
 
     override fun syncFolder(dir: File) = io("cannot sync folder ${dir.name}") {
         FileChannel.open(checked(dir).toPath(), StandardOpenOption.READ).use { it.force(true) }
+    }
+
+    override fun tryLock(f: File): Closeable? = io("cannot lock ${f.name}") {
+        val ch = FileChannel.open(checked(f).toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+        val lock = try {
+            ch.tryLock()
+        } catch (e: OverlappingFileLockException) {
+            null
+        }
+        if (lock == null) {
+            ch.close()
+            null
+        } else Closeable {
+            lock.release()
+            ch.close()
+        }
     }
 }

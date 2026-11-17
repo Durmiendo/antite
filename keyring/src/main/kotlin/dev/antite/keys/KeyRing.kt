@@ -266,6 +266,42 @@ class KeyRing(
     @get:Synchronized
     val recovering get() = DOMAINS.any { disk.exists(nextFile(it)) }
 
+    private fun importFile(domain: String) = File(dir, "$domain.import.json")
+
+    // A data key from a backup, sealed under the current mode next to this domain's key; adoptImports() puts it in
+    // place, dropImports() forgets it. The given array is wiped.
+    @Synchronized
+    fun stageImport(domain: String, key: ByteArray) {
+        try {
+            val gen = if (disk.exists(domainFile(domain))) read(domainFile(domain)).getInt("gen") + 1 else 1
+            write(importFile(domain), seal(domain, gen, mode, key))
+        } finally {
+            key.fill(0)
+        }
+    }
+
+    // Can be run again after a stop: the old device key goes first, the staged file stays until it is moved in.
+    @Synchronized
+    fun adoptImports() {
+        for (d in DOMAINS) {
+            val f = importFile(d)
+            if (!disk.exists(f)) continue
+            if (disk.exists(domainFile(d))) destroy(d, read(domainFile(d)))
+            disk.renameDurably(f, domainFile(d))
+            keys.remove(d)?.fill(0)
+        }
+    }
+
+    @Synchronized
+    fun dropImports() {
+        for (d in DOMAINS) {
+            val f = importFile(d)
+            if (!disk.exists(f)) continue
+            runCatching { destroy(d, read(f)) }
+            disk.deleteDurably(f)
+        }
+    }
+
     // A data key from a backup replaces this domain's key under the current mode; the given array is wiped.
     @Synchronized
     fun install(domain: String, key: ByteArray) {

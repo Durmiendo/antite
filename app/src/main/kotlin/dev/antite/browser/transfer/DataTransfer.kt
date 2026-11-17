@@ -7,14 +7,19 @@ import dev.antite.browser.data.Secure
 import dev.antite.browser.data.Vault
 import dev.antite.browser.l10n.T
 import dev.antite.keys.BackupCipher
+import dev.antite.keys.Disk
 import dev.antite.keys.KeyRing
+import dev.antite.keys.input
+import dev.antite.keys.output
+import dev.antite.keys.readAll
+import dev.antite.keys.replace
+import dev.antite.keys.syncTree
 import org.json.JSONObject
 import java.io.File
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.nio.file.Files
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -25,70 +30,80 @@ object DataTransfer {
     private const val FORMAT = 1
     private const val MANIFEST = "manifest.json"
     private const val VAULT = "databases/vault.db"
-    private const val OUT_DIR = "transfer-out"
-    private const val IN_DIR = "transfer-in"
-    private const val OLD_DIR = "transfer-old"
     // The data keys travel in the open inside the encrypted backup; this device wraps them on import.
     private const val KEYRING = "keyring/"
-    private val SKIPPED = setOf("cache", "code_cache", "lib", OUT_DIR, IN_DIR, OLD_DIR)
-    // The engine and whom it trusts for updates (sources, keys) stay this device's: a backup must not bring in another
-    // update source, or a backup file from someone else would install their engine.
-    // The key files are wrapped by this device's Keystore and are of no use elsewhere.
-    private val DEVICE_ONLY = listOf("files/engines", "shared_prefs/engines.xml", "files/keys")
     private const val SETTINGS = "shared_prefs/antite.xml"
     private val DEBUG_INSTALL = Regex("""\s*<boolean name="debugInstall" value="[^"]*" />""")
     // A database from a newer Antite cannot be opened by this one (no downgrade), so such a backup is refused.
     private val SCHEMAS = listOf("databases/antite.db" to Db.VERSION, VAULT to Vault.VERSION)
 
-    fun export(context: Context, root: File, out: OutputStream, password: CharArray, ring: KeyRing = Secure.ring(context), progress: (Progress) -> Unit) {
-        val work = File(root, OUT_DIR)
-        work.deleteRecursively()
-        work.mkdirs()
-        try {
-            val keys = KeyRing.DOMAINS.map { d -> File(work, d).also { f -> ring.withKey(d) { f.writeBytes(it) } } }
-            val files = collect(root).filter { (rel, _) -> !isEngine(rel) }
-            val total = files.sumOf { it.second.length() }
-            var done = 0L
-            ZipOutputStream(BackupCipher.encrypt(out, password, Secure.Argon2)).use { zip ->
-                zip.putNextEntry(ZipEntry(MANIFEST))
-                zip.write(JSONObject()
-                    .put("format", FORMAT)
-                    .put("package", context.packageName)
-                    .put("versionCode", context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode)
-                    .put("created", System.currentTimeMillis())
-                    .toString().toByteArray())
-                zip.closeEntry()
-                val entries = files + keys.map { "$KEYRING${it.name}" to it }
-                for ((rel, file) in entries) {
-                    if (file.isDirectory) {
-                        zip.putNextEntry(ZipEntry("$rel/"))
-                    } else {
-                        zip.putNextEntry(ZipEntry(rel))
-                        file.inputStream().use { input ->
-                            val buf = ByteArray(64 * 1024)
-                            while (true) {
-                                val n = input.read(buf)
-                                if (n < 0) break
-                                zip.write(buf, 0, n)
-                                done += n
-                                progress(Progress(done, total))
-                            }
+    // Finishes or clears an import a stop cut short, before anything opens the keys or the data. Skipped while a
+    // transfer is running in another process: it finishes its own.
+    fun recover(context: Context, disk: Disk = Secure.disk(context), root: File = context.dataDir) {
+        disk.tryLock(File(root, DataSwap.LOCK))?.use { DataSwap(disk, root).recover { adopt -> keys(context, adopt) } } ?: return
+    }
+
+    private fun keys(context: Context, adopt: Boolean) {
+        val ring = Secure.ring(context)
+        if (adopt) ring.adoptImports() else ring.dropImports()
+    }
+
+    private fun locked(disk: Disk, root: File): java.io.Closeable =
+        disk.tryLock(File(root, DataSwap.LOCK)) ?: throw IOException("another transfer is running")
+
+    fun export(
+        context: Context, root: File, out: OutputStream, password: CharArray, ring: KeyRing = Secure.ring(context),
+        disk: Disk = Secure.disk(context), progress: (Progress) -> Unit,
+    ) = locked(disk, root).use {
+        val files = collect(disk, root).filter { (rel, _) -> !isEngine(rel) }
+        val total = files.sumOf { (_, f) -> if (disk.isDirectory(f)) 0L else disk.length(f) }
+        var done = 0L
+        ZipOutputStream(BackupCipher.encrypt(out, password, Secure.Argon2)).use { zip ->
+            zip.putNextEntry(ZipEntry(MANIFEST))
+            zip.write(JSONObject()
+                .put("format", FORMAT)
+                .put("package", context.packageName)
+                .put("versionCode", context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode)
+                .put("created", System.currentTimeMillis())
+                .toString().toByteArray())
+            zip.closeEntry()
+            for ((rel, file) in files) {
+                if (disk.isDirectory(file)) {
+                    zip.putNextEntry(ZipEntry("$rel/"))
+                } else {
+                    zip.putNextEntry(ZipEntry(rel))
+                    disk.input(file).use { input ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            zip.write(buf, 0, n)
+                            done += n
+                            progress(Progress(done, total))
                         }
                     }
-                    zip.closeEntry()
                 }
+                zip.closeEntry()
             }
-        } finally {
-            work.listFiles()?.forEach { f -> if (f.isFile) f.writeBytes(ByteArray(f.length().toInt())) }
-            work.deleteRecursively()
+            // Straight from the ring into the encrypted stream: never a file of their own.
+            for (d in KeyRing.DOMAINS) {
+                zip.putNextEntry(ZipEntry("$KEYRING$d"))
+                ring.withKey(d) { zip.write(it) }
+                zip.closeEntry()
+            }
         }
     }
 
-    fun import(context: Context, root: File, input: InputStream, total: Long, password: CharArray, ring: KeyRing = Secure.ring(context), progress: (Progress) -> Unit) {
-        val stage = File(root, IN_DIR)
-        stage.deleteRecursively()
-        stage.mkdirs()
+    fun import(
+        context: Context, root: File, input: InputStream, total: Long, password: CharArray, ring: KeyRing = Secure.ring(context),
+        disk: Disk = Secure.disk(context), progress: (Progress) -> Unit,
+    ) = locked(disk, root).use {
+        val swap = DataSwap(disk, root)
+        swap.recover { adopt -> if (adopt) ring.adoptImports() else ring.dropImports() }
+        val stage = swap.stage
+        val keys = HashMap<String, ByteArray>()
         try {
+            disk.mkdirs(stage)
             val counted = CountingStream(input) { progress(Progress(it, total)) }
             val plain = BackupCipher.decrypt(counted, password, Secure.Argon2)
             ZipInputStream(plain).use { zip ->
@@ -102,83 +117,64 @@ object DataTransfer {
                     val e = zip.nextEntry ?: break
                     val target = File(stage, e.name).canonicalFile
                     if (!target.path.startsWith(base.path + File.separator)) throw IOException("bad entry ${e.name}")
+                    if (e.name.startsWith(KEYRING)) {
+                        val d = e.name.removePrefix(KEYRING)
+                        if (d in KeyRing.DOMAINS && !e.isDirectory) keys[d] = zip.readBytes()
+                        continue
+                    }
                     val top = e.name.substringBefore('/')
-                    if (top in SKIPPED || isEngine(e.name)) continue
+                    if (top in DataSwap.SKIPPED || isEngine(e.name)) continue
                     if (e.isDirectory) {
-                        target.mkdirs()
+                        disk.mkdirs(target)
                     } else {
-                        target.parentFile?.mkdirs()
-                        target.outputStream().use { zip.copyTo(it) }
+                        disk.mkdirs(target.parentFile)
+                        disk.output(target, sync = true).use { zip.copyTo(it) }
                     }
                 }
                 val buf = ByteArray(64 * 1024)
                 while (plain.read(buf) >= 0) Unit
             }
             for ((rel, version) in SCHEMAS) {
-                val f = File(stage, rel).takeIf { it.exists() } ?: continue
+                val f = File(stage, rel).takeIf { disk.exists(it) } ?: continue
                 val found = SQLiteDatabase.openDatabase(f.path, null, SQLiteDatabase.OPEN_READONLY).use { it.version }
                 if (found > version) throw IOException(T.transferNewerBackup)
             }
-            val keyDir = File(stage, KEYRING)
-            val keys = KeyRing.DOMAINS.associateWith { d -> File(keyDir, d).takeIf { it.isFile }?.readBytes() }
-            keyDir.listFiles()?.forEach { it.writeBytes(ByteArray(it.length().toInt())) }
-            keyDir.deleteRecursively()
             // A backup from before the key ring holds its secrets in the open: they are sealed with this device's key.
-            if (keys[KeyRing.SECRETS] == null) File(stage, VAULT).takeIf { it.exists() }?.let { v ->
-                ring.withKey(KeyRing.SECRETS) { k -> rewriteSecrets(v) { Vault.seal(k, Secure.cipher(context), it) } }
+            if (keys[KeyRing.SECRETS] == null) File(stage, VAULT).takeIf { disk.exists(it) }?.let { v ->
+                ring.withKey(KeyRing.SECRETS) { k -> rewriteSecrets(disk, v) { Vault.seal(k, Secure.cipher(context), it) } }
             }
-            File(stage, SETTINGS).takeIf { it.exists() }?.let { f -> f.writeText(f.readText().replace(DEBUG_INSTALL, "")) }
-            replace(root, stage)
-            for ((d, k) in keys) if (k != null) ring.install(d, k)
-            File(root, "cache").listFiles()?.forEach { it.deleteRecursively() }
-        } finally {
-            stage.deleteRecursively()
-        }
-    }
-
-    private fun replace(root: File, stage: File) {
-        val old = File(root, OLD_DIR)
-        old.deleteRecursively()
-        old.mkdirs()
-        val current = root.listFiles()?.filter { it.name !in SKIPPED }.orEmpty()
-        try {
-            for (f in current) if (!f.renameTo(File(old, f.name))) throw IOException("cannot move ${f.name}")
-            stage.listFiles()?.forEach { f ->
-                if (!f.renameTo(File(root, f.name))) throw IOException("cannot move ${f.name}")
+            File(stage, SETTINGS).takeIf { disk.exists(it) }?.let { f ->
+                disk.replace(f, String(disk.readAll(f)).replace(DEBUG_INSTALL, "").toByteArray())
             }
-        } catch (e: IOException) {
-            root.listFiles()?.filter { it.name !in SKIPPED }?.forEach { it.deleteRecursively() }
-            old.listFiles()?.forEach { it.renameTo(File(root, it.name)) }
+            disk.syncTree(stage)
+            for ((d, k) in keys) ring.stageImport(d, k)
+            swap.commit()
+        } catch (e: Throwable) {
+            keys.values.forEach { it.fill(0) }
+            swap.recover { adopt -> if (adopt) ring.adoptImports() else ring.dropImports() }
             throw e
         }
-        for (rel in DEVICE_ONLY) {
-            val kept = File(old, rel)
-            if (!kept.exists()) continue
-            File(root, rel).apply { parentFile?.mkdirs(); deleteRecursively() }
-            if (!kept.renameTo(File(root, rel))) throw IOException("cannot keep $rel")
-        }
-        old.deleteRecursively()
+        swap.recover { adopt -> if (adopt) ring.adoptImports() else ring.dropImports() }
     }
 
-    private fun isEngine(rel: String) = DEVICE_ONLY.any { rel == it || rel.startsWith("$it/") }
+    private fun isEngine(rel: String) = DataSwap.DEVICE_ONLY.any { rel == it || rel.startsWith("$it/") }
 
-    private fun collect(root: File): List<Pair<String, File>> {
+    private fun collect(disk: Disk, root: File): List<Pair<String, File>> {
         val out = mutableListOf<Pair<String, File>>()
         fun walk(dir: File, rel: String) {
-            val children = dir.listFiles() ?: return
+            val children = disk.children(dir)
             if (children.isEmpty() && rel.isNotEmpty()) out += rel to dir
             for (c in children) {
-                if (Files.isSymbolicLink(c.toPath())) continue
                 val r = if (rel.isEmpty()) c.name else "$rel/${c.name}"
-                if (rel.isEmpty() && c.name in SKIPPED) continue
-                if (c.isDirectory) walk(c, r) else if (c.isFile) out += r to c
+                if (rel.isEmpty() && c.name in DataSwap.SKIPPED) continue
+                if (disk.isDirectory(c)) walk(c, r) else out += r to c
             }
         }
         walk(root, "")
         return out
     }
 
-    private fun rewriteSecrets(dbFile: File, transform: (String) -> String?) {
+    private fun rewriteSecrets(disk: Disk, dbFile: File, transform: (String) -> String?) {
         val db = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READWRITE)
         try {
             db.beginTransaction()
@@ -201,8 +197,8 @@ object DataTransfer {
             db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
             db.close()
         }
-        File(dbFile.path + "-wal").delete()
-        File(dbFile.path + "-shm").delete()
+        disk.delete(File(dbFile.path + "-wal"))
+        disk.delete(File(dbFile.path + "-shm"))
     }
 
     private class CountingStream(input: InputStream, private val report: (Long) -> Unit) : FilterInputStream(input) {
