@@ -8,15 +8,14 @@ only when the screen changes, so every recorded frame is one shown frame.
 """
 import argparse
 import os
-import struct
 import subprocess
 import sys
 import time
 
-from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
+from frames import frames  # noqa: E402
 from server import ReportServer  # noqa: E402
 
 PORT = 8777
@@ -30,18 +29,6 @@ PAGE = b"""<!doctype html><meta name=viewport content="width=device-width,initia
 
 def near(c, ref):
     return all(abs(a - b) < 60 for a, b in zip(c, ref))
-
-
-def frames(path):
-    data = open(path, "rb").read()
-    pos = 0
-    while pos + 20 <= len(data):
-        _, w, h, stride, _ = struct.unpack("<5I", data[pos:pos + 20])
-        body = data[pos + 20:pos + 20 + stride * h]
-        pos += 20 + stride * h
-        if len(body) < stride * h:
-            return
-        yield Image.frombytes("RGB", (w, h), body, "raw", "RGB", stride)
 
 
 def main():

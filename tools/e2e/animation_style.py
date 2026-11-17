@@ -12,9 +12,8 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from animation_speed import menu_frames, set_choice, set_speed  # noqa: E402
 from device import Device  # noqa: E402
-from keyboard_frames import frames  # noqa: E402
+from frames import frames, menu_frames, set_choice, set_speed  # noqa: E402
 import subprocess  # noqa: E402
 
 STYLES = (("chrome", "Как в Chrome"), ("instant", "Сразу, без движения"), ("window", "Окно из угла"))

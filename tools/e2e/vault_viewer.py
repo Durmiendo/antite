@@ -17,9 +17,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from media_vault import open_downloads, open_vault, row_actions, wait_media  # noqa: E402
-from settings_search import open_settings  # noqa: E402
-from tab_categories import to_browser  # noqa: E402
+from nav import open_settings, to_browser  # noqa: E402
+from vault import open_downloads, open_vault, row_actions, wait_media  # noqa: E402
 
 PORT = 8787
 

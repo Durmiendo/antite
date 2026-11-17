@@ -13,7 +13,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from menu_perf import describe, ms, windows  # noqa: E402
+from frames import describe, ms, windows  # noqa: E402
 
 
 def frames(d):

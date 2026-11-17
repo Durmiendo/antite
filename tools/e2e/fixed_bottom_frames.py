@@ -14,7 +14,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-from keyboard_frames import frames  # noqa: E402
+from frames import frames  # noqa: E402
 from server import ReportServer  # noqa: E402
 
 PORT = 8778

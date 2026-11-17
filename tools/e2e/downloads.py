@@ -14,7 +14,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from engine_setup import download_engine, engine_pages  # noqa: E402
+from engine import download_engine, engine_pages  # noqa: E402
+from vault import media_size  # noqa: E402
 
 PORT = 8775
 SIZE = 12 * 1024 * 1024
@@ -62,12 +63,6 @@ def serve(pages):
 
 def notifications(d):
     return d.shell("dumpsys notification --noredact", check=False)
-
-
-def media_size(d, name):
-    out = d.shell(f"content query --uri content://media/external/downloads --projection _display_name:_size "
-                  f"--where \"_display_name='{name}'\"", check=False)
-    return int(out.split("_size=")[1].split()[0].rstrip(",")) if "_size=" in out else None
 
 
 def wait(d, what, check, timeout):

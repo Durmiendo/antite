@@ -15,8 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from downloads import media_size  # noqa: E402
-from engine_setup import download_engine, engine_pages  # noqa: E402
+from engine import download_engine, engine_pages  # noqa: E402
+from vault import media_size  # noqa: E402
 
 PORT = 8781
 BODY = b"antite download test\n" * 1000

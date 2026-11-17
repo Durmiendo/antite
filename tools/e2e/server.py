@@ -58,3 +58,25 @@ class ReportServer:
 
     def close(self):
         self.http.shutdown()
+
+
+TOOLBAR_PORT = 8782
+TOOLBAR_PAGE = b"""<!doctype html><meta name=viewport content="width=device-width">
+<body style="margin:0;height:600vh;background:linear-gradient(#fff,#88f)">long page</body>"""
+
+
+def serve_toolbar_page():
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(TOOLBAR_PAGE)))
+            self.end_headers()
+            self.wfile.write(TOOLBAR_PAGE)
+
+        def log_message(self, *args):
+            pass
+
+    http = ThreadingHTTPServer(("127.0.0.1", TOOLBAR_PORT), Handler)
+    threading.Thread(target=http.serve_forever, daemon=True).start()
+    return http

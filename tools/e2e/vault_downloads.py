@@ -16,10 +16,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-from downloads import media_size  # noqa: E402
-from media_vault import open_downloads, open_vault, row_actions  # noqa: E402
-from settings_search import open_settings  # noqa: E402
-from tab_categories import open_tabs_settings, to_browser  # noqa: E402
+from nav import open_settings, open_tabs_settings, to_browser  # noqa: E402
+from vault import media_size, open_downloads, open_vault, row_actions  # noqa: E402
 
 PORT = 8789
 BODY = b"vault download test\n" * 200

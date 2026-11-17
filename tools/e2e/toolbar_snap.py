@@ -4,48 +4,16 @@ finger is up it finishes showing (at least half shown) or hiding (less than half
 Usage: python3 -I tools/e2e/toolbar_snap.py --serial SERIAL
 """
 import argparse
-import io
 import os
 import sys
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-
-PORT = 8782
-PAGE = b"""<!doctype html><meta name=viewport content="width=device-width">
-<body style="margin:0;height:600vh;background:linear-gradient(#fff,#88f)">long page</body>"""
-
-
-def serve():
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.send_header("Content-Length", str(len(PAGE)))
-            self.end_headers()
-            self.wfile.write(PAGE)
-
-        def log_message(self, *args):
-            pass
-
-    http = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    threading.Thread(target=http.serve_forever, daemon=True).start()
-    return http
-
-
-def toolbar_bottom(d):
-    """Where the dark toolbar ends on screen: the page is white, so the first light pixel below the status bar."""
-    img = Image.open(io.BytesIO(d.adb("exec-out", "screencap", "-p", binary=True))).convert("L")
-    x = img.width // 2
-    y = 0
-    while y < img.height and img.getpixel((x, y)) < 200:
-        y += 1
-    return y
+from nav import toolbar_bottom  # noqa: E402
+from server import TOOLBAR_PORT, serve_toolbar_page  # noqa: E402
 
 
 def main():
@@ -54,8 +22,8 @@ def main():
     ap.add_argument("--out", default="build/e2e")
     a = ap.parse_args()
     d = Device(a.serial, a.out)
-    http = serve()
-    d.adb("reverse", f"tcp:{PORT}", f"tcp:{PORT}")
+    http = serve_toolbar_page()
+    d.adb("reverse", f"tcp:{TOOLBAR_PORT}", f"tcp:{TOOLBAR_PORT}")
     w, h = (int(x) for x in d.shell("wm size").split()[-1].split("x"))
     density = int(d.shell("wm density").split()[-1])
     bar = 56 * density // 160
@@ -64,7 +32,7 @@ def main():
     failed = []
     for name, share, expect in (("short", 0.3, "shown"), ("long", 0.75, "hidden")):
         d.stop()
-        d.launch(f"http://localhost:{PORT}/{name}")
+        d.launch(f"http://localhost:{TOOLBAR_PORT}/{name}")
         d.wait("Меню", timeout=30, exact=True)
         time.sleep(3)
         shown = toolbar_bottom(d)

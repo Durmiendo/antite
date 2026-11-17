@@ -17,8 +17,8 @@ from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-from downloads import media_size  # noqa: E402
-from tab_categories import long_press, to_browser  # noqa: E402
+from nav import to_browser  # noqa: E402
+from vault import media_size, open_downloads, open_vault, row_actions, wait_media  # noqa: E402
 
 PORT = 8786
 
@@ -48,42 +48,6 @@ def serve(name, image):
     http = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     threading.Thread(target=http.serve_forever, daemon=True).start()
     return http
-
-
-def wait_media(d, name, size, what, timeout=20):
-    end = time.time() + timeout
-    while media_size(d, name) != size:
-        if time.time() > end:
-            d.fail(what)
-        time.sleep(1)
-
-
-def open_downloads(d):
-    to_browser(d)
-    d.tap("Меню", exact=True)
-    d.tap("Скачанные файлы", exact=True)
-    time.sleep(1)
-
-
-def row_actions(d, name, action):
-    """Long press on a row and pick an action; a press that lands in the list's enter animation is repeated."""
-    for _ in range(3):
-        long_press(d, name)
-        if d.find(action, exact=True) is not None:
-            d.tap(action, exact=True)
-            return
-    d.fail(f"no {action!r} on the long press of {name!r}")
-
-
-def open_vault(d):
-    to_browser(d)
-    d.tap("Меню", exact=True)
-    d.tap("Защищённое хранилище", exact=True)
-    time.sleep(1)
-    # Without a screen lock the unlock button opens the storage at once.
-    if d.find("Разблокировать", exact=True) is not None:
-        d.tap("Разблокировать", exact=True)
-        time.sleep(1)
 
 
 def main():

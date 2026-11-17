@@ -11,14 +11,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-
-
-def open_settings(d):
-    d.tap("Меню", exact=True)
-    d.scroll_to("Настройки")
-    d.tap("Настройки", exact=True)
-    d.wait("Поиск по настройкам", exact=True)
-    time.sleep(1)
+from nav import open_settings  # noqa: E402
 
 
 def search(d, query):

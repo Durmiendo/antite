@@ -12,9 +12,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from media_vault import open_vault, row_actions  # noqa: E402
-from tab_categories import to_browser  # noqa: E402
-from vault_password import reset  # noqa: E402
+from nav import to_browser  # noqa: E402
+from vault import open_vault, reset, row_actions  # noqa: E402
 
 PORT = 8781
 

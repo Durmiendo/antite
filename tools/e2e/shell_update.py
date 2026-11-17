@@ -17,7 +17,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from engine_setup import KEYS, download_engine, engine_pages, prop  # noqa: E402
+from engine import KEYS, download_engine, engine_pages, prop  # noqa: E402
 from server import ReportServer  # noqa: E402
 
 PORT = 8774

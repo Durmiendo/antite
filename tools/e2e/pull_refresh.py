@@ -17,7 +17,7 @@ from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-from tab_categories import open_switcher  # noqa: E402
+from nav import open_switcher  # noqa: E402
 
 PORT = 8784
 # Set while the server should answer slowly, so the refresh circle can be seen during the reload.

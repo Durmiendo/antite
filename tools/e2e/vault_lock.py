@@ -12,7 +12,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from tab_categories import to_browser  # noqa: E402
+from nav import to_browser  # noqa: E402
 
 PIN = "1590"
 

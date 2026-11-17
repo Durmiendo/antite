@@ -14,34 +14,11 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-from update_source import open_updates  # noqa: E402
+from nav import open_updates  # noqa: E402
+from engine import enable_debug  # noqa: E402
 
 PIN = "4826"
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-
-def enable_debug(d, pin):
-    """Turns debug mode on from the browser's main screen: warning, then the device unlock with pin."""
-    open_updates(d)
-    d.scroll_to("Режим отладки")
-    # The row can end up under the navigation bar, where a tap presses Home.
-    d.shell("input swipe 540 1900 540 1000 300")
-    time.sleep(2)
-    # A tap right after the list settles is sometimes taken as stopping the scroll; tap again then.
-    for _ in range(3):
-        d.tap("Режим отладки", exact=True)
-        end = time.time() + 5
-        while d.find("Включить", exact=True) is None and time.time() < end:
-            time.sleep(0.4)
-        if d.find("Включить", exact=True) is not None:
-            break
-    d.tap("Включить", exact=True)
-    time.sleep(2)
-    d.type(pin)
-    d.shell("input keyevent 66")
-    d.wait("Установить с адреса", timeout=10, exact=True)
-    d.shell("input swipe 540 1900 540 1000 300")
-    time.sleep(2)
 
 
 def check(d, address):

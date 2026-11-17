@@ -15,7 +15,7 @@ from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-from downloads import media_size  # noqa: E402
+from vault import media_size  # noqa: E402
 
 PORT = 8780
 

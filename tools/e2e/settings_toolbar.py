@@ -10,29 +10,13 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-from toolbar_snap import PORT, serve, toolbar_bottom  # noqa: E402
-
-
-def open_settings_page(d, page):
-    d.tap("Меню", exact=True)
-    d.scroll_to("Настройки")
-    d.tap("Настройки", exact=True)
-    d.wait("Поиск по настройкам", exact=True)
-    time.sleep(1)
-    d.tap(page, exact=True)
-    time.sleep(1)
-
-
-def back_to_page(d, times):
-    for _ in range(times):
-        d.shell("input keyevent BACK")
-        time.sleep(1)
-    d.wait("Меню", exact=True)
+from nav import back_to_page, open_settings_page, toolbar_bottom  # noqa: E402
+from server import TOOLBAR_PORT, serve_toolbar_page  # noqa: E402
 
 
 def long_scroll_keeps_toolbar(d, w, h):
     d.stop()
-    d.launch(f"http://localhost:{PORT}/s")
+    d.launch(f"http://localhost:{TOOLBAR_PORT}/s")
     d.wait("Меню", timeout=30, exact=True)
     time.sleep(3)
     shown = toolbar_bottom(d)
@@ -47,13 +31,13 @@ def main():
     ap.add_argument("--out", default="build/e2e")
     a = ap.parse_args()
     d = Device(a.serial, a.out)
-    http = serve()
-    d.adb("reverse", f"tcp:{PORT}", f"tcp:{PORT}")
+    http = serve_toolbar_page()
+    d.adb("reverse", f"tcp:{TOOLBAR_PORT}", f"tcp:{TOOLBAR_PORT}")
     w, h = (int(x) for x in d.shell("wm size").split()[-1].split("x"))
 
     print("1. hide on scroll off: the toolbar stays")
     d.stop()
-    d.launch(f"http://localhost:{PORT}/s")
+    d.launch(f"http://localhost:{TOOLBAR_PORT}/s")
     d.wait("Меню", timeout=30, exact=True)
     open_settings_page(d, "Внешний вид")
     d.scroll_to("Скрывать при прокрутке")
@@ -74,7 +58,7 @@ def main():
 
     print("2. no frequent sites on the new tab page")
     d.stop()
-    d.launch(f"http://localhost:{PORT}/s")
+    d.launch(f"http://localhost:{TOOLBAR_PORT}/s")
     d.wait("Меню", timeout=30, exact=True)
     open_settings_page(d, "Поиск и главная")
     d.tap("Часто посещаемые на новой вкладке", exact=True)

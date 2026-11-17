@@ -12,7 +12,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PIL import Image  # noqa: E402
 from device import Device  # noqa: E402
-from settings_toolbar import back_to_page, open_settings_page  # noqa: E402
+from nav import back_to_page, open_settings_page  # noqa: E402
 
 SWITCH = "Чёрный фон"
 

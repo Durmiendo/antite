@@ -8,58 +8,12 @@ speed at normal.
 """
 import argparse
 import os
-import subprocess
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-from keyboard_frames import frames  # noqa: E402
-
-
-def set_speed(d, label):
-    set_choice(d, "Скорость анимации", label)
-
-
-def set_choice(d, row, label):
-    d.tap("Меню", exact=True)
-    d.scroll_to("Настройки")
-    d.tap("Настройки", exact=True)
-    d.wait("Поиск по настройкам", exact=True)
-    time.sleep(1)
-    d.tap("Внешний вид", exact=True)
-    time.sleep(1)
-    d.tap(row, exact=True)
-    d.tap(label, exact=True)
-    for _ in range(3):
-        d.shell("input keyevent BACK")
-        time.sleep(1)
-    d.wait("Меню", exact=True)
-    time.sleep(1)
-
-
-def menu_frames(d, serial, out, name):
-    menu = d.center(d.wait("Меню", exact=True))
-    raw_path = os.path.join(out, f"menu_frames_{name}.bin")
-    with open(raw_path, "wb") as raw:
-        rec = subprocess.Popen(["adb", "-s", serial, "exec-out",
-                                "screenrecord --output-format=frames --size 270x600 -"], stdout=raw)
-        time.sleep(1.5)
-        d.shell(f"input tap {menu[0]} {menu[1]}")
-        time.sleep(2)
-        d.shell("pkill -INT screenrecord", check=False)
-        rec.wait(timeout=20)
-    d.shell("input keyevent BACK")
-    time.sleep(1)
-    # Frames on which the menu area (upper right quarter) changed; other parts of the screen may redraw on their own.
-    changed, prev = 0, None
-    for img in frames(raw_path):
-        w, h = img.size
-        area = img.crop((w // 2, h // 10, w, h // 2)).tobytes()
-        if prev is not None and area != prev:
-            changed += 1
-        prev = area
-    return changed
+from frames import menu_frames, set_speed  # noqa: E402
 
 
 def main():

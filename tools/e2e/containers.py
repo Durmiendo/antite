@@ -12,8 +12,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
+from nav import open_tabs_settings, to_browser  # noqa: E402
 from server import ReportServer  # noqa: E402
-from tab_categories import open_tabs_settings, to_browser  # noqa: E402
 
 PORT = 8775
 NAMES = ("Alpha", "Beta")

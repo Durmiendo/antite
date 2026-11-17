@@ -7,32 +7,18 @@ Keeps the browser's data: adds the foreign source through the settings and remov
 Needs network for the built-in source (GitHub).
 """
 import argparse
-import base64
-import json
 import os
-import subprocess
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-from engine_setup import prop  # noqa: E402
+from nav import open_updates  # noqa: E402
+from engine import prop, signed  # noqa: E402
 from server import ReportServer  # noqa: E402
 
 PORT = 8771
 NAME = "Chuzhoj"
-
-
-def signed(out_dir, index):
-    """A key of our own and the index signed with it: the key for the source form and the pages to serve."""
-    key = os.path.join(out_dir, "foreign.key.pem")
-    if not os.path.exists(key):
-        subprocess.run(["openssl", "ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", key], check=True)
-    der = subprocess.run(["openssl", "ec", "-in", key, "-pubout", "-outform", "DER"],
-                         capture_output=True, check=True).stdout
-    body = json.dumps(index).encode()
-    sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", key], input=body, capture_output=True, check=True).stdout
-    return base64.b64encode(der).decode(), {"/engines.json": body, "/engines.json.sig": sig}
 
 
 def foreign_source(out_dir):
@@ -49,29 +35,6 @@ def foreign_source(out_dir):
         }],
         "shell": {"version": 9999, "apk": {a: fake for a in abis}},
     })
-
-
-def open_updates(d):
-    d.stop()
-    d.launch()
-    # A cold start can be slow; Back before the page is up would send the browser to the background.
-    end = time.time() + 20
-    while time.time() < end and d.find("Меню", exact=True) is None:
-        time.sleep(1)
-    for _ in range(4):
-        if d.find("Меню", exact=True) is not None:
-            break
-        time.sleep(3)
-        # An update offer may cover the toolbar; Back dismisses it without postponing.
-        d.shell("input keyevent BACK")
-    d.wait("Меню", timeout=30, exact=True)
-    time.sleep(1)
-    d.tap("Меню", exact=True)
-    d.scroll_to("Настройки")
-    d.tap("Настройки", exact=True)
-    d.scroll_to("О программе")
-    d.tap("О программе", exact=True)
-    d.tap("Обновления", exact=True)
 
 
 def cleanup(d):

@@ -17,6 +17,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: e2e scripts import only the shared modules
+        run: |
+          shared=" device server nav engine vault frames "
+          bad=0
+          for f in tools/e2e/*.py; do
+            for m in $(sed -nE 's/^(from ([a-z_]+) import|import ([a-z_]+)).*/\2\3/p' "$f"); do
+              if [ -f "tools/e2e/$m.py" ] && [[ "$shared" != *" $m "* ]]; then echo "$f imports the script $m"; bad=1; fi
+            done
+          done
+          exit $bad
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin

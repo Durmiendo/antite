@@ -15,8 +15,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
-from update_source import open_updates  # noqa: E402
-from debug_address import enable_debug  # noqa: E402
+from nav import open_updates  # noqa: E402
+from engine import enable_debug  # noqa: E402
 
 PORT = 8791
 PIN = "4826"

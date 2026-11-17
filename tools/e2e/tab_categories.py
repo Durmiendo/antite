@@ -15,44 +15,15 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import Device  # noqa: E402
+from nav import long_press, open_switcher, open_tabs_settings, to_browser  # noqa: E402
 
 NAME = "Work"
-
-
-def open_tabs_settings(d):
-    d.tap("Меню", exact=True)
-    d.scroll_to("Настройки")
-    time.sleep(1)
-    d.tap("Настройки", exact=True)
-    d.wait("Поиск по настройкам", exact=True)
-    time.sleep(1)
-    d.tap("Вкладки", exact=True)
-    time.sleep(1)
 
 
 def back(d, times):
     for _ in range(times):
         d.shell("input keyevent BACK")
         time.sleep(1)
-
-
-def to_browser(d):
-    """Back until the toolbar shows; counting presses breaks when a page pops itself or the keyboard takes one."""
-    for _ in range(6):
-        if d.find("Меню", exact=True) is not None:
-            return
-        d.shell("input keyevent BACK")
-        time.sleep(1)
-    d.fail("could not get back to the browser")
-
-
-def open_switcher(d):
-    count = [n for n in d.nodes() if ((t := n.get("text") or "").isdigit() or t == ":D") and d.bounds(n)[1] < 230]
-    if not count:
-        d.fail("no tab count in the toolbar")
-    x, y = d.center(count[0])
-    d.shell(f"input tap {x} {y}")
-    time.sleep(1.5)
 
 
 def chip_count(d, name):
@@ -113,12 +84,6 @@ def set_incognito_lock(d):
     d.tap("Инкогнито", exact=True)
     d.tap("Вход по разблокировке", exact=True)
     to_browser(d)
-
-
-def long_press(d, text):
-    x, y = d.center(d.wait(text, exact=True))
-    d.shell(f"input swipe {x} {y} {x} {y} 900")
-    time.sleep(1)
 
 
 def drag_card_to_chip(d, chip):
