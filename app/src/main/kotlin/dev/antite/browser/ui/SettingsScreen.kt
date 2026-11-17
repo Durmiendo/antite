@@ -30,6 +30,7 @@ import dev.antite.browser.R
 import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
 import dev.antite.browser.data.Categories
+import dev.antite.browser.data.CustomValues
 import dev.antite.browser.data.Option
 import dev.antite.browser.data.Options
 import dev.antite.browser.l10n.T
@@ -116,22 +117,51 @@ internal fun Screen(b: Browser, nav: Nav, title: String, content: LazyListScope.
     }
 }
 
+// A choice's value of the user's own: what the field asks for, which texts fit, how the value reads in the row.
+internal class Custom(val field: String, val kind: FormField.Kind, val fits: (String) -> Boolean, val show: (String) -> String = { it })
+
+internal fun number(parse: (String) -> Int?, min: Int, max: Int, show: (String) -> String = { it }) =
+    Custom(T.customNumberField(min = min, max = max), FormField.Kind.NUMBER, { parse(it) != null }, show)
+
+internal fun hostOf(url: String): String = runCatching { java.net.URI(url.replace("%s", "q")).host }.getOrNull() ?: url
+
 internal fun <T> LazyListScope.choice(b: Browser, nav: Nav, title: String, key: String, options: List<Option<T>>, def: Int,
-                                     engine: Boolean, after: () -> Unit = {}) {
+                                     engine: Boolean, custom: Custom? = null, after: () -> Unit = {}) {
     mark(title, null, "choice:$key", options.joinToString(" ") { it.label })
     item(key = "choice:$key") {
-        val cur = b.prefs.index(key, options, def)
+        val own = custom?.let { c -> b.prefs.custom(key, options.size)?.let(c.show) }
         Marked("choice:$key") {
-            SettingRow(title, options[cur].label, onClick = {
-                nav.push(title) { n -> RadioPage(b, n, title, options.map { it.label }, { b.prefs.index(key, options, def) }) { i ->
-                    b.prefs.edit { putInt(key, i) }
-                    if (engine) b.applyEngineSettings()
-                    after()
-                } }
+            SettingRow(title, own ?: options[b.prefs.index(key, options, def)].label, onClick = {
+                nav.push(title) { n ->
+                    val mine = custom?.let { b.prefs.custom(key, options.size) }
+                    RadioPage(b, n, title, options.map { it.label }, { if (mine != null) -1 else b.prefs.index(key, options, def) },
+                        own = mine?.let { custom?.show?.invoke(it) }, onOwn = custom?.let { c -> {
+                            askCustom(b, title, c, mine) { text ->
+                                b.prefs.edit { putInt(key, options.size); putString("$key.custom", text) }
+                                if (engine) b.applyEngineSettings()
+                                after()
+                            }
+                        } }) { i ->
+                        b.prefs.edit { putInt(key, i) }
+                        if (engine) b.applyEngineSettings()
+                        after()
+                    }
+                }
             })
         }
     }
 }
+
+internal fun askCustom(b: Browser, title: String, c: Custom, current: String?, save: (String) -> Unit) =
+    b.show(UiDialog.Form(title, null, listOf(FormField(c.field, current ?: "", c.kind)), onConfirm = { v ->
+        val text = v[0].trim()
+        if (!c.fits(text)) {
+            b.toast(T.choiceCustomBad)
+            return@Form false
+        }
+        save(text)
+        true
+    }))
 
 internal fun LazyListScope.toggle(b: Browser, title: String, summary: String?, key: String, def: Boolean, engine: Boolean) {
     mark(title, summary, "toggle:$key")
@@ -161,11 +191,13 @@ internal fun LazyListScope.action(title: String, summary: String?, key: String, 
 }
 
 @Composable
-internal fun RadioPage(b: Browser, nav: Nav, title: String, options: List<String>, current: () -> Int, onPick: (Int) -> Unit) {
+internal fun RadioPage(b: Browser, nav: Nav, title: String, options: List<String>, current: () -> Int, own: String? = null,
+                       onOwn: (() -> Unit)? = null, onPick: (Int) -> Unit) {
     Screen(b, nav, title) {
         options.forEachIndexed { i, label ->
             item { RadioRow(label, current() == i) { onPick(i) } }
         }
+        if (onOwn != null) item { RadioRow(own?.let { T.choiceCustomValue(value = it) } ?: T.choiceCustom, own != null, onOwn) }
     }
 }
 
@@ -203,19 +235,21 @@ internal fun LazyListScope.categories(b: Browser, nav: Nav) {
 }
 
 internal fun searchHomePage(b: Browser) = SettingsPage(T.settingsCatSearch) { nav ->
-    choice(b, nav, T.settingsSearchEngine, "engine", Options.engines, 0, false)
+    choice(b, nav, T.settingsSearchEngine, "engine", Options.engines, 0, false,
+        Custom(T.customSearchField, FormField.Kind.URL, { CustomValues.searchUrl(it) != null }, ::hostOf))
     toggle(b, T.privacySuggest, T.privacySuggestSummary, "searchSuggest", true, false)
     toggle(b, T.privacySuggestIncognito, T.privacySuggestIncognitoSummary, "searchSuggestIncognito", false, false)
     nav(nav, T.settingsHome, if (b.prefs.bool("homeButton", false)) homeSummary(b) else T.settingsOff) { HomePage(b, it) }
     section(T.tabNew)
-    choice(b, nav, T.tabsFrequent, "ntpFrequent", Options.frequentSites, 3, false)
+    choice(b, nav, T.tabsFrequent, "ntpFrequent", Options.frequentSites, 3, false, number(Options.customFrequent, 1, 60))
 }
 
 internal fun appearancePage(b: Browser) = SettingsPage(T.settingsCatAppearance) { nav ->
     section(T.appearanceThemeText)
     choice(b, nav, T.settingsTheme, "theme", Options.themes, 2, true)
     toggle(b, T.settingsThemeOled, T.settingsThemeOledSummary, "oled", false, false)
-    choice(b, nav, T.a11yFont, "font", Options.fonts, 2, true)
+    choice(b, nav, T.a11yFont, "font", Options.fonts, 2, true,
+        Custom(T.customPercentField, FormField.Kind.NUMBER, { CustomValues.fontScale(it) != null }) { "${it.trim().removeSuffix("%").trim()}%" })
     interfaceLanguage(b, nav)
     section(T.appearanceAnimations)
     choice(b, nav, T.a11yAnimationStyle, Motion.STYLE_PREF, Options.animationStyles, Motion.CHROME, false) {
@@ -229,7 +263,8 @@ internal fun appearancePage(b: Browser) = SettingsPage(T.settingsCatAppearance) 
     toggle(b, T.toolbarHideNavBar, T.toolbarHideNavBarSummary, "navBarHide", true, false)
     // Only matters while the navigation bar hides with the toolbar.
     if (b.prefs.bool("navBarHide", true)) {
-        choice(b, nav, T.toolbarNavDeadZone, "navDeadZone", Options.navDeadZones, 2, false)
+        choice(b, nav, T.toolbarNavDeadZone, "navDeadZone", Options.navDeadZones, 2, false,
+            number(Options.customNavDeadZone, 0, 200) { T.unitDp(value = it) })
         note(T.toolbarNavDeadZoneNote)
     }
     section(T.settingsAccessibility)
@@ -382,7 +417,7 @@ internal fun tabsPage(b: Browser) = SettingsPage(T.settingsTabs) { nav ->
     choice(b, nav, T.tabsExternal, "external", Options.external, 0, false)
     toggle(b, T.tabsDesktopDefault, T.tabsDesktopDefaultSummary, "desktopDefault", false, false)
     section(T.tabsSectionMemory)
-    choice(b, nav, T.tabsLive, "liveTabs", Options.liveTabs, 2, false)
+    choice(b, nav, T.tabsLive, "liveTabs", Options.liveTabs, 2, false, number(Options.customLiveTabs, 1, 50))
     note(T.tabsLiveNote)
     section(T.tabsSectionSwitcher)
     choice(b, nav, T.tabsLayout, "tabLayout", Options.tabLayouts, 0, false)

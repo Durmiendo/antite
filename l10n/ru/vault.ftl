@@ -52,3 +52,4 @@ vault-previous = Предыдущий
 vault-next = Следующий
 vault-back10 = Назад на 10 секунд
 vault-forward10 = Вперёд на 10 секунд
+vault-lock-after = Через { $minutes } мин неактивности

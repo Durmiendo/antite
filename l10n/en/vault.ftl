@@ -52,3 +52,4 @@ vault-previous = Previous
 vault-next = Next
 vault-back10 = Back 10 seconds
 vault-forward10 = Forward 10 seconds
+vault-lock-after = After { $minutes } min of inactivity

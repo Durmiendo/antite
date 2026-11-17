@@ -3,8 +3,10 @@ package dev.antite.browser.ui
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import dev.antite.browser.Browser
+import dev.antite.browser.FormField
 import dev.antite.browser.R
 import dev.antite.browser.clearDataDialog
+import dev.antite.browser.data.CustomValues
 import dev.antite.browser.data.Options
 import dev.antite.browser.engine.Sources
 import dev.antite.browser.l10n.L10n
@@ -13,7 +15,6 @@ import dev.antite.browser.openUboDashboard
 import dev.antite.engine.BackgroundService
 
 internal fun securityPage(b: Browser) = SettingsPage(T.settingsSecurity) { nav ->
-    val doh = b.prefs.index("doh", Options.doh, 0)
     toggle(b, T.privacyHttpsOnly,
         T.privacyHttpsOnlySummary, "httpsOnly", false, true)
     b.engine.backgroundServices.firstOrNull { it.id == BackgroundService.SAFE_BROWSING }?.let { sb ->
@@ -21,7 +22,7 @@ internal fun securityPage(b: Browser) = SettingsPage(T.settingsSecurity) { nav -
             T.privacySafeBrowsingSummary,
             b.prefs.serviceKey(sb.id), sb.defaultEnabled, true)
     }
-    nav(nav, T.privacySecureDns, Options.doh[doh].label) { DnsPage(b, it) }
+    nav(nav, T.privacySecureDns, dohLabel(b)) { DnsPage(b, it) }
     section(T.privacyStorageKeys)
     page(b, nav, vaultSettingsPage(b), null)
     page(b, nav, keysPage(b), keysSummary(b))
@@ -71,10 +72,10 @@ internal fun networkPage(b: Browser) = SettingsPage(T.privacyNetwork) { nav ->
         UpdatesPage(b, it)
     }
     toggle(b, T.privacySuggest,
-        T.networkSuggestSummary + "\n" + T.networkDestination(hosts = Uri.parse(b.prefs.suggestUrl).host), "searchSuggest", true, false)
+        T.networkSuggestSummary + "\n" + T.networkDestination(hosts = b.prefs.suggestUrl?.let { Uri.parse(it).host } ?: T.networkSuggestNone), "searchSuggest", true, false)
     toggle(b, T.networkIcons, T.networkIconsSummary + "\n" + T.networkIconsDestination, "siteIcons", true, false)
     item(key = "dns") {
-        val doh = Options.doh[b.prefs.index("doh", Options.doh, 0)].value
+        val doh = b.prefs.dohUrl
         SettingRow(T.privacySecureDns,
             if (doh == null) T.networkDnsOff else T.networkDnsAll + "\n" + T.networkDestination(hosts = Uri.parse(doh).host),
             onClick = { nav.push(T.privacySecureDns) { DnsPage(b, it) } })
@@ -99,9 +100,15 @@ internal fun networkPage(b: Browser) = SettingsPage(T.privacyNetwork) { nav ->
     note(T.networkNotSentNote)
 }
 
+private fun dohLabel(b: Browser): String = when (val i = b.prefs.int("doh", 0)) {
+    Options.doh.size -> b.prefs.custom("doh", Options.doh.size)?.let(::hostOf) ?: Options.doh[0].label
+    else -> Options.doh[i.coerceIn(0, Options.doh.lastIndex)].label
+}
+
 @Composable
 internal fun DnsPage(b: Browser, nav: Nav) {
-    val doh = b.prefs.index("doh", Options.doh, 0)
+    val doh = b.prefs.int("doh", 0)
+    val own = b.prefs.custom("doh", Options.doh.size)
     Screen(b, nav, T.privacySecureDns) {
         item {
             SwitchRow(T.dnsUse, T.dnsUseSummary, doh != 0) { on ->
@@ -115,6 +122,14 @@ internal fun DnsPage(b: Browser, nav: Nav) {
                 item {
                     RadioRow(o.label, doh == i + 1) {
                         b.prefs.edit { putInt("doh", i + 1); putInt("dohLast", i + 1) }
+                        b.applyEngineSettings()
+                    }
+                }
+            }
+            item {
+                RadioRow(own?.let { T.choiceCustomValue(value = hostOf(it)) } ?: T.choiceCustom, doh == Options.doh.size) {
+                    askCustom(b, T.dnsProvider, Custom(T.customDohField, FormField.Kind.URL, { CustomValues.dohUrl(it) != null }), own) { text ->
+                        b.prefs.edit { putInt("doh", Options.doh.size); putInt("dohLast", Options.doh.size); putString("doh.custom", text) }
                         b.applyEngineSettings()
                     }
                 }

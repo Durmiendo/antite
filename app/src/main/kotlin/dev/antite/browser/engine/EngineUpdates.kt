@@ -14,6 +14,7 @@ import android.util.Log
 import dev.antite.browser.BuildConfig
 import dev.antite.browser.MainActivity
 import dev.antite.browser.R
+import dev.antite.browser.data.CustomValues
 import dev.antite.browser.l10n.T
 import dev.antite.browser.service.DownloadService
 import java.io.File
@@ -43,6 +44,7 @@ object EngineUpdates {
 
     // Minutes; JobScheduler runs periodic jobs at most every 15 minutes, so shorter ones run while the browser is open.
     val INTERVALS = listOf(1, 15, 60, 360, 1440)
+    val CUSTOM_INTERVAL = CustomValues.number(1..7 * 1440)
     const val INTERVAL_DEFAULT = 4
     const val JOB_MIN_MINUTES = 15
     const val INSTALL_ASK = 0
@@ -183,8 +185,12 @@ object EngineUpdates {
 
     fun origin(context: Context, engine: File): String? = state(context).getString("origin.${engine.name}", null)
 
-    fun intervalMinutes(context: Context): Int =
-        INTERVALS[settings(context).getInt(INTERVAL, INTERVAL_DEFAULT).coerceIn(0, INTERVALS.lastIndex)]
+    fun intervalMinutes(context: Context): Int {
+        val s = settings(context)
+        val i = s.getInt(INTERVAL, INTERVAL_DEFAULT)
+        if (i == INTERVALS.size) s.getString("$INTERVAL.custom", null)?.let(CUSTOM_INTERVAL)?.let { return it }
+        return INTERVALS[i.coerceIn(0, INTERVALS.lastIndex)]
+    }
 
     fun schedule(context: Context) {
         val js = context.getSystemService(JobScheduler::class.java)

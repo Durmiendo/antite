@@ -131,7 +131,10 @@ internal fun UpdatesPage(b: Browser, nav: Nav) {
             }
         }
         if (b.prefs.bool(EngineUpdates.AUTO, true)) {
-            choice(b, nav, T.updatesHowOften, EngineUpdates.INTERVAL, Options.updateInterval, EngineUpdates.INTERVAL_DEFAULT, false) {
+            choice(b, nav, T.updatesHowOften, EngineUpdates.INTERVAL, Options.updateInterval, EngineUpdates.INTERVAL_DEFAULT, false,
+                Custom(T.customMinutesField(min = 1, max = 7 * 1440), FormField.Kind.NUMBER, { EngineUpdates.CUSTOM_INTERVAL(it) != null }) {
+                    T.updateEveryMinutes(minutes = it)
+                }) {
                 EngineUpdates.schedule(ctx)
             }
         }
@@ -240,8 +243,9 @@ private fun debugFailure(e: Throwable, url: String, millis: Long): String {
 
 internal fun updatesSummary(b: Browser): String =
     if (!b.prefs.bool(EngineUpdates.AUTO, true)) T.updatesCheckOff
-    else T.updatesCheckInterval(interval = Options.updateInterval[b.prefs.index(EngineUpdates.INTERVAL, Options.updateInterval,
-        EngineUpdates.INTERVAL_DEFAULT)].label.lowercase())
+    else T.updatesCheckInterval(interval = (b.prefs.custom(EngineUpdates.INTERVAL, Options.updateInterval.size)
+        ?.let { T.updateEveryMinutes(minutes = it) }
+        ?: Options.updateInterval[b.prefs.index(EngineUpdates.INTERVAL, Options.updateInterval, EngineUpdates.INTERVAL_DEFAULT)].label).lowercase())
 
 @Composable
 internal fun UpdateSourcePage(b: Browser, nav: Nav, changed: () -> Unit) {

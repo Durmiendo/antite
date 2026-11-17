@@ -33,3 +33,4 @@ update-every-day = Раз в день
 tab-layout-grid = Сетка
 tab-layout-list = Список (как в Яндексе)
 home-own-address = Свой адрес
+update-every-minutes = Раз в { $minutes } мин

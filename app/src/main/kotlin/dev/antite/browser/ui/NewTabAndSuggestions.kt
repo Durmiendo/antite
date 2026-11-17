@@ -195,8 +195,9 @@ fun Suggestions(b: Browser, modifier: Modifier) {
         local = if (incognito) emptyList() else b.db.io { suggest(text, 5, Browser.BOOKMARKS_ENABLED) }
         if (!b.prefs.bool("searchSuggest", true)) return@LaunchedEffect
         if (incognito && !b.prefs.bool("searchSuggestIncognito", false)) return@LaunchedEffect
+        val suggest = b.prefs.suggestUrl ?: return@LaunchedEffect
         delay(150)
-        b.engine.fetch(b.prefs.suggestUrl + Uri.encode(text), 64 * 1024) { bytes ->
+        b.engine.fetch(suggest + Uri.encode(text), 64 * 1024) { bytes ->
             if (bytes == null || b.suggestQuery.trim() != text) return@fetch
             remote = runCatching {
                 val items = JSONArray(String(bytes)).getJSONArray(1)

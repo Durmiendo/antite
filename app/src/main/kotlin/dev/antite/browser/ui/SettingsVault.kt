@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.antite.browser.Browser
+import dev.antite.browser.FormField
 import dev.antite.browser.changePassword
 import dev.antite.browser.data.Cipher256
 import dev.antite.browser.data.KeyRing
@@ -33,7 +34,10 @@ internal fun vaultSettingsPage(b: Browser) = SettingsPage(T.vaultTitle) { nav ->
             }
         }
     }
-    choice(b, nav, T.vaultLock, "vaultLock", Options.vaultLocks, 0, false)
+    choice(b, nav, T.vaultLock, "vaultLock", Options.vaultLocks, 0, false,
+        Custom(T.customMinutesField(min = 1, max = 1440), FormField.Kind.NUMBER, { Options.customVaultLock(it) != null }) {
+            T.vaultLockAfter(minutes = it)
+        })
     infoToggle(b, T.vaultDeleteOriginal, T.vaultDeleteOriginalSummary, "vaultDeleteOriginal", true)
     toggle(b, T.vaultInMenu, null, "vaultInMenu", true, false)
 }

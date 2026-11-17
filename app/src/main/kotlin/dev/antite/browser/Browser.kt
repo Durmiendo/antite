@@ -190,7 +190,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     suspend fun loadNtp() {
         val hidden = prefs.stringSet("hiddenHosts")
-        val count = Options.frequentSites[prefs.index("ntpFrequent", Options.frequentSites, 3)].value
+        val count = prefs.pick("ntpFrequent", Options.frequentSites, 3, Options.customFrequent)
         val (pins, frequent) = db.io {
             val list = pins()
             list to frequent(hidden + list.map { Urls.host(it.url) }, count)
@@ -291,7 +291,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     private fun trimSessions() {
         val live = tabs.filter { it.live && !it.incognito && it !== current }.sortedBy { it.lastUsed }
-        val max = Options.liveTabs[prefs.index("liveTabs", Options.liveTabs, 2)].value
+        val max = prefs.pick("liveTabs", Options.liveTabs, 2, Options.customLiveTabs)
         if (live.size < max) return
         for (t in live.take(live.size - max + 1)) {
             t.engineTab?.close()
@@ -508,9 +508,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         if (s.isEmpty()) return
         val url = when {
             "://" in s || s.startsWith("about:") || s.startsWith("view-source:") || s.startsWith("data:") ||
-                s.startsWith("moz-extension:") -> if (Urls.canOpenTyped(s)) s else prefs.searchUrl + Uri.encode(s)
+                s.startsWith("moz-extension:") -> if (Urls.canOpenTyped(s)) s else prefs.search(s)
             ' ' !in s && '.' in s && !s.endsWith(".") -> "https://$s"
-            else -> prefs.searchUrl + Uri.encode(s)
+            else -> prefs.search(s)
         }
         ensureSession(t).load(url)
         urlFocused = false
@@ -620,7 +620,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     // (the system unlock dialog, a permission prompt) does not lock the vault again.
     fun vaultRelock() {
         if (vaultLeftAt == 0L) return
-        if (prefs.int("vaultLock", 0) == 1 && System.currentTimeMillis() - vaultLeftAt > 5L * 60 * 1000) {
+        val minutes = prefs.custom("vaultLock", Options.vaultLocks.size)?.let(Options.customVaultLock) ?: 5
+        val delayed = prefs.int("vaultLock", 0).let { it == 1 || it == Options.vaultLocks.size }
+        if (delayed && System.currentTimeMillis() - vaultLeftAt > minutes * 60_000L) {
             vaultUnlocked = false
             lockKeys()
         }

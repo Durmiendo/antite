@@ -33,3 +33,4 @@ update-every-day = Every day
 tab-layout-grid = Grid
 tab-layout-list = List (as in Yandex)
 home-own-address = Custom address
+update-every-minutes = Every { $minutes } min

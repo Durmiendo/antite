@@ -125,7 +125,7 @@ fun BrowserScreen(b: Browser) {
     val density = LocalDensity.current
     val toolbarPx = with(density) { 56.dp.toPx() }
     b.toolbarHeightPx = toolbarPx
-    b.navDeadZonePx = with(density) { Options.navDeadZones[b.prefs.index("navDeadZone", Options.navDeadZones, 2)].value.dp.toPx() }
+    b.navDeadZonePx = with(density) { b.prefs.pick("navDeadZone", Options.navDeadZones, 2, Options.customNavDeadZone).dp.toPx() }
     val t = b.current
     val bar = if (t?.incognito == true) p.toolbarIncognito else p.toolbar
     val navInset = WindowInsets.navigationBars.getBottom(density)

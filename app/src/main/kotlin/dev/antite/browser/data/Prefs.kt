@@ -3,6 +3,7 @@ package dev.antite.browser.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
+import android.net.Uri
 import androidx.compose.runtime.mutableIntStateOf
 import dev.antite.browser.Browser
 import dev.antite.browser.l10n.T
@@ -81,6 +82,10 @@ object Options {
         Option(T.updateEvery6Hours, 360), Option(T.updateEveryDay, 1440),
     )
     val navDeadZones get() = listOf(0, 16, 32, 48, 64).map { Option(T.unitDp(value = it), it) }
+    val customNavDeadZone = CustomValues.number(0..200)
+    val customLiveTabs = CustomValues.number(1..50)
+    val customFrequent = CustomValues.number(1..60)
+    val customVaultLock = CustomValues.number(1..1440)
     val liveTabs get() = listOf(2, 4, 6, 8, 12).map { Option(it.toString(), it) }
     val frequentSites get() = listOf(0, 4, 8, 12, 16, 24).map { Option(if (it == 0) T.ntpFrequentNone else it.toString(), it) }
     // Indexes into Motion.speeds.
@@ -157,6 +162,13 @@ class Prefs(context: Context) {
 
     fun <T> index(key: String, options: List<Option<T>>, def: Int): Int = int(key, def).coerceIn(0, options.lastIndex)
 
+    // A choice can also hold the user's own value: its index is one past the list, the text is under "<key>.custom".
+    fun custom(key: String, size: Int): String? =
+        if (int(key, -1) == size) string("$key.custom", "").ifEmpty { null } else null
+
+    fun <T> pick(key: String, options: List<Option<T>>, def: Int, parse: (String) -> T?): T =
+        custom(key, options.size)?.let(parse) ?: options[index(key, options, def)].value
+
     val theme: ColorScheme get() = Options.themes[index("theme", Options.themes, 2)].value
 
     fun isDark(): Boolean = when (theme) {
@@ -174,19 +186,24 @@ class Prefs(context: Context) {
     val translateTarget: String
         get() = string("translateTo", "").ifEmpty { locales.firstOrNull() ?: Locale.getDefault().language }
 
-    val searchUrl: String get() = Options.engines[index("engine", Options.engines, 0)].value
+    val searchUrl: String get() = pick("engine", Options.engines, 0, CustomValues.searchUrl)
 
-    val suggestUrl: String get() = Options.suggestUrls[index("engine", Options.engines, 0).coerceAtMost(Options.suggestUrls.lastIndex)]
+    fun search(query: String) = CustomValues.search(searchUrl, Uri.encode(query))
+
+    // Null while secure DNS is off.
+    val dohUrl: String? get() = if (int("doh", 0) == 0) null else pick("doh", Options.doh, 0, CustomValues.dohUrl)
+
+    // An engine of the user's own has no known suggestion address.
+    val suggestUrl: String? get() = if (custom("engine", Options.engines.size) != null) null else Options.suggestUrls[index("engine", Options.engines, 0).coerceAtMost(Options.suggestUrls.lastIndex)]
 
     fun serviceKey(id: String) = "bg.$id"
 
     fun serviceEnabled(s: BackgroundService) = bool(serviceKey(s.id), s.defaultEnabled)
 
     fun engineSettings(perms: SitePerms, services: List<BackgroundService>): EngineSettings {
-        val doh = index("doh", Options.doh, 0)
         return EngineSettings(
             colorScheme = theme,
-            fontScale = Options.fonts[index("font", Options.fonts, 2)].value,
+            fontScale = pick("font", Options.fonts, 2, CustomValues.fontScale),
             forceUserZoom = bool("forceZoom", false),
             doubleTapZoom = bool("doubleTapZoom", true),
             globalPrivacyControl = bool("gpc", true),
@@ -198,8 +215,8 @@ class Prefs(context: Context) {
             fingerprinting = Options.fingerprint[index("fingerprint", Options.fingerprint, 0)].value,
             webRtc = Options.webRtc[index("webrtc", Options.webRtc, 1)].value,
             preload = bool("preload", false),
-            dohMode = if (doh == 0) DnsOverHttpsMode.OFF else Options.dohModes[index("dohMode", Options.dohModes, 0)].value,
-            dohUrl = Options.doh[doh].value,
+            dohMode = if (dohUrl == null) DnsOverHttpsMode.OFF else Options.dohModes[index("dohMode", Options.dohModes, 0)].value,
+            dohUrl = dohUrl,
             locales = locales,
             offerTranslation = Browser.TRANSLATION_ENABLED && bool("translateOffer", true),
             motionSensors = perms.defaultValue(SitePerms.SENSORS) == SitePerms.ALLOW,
