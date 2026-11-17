@@ -26,6 +26,7 @@ import dev.antite.browser.Overlay
 import dev.antite.browser.R
 import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
+import dev.antite.browser.data.Categories
 import dev.antite.browser.data.Option
 import dev.antite.browser.data.Options
 import dev.antite.browser.l10n.T
@@ -62,9 +63,24 @@ fun SettingsScreen(b: Browser, shown: Boolean) {
     val nav = remember(stack) { Nav(stack) }
     var closes by remember { mutableIntStateOf(0) }
     LaunchedEffect(b.settingsOpenCount) {
-        val site = b.settingsSite ?: return@LaunchedEffect
+        b.settingsSite?.let { site ->
+            stack.clear()
+            stack += Page(site) { SitePage(b, it, site) }
+        }
+        val key = b.settingsCategory ?: return@LaunchedEffect
+        val tabs = tabsPage(b)
         stack.clear()
-        stack += Page(site) { SitePage(b, it, site) }
+        stack += root
+        stack += Page(tabs.title) { Screen(b, it, tabs) }
+        when (key) {
+            Categories.ALL -> {}
+            Categories.INCOGNITO -> incognitoPage(b).let { pg -> stack += Page(pg.title) { Screen(b, it, pg) } }
+            else -> b.categories.byId(key)?.let { c ->
+                val mine = categoriesPage(b)
+                stack += Page(mine.title) { Screen(b, it, mine) }
+                stack += Page(c.name) { CategoryPage(b, it, c) }
+            }
+        }
     }
     // Kept composed between openings, so after closing it goes back to its first page, scrolled to the top.
     LaunchedEffect(shown) {

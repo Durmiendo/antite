@@ -99,6 +99,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var overlay by mutableStateOf(Overlay.NONE)
     var libraryKind by mutableStateOf(LibraryKind.HISTORY)
     var settingsSite by mutableStateOf<String?>(null)
+    // A switcher page key: settings open on that category's page, or on tabs or incognito for the fixed pages.
+    var settingsCategory by mutableStateOf<String?>(null)
     var settingsOpenCount by mutableStateOf(0)
     val categories = Categories(activity, prefs)
     // The switcher's page: Categories.ALL, Categories.INCOGNITO or a category id.
@@ -594,8 +596,9 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }, 60)
     }
 
-    fun showSettings(site: String? = null) {
+    fun showSettings(site: String? = null, category: String? = null) {
         settingsSite = site
+        settingsCategory = category
         settingsOpenCount++
         overlay = Overlay.SETTINGS
         setToolbarHidden(0f)

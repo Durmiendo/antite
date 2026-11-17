@@ -160,17 +160,7 @@ internal fun CategoryPage(b: Browser, nav: Nav, c: TabCategory) {
         item(key = "badge") {
             Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) { CategoryBadge(b, c, 72) }
         }
-        item(key = "name") {
-            SettingRow(T.categoryName, c.name, onClick = {
-                b.show(UiDialog.Form(T.categoryName, null, listOf(FormField(T.categoryName, c.name, FormField.Kind.NAME)), onConfirm = { v ->
-                    val name = v[0].trim()
-                    if (name.isEmpty()) return@Form false
-                    c.name = name
-                    b.categories.save()
-                    true
-                }))
-            })
-        }
+        item(key = "name") { SettingRow(T.categoryName, c.name, onClick = { renameCategory(b, c) }) }
         section(T.categoryColor)
         item(key = "colors") {
             FlowRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
@@ -217,18 +207,36 @@ internal fun CategoryPage(b: Browser, nav: Nav, c: TabCategory) {
         section(T.categoryPlace)
         item(key = "left") { SettingRow(T.ntpMoveLeft, onClick = { b.categories.move(c, -1) }) }
         item(key = "right") { SettingRow(T.ntpMoveRight, onClick = { b.categories.move(c, 1) }) }
-        item(key = "delete") {
-            SettingRow(T.categoryDelete, onClick = {
-                fun ask() = b.show(UiDialog.Message(T.categoryDelete, T.categoryDeleteConfirm(name = c.name), buttons = listOf(
-                    DialogButton(T.actionCancel) {},
-                    DialogButton(T.actionDelete) {
-                        b.deleteCategory(c)
-                        nav.back()
-                    },
-                )))
-                // Deleting moves the tabs to "All", so a locked category asks first.
-                if (c.locked) Auth.require(b.activity, T.categoryLockChangeReason(name = c.name), ::ask, {}) else ask()
-            })
-        }
+        item(key = "delete") { SettingRow(T.categoryDelete, onClick = { deleteCategory(b, c) { nav.back() } }) }
     }
 }
+
+internal fun renameCategory(b: Browser, c: TabCategory) =
+    b.show(UiDialog.Form(T.categoryName, null, listOf(FormField(T.categoryName, c.name, FormField.Kind.NAME)), onConfirm = { v ->
+        val name = v[0].trim()
+        if (name.isEmpty()) return@Form false
+        c.name = name
+        b.categories.save()
+        true
+    }))
+
+internal fun deleteCategory(b: Browser, c: TabCategory, deleted: () -> Unit = {}) {
+    fun ask() = b.show(UiDialog.Message(T.categoryDelete, T.categoryDeleteConfirm(name = c.name), buttons = listOf(
+        DialogButton(T.actionCancel) {},
+        DialogButton(T.actionDelete) {
+            b.deleteCategory(c)
+            deleted()
+        },
+    )))
+    // Deleting moves the tabs to "All", so a locked category asks first.
+    if (c.locked) Auth.require(b.activity, T.categoryLockChangeReason(name = c.name), ::ask, {}) else ask()
+}
+
+// Long press on a category chip in the switcher.
+internal fun categoryMenu(b: Browser, c: TabCategory) = b.show(UiDialog.Items(c.name, listOf(
+    DialogButton(T.settingsTitle) { b.showSettings(category = c.id) },
+    DialogButton(T.actionRename) { renameCategory(b, c) },
+    DialogButton(T.ntpMoveLeft) { b.categories.move(c, -1) },
+    DialogButton(T.ntpMoveRight) { b.categories.move(c, 1) },
+    DialogButton(T.categoryDelete) { deleteCategory(b, c) },
+)))

@@ -32,6 +32,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -151,7 +152,9 @@ fun TabSwitcher(b: Browser, open: Boolean) {
             LazyRow(Modifier.weight(1f), strip, contentPadding = PaddingValues(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 itemsIndexed(pages, key = { _, pg -> pg.key }) { i, pg ->
-                    CategoryChip(b, pg, i == index, if (each) count(pg.key) else null, drop) { b.switcherPage = pg.key }
+                    CategoryChip(b, pg, i == index, if (each) count(pg.key) else null, drop, onLongClick = {
+                        pg.category?.let { categoryMenu(b, it) } ?: b.showSettings(category = pg.key)
+                    }) { b.switcherPage = pg.key }
                 }
             }
             if (b.prefs.bool("tabCountTotal", true)) {
@@ -185,7 +188,8 @@ fun TabSwitcher(b: Browser, open: Boolean) {
 }
 
 @Composable
-private fun CategoryChip(b: Browser, pg: SwitcherPage, selected: Boolean, count: Int?, drop: ChipDrop, onClick: () -> Unit) {
+private fun CategoryChip(b: Browser, pg: SwitcherPage, selected: Boolean, count: Int?, drop: ChipDrop, onLongClick: () -> Unit,
+    onClick: () -> Unit) {
     val p = LocalPalette.current
     val aimed = drop.target == pg.key
     DisposableEffect(pg.key) { onDispose { drop.chips.remove(pg.key) } }
@@ -202,7 +206,7 @@ private fun CategoryChip(b: Browser, pg: SwitcherPage, selected: Boolean, count:
             .clip(RoundedCornerShape(17.dp)).background(fill)
             .then(if (aimed) Modifier.border(2.dp, p.accent, RoundedCornerShape(17.dp))
                 else if (selected) Modifier else Modifier.border(1.dp, p.divider, RoundedCornerShape(17.dp)))
-            .clickable(onClick = onClick).padding(horizontal = 12.dp),
+            .combinedClickable(onLongClick = onLongClick, onClick = onClick).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         when {
