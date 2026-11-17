@@ -50,8 +50,8 @@ class DataTransferTest {
         write(src, "shared_prefs/antite.xml", "<map/>".toByteArray())
         File(src, "files/empty").mkdirs()
         write(src, "cache/junk", "junk".toByteArray())
-        srcRing = KeyRing(File(src, "files/keys"), Secure.Keystore, Secure.Argon2, "antite-test-src").apply { create() }
-        dstRing = KeyRing(File(dst, "files/keys"), Secure.Keystore, Secure.Argon2, "antite-test-dst").apply { create() }
+        srcRing = KeyRing(Secure.disk(context), File(src, "files/keys"), Secure.Keystore, Secure.Argon2, "antite-test-src").apply { create() }
+        dstRing = KeyRing(Secure.disk(context), File(dst, "files/keys"), Secure.Keystore, Secure.Argon2, "antite-test-dst").apply { create() }
         vault(File(src, "databases/vault.db"))
         write(dst, "files/old.txt", "old".toByteArray())
         write(dst, "cache/stale", "stale".toByteArray())
@@ -160,7 +160,7 @@ class DataTransferTest {
         import(export("secret"), "secret")
         val moved = File(dst, "files/vault/7.enc")
         assertArrayEquals(File(src, "files/vault/7.enc").readBytes(), moved.readBytes())
-        assertArrayEquals(photo, VaultFile.Reader(moved, key).stream().use { it.readBytes() })
+        assertArrayEquals(photo, VaultFile.Reader(Secure.disk(context), moved, key).stream().use { it.readBytes() })
     }
 
     @Test

@@ -16,20 +16,16 @@ import androidx.compose.runtime.setValue
 import dev.antite.browser.service.DownloadService
 import dev.antite.browser.service.Downloads
 import dev.antite.keys.Cipher256
-import dev.antite.keys.Ciphers
-import dev.antite.keys.Durable
+import dev.antite.keys.Disk
 import dev.antite.keys.KeyRing
-import dev.antite.keys.VaultFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import org.json.JSONArray
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
-import java.net.URLConnection
 
 // Files taken out of the downloads list, downloaded straight into it or added from other apps: the file lives in the
 // app's private folder, encrypted (VaultFile), so other apps and the gallery do not see
@@ -37,12 +33,13 @@ import java.net.URLConnection
 // key ring. Deleting a file replaces the data key, so the file's key is gone for good with the old one.
 class MediaVault(
     private val context: Context,
-    private val dir: File = File(context.filesDir, "vault"),
-    private val ring: KeyRing = Secure.ring(context),
-    private val legacyUnwrap: (ByteArray) -> ByteArray = Crypto::open,
-    private val cipher: () -> Cipher256 = { Secure.cipher(context) },
-    private val zeros: () -> Boolean = { Secure.wipeZeros(context) },
+    dir: File = File(context.filesDir, "vault"),
+    ring: KeyRing = Secure.ring(context),
+    legacyUnwrap: (ByteArray) -> ByteArray = Crypto::open,
+    cipher: () -> Cipher256 = { Secure.cipher(context) },
+    zeros: () -> Boolean = { Secure.wipeZeros(context) },
     private val legacyMoved: () -> Unit = { Secure.legacyMoved(context, "vault") },
+    disk: Disk = Secure.disk(context),
 ) {
     companion object {
         @Volatile
@@ -52,10 +49,7 @@ class MediaVault(
         fun get(context: Context): MediaVault =
             instance ?: synchronized(this) { instance ?: MediaVault(context.applicationContext).also { instance = it } }
 
-        private const val QUIET_MS = 10 * 60_000L
-
         private fun sanitize(name: String) = name.replace(Regex("[\\\\/:*?\"<>|\n\r]"), "_").take(100).ifEmpty { "file" }
-        private val INDEX_AAD = "antite-vault-index".toByteArray()
     }
 
     data class Item(
@@ -66,13 +60,12 @@ class MediaVault(
     // Folders nest: parent is the folder it sits in, null for the top.
     data class Folder(val id: Long, val name: String, val parent: Long? = null)
 
+    private val core = VaultCore(disk, dir, ring, legacyUnwrap, cipher, zeros, { m, e -> Log.w("Antite", m, e) })
+
     // One worker: every operation rewrites the whole index, so two at once would lose each other's entries.
     @OptIn(ExperimentalCoroutinesApi::class)
     private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private val main = Handler(Looper.getMainLooper())
-    private val index = File(dir, "index.box")
-    private val v1Index = File(dir, "index.enc")
-    private val oldIndex = File(dir, "index.json")
 
     var items by mutableStateOf(emptyList<Item>())
         private set
@@ -85,17 +78,8 @@ class MediaVault(
     var pending by mutableStateOf(emptySet<Long>())
         private set
     val revision = mutableIntStateOf(0)
-    private val fileKeys = HashMap<Long, ByteArray>()
-    // Downloads straight into the vault that are still being written, and those finished while it was closed: their
-    // keys outlive close(), the finished ones join the index at the next open().
-    private val inFlight = HashSet<Long>()
-    private val finished = ArrayList<Item>()
-    private var nextId = 1L
-    // An index that could not be read is never written over: the files it lists would be lost for good.
-    private var unreadable = false
 
     init {
-        dir.mkdirs()
         if (ring.unlocked) runCatching { open() }.onFailure { Log.w("Antite", "vault not opened", it) }
     }
 
@@ -103,30 +87,11 @@ class MediaVault(
     @Synchronized
     fun open() {
         if (opened) return
-        ring.recover(KeyRing.VAULT) { k -> runCatching { readIndex(k) }.isSuccess }
-        unreadable = false
-        runCatching {
-            when {
-                index.exists() -> ring.withKey(KeyRing.VAULT, ::readIndex).let(::apply)
-                v1Index.exists() -> apply(readV1Index())
-                oldIndex.exists() -> items = VaultIndex.parseItems(JSONArray(oldIndex.readText()))
-            }
-        }.onFailure {
-            Log.w("Antite", "vault index unreadable", it)
-            unreadable = true
-        }
-        if (!unreadable) {
-            adoptStrays()
-            dropOrphans()
-        }
-        nextId = maxOf(nextId, ((items + finished).maxOfOrNull { it.id } ?: 0) + 1, (folders.maxOfOrNull { it.id } ?: 0) + 1)
+        val joined = core.open()
         opened = true
-        if (finished.isNotEmpty()) {
-            items = items + finished
-            finished.clear()
-            io.launch { runCatching { save() }.onFailure { Log.w("Antite", "vault index not saved", it) } }
-        }
-        pending = items.filter { needsWork(it) }.map { it.id }.toSet()
+        show()
+        if (joined) io.launch { runCatching { core.save() }.onFailure { Log.w("Antite", "vault index not saved", it) } }
+        pending = items.filter { core.needsWork(it) }.map { it.id }.toSet()
         io.launch { moveOver() }
         refresh()
     }
@@ -134,239 +99,82 @@ class MediaVault(
     // Forgets the index and wipes the file keys; used when the key ring locks.
     @Synchronized
     fun close() {
-        synchronized(fileKeys) {
-            val keep = inFlight + finished.map { it.id }
-            fileKeys.keys.filter { it !in keep }.forEach { fileKeys.remove(it)?.fill(0) }
-        }
-        items = emptyList()
-        folders = emptyList()
+        core.close()
+        show()
         pending = emptySet()
         opened = false
         refresh()
     }
 
-    private fun apply(i: VaultIndex.Index) {
-        items = i.items
-        folders = i.folders
-        synchronized(fileKeys) { fileKeys.putAll(i.keys) }
-    }
-
-    private fun readIndex(dataKey: ByteArray): VaultIndex.Index {
-        val plain = Ciphers.unbox(dataKey, index.readBytes(), INDEX_AAD)
-        try {
-            return VaultIndex.decode(plain)
-        } finally {
-            plain.fill(0)
-        }
-    }
-
-    // The version 1 index: a version 1 vault file, its key wrapped by the old device key.
-    private fun readV1Index(): VaultIndex.Index {
-        val k = VaultFile.v1Key(VaultFile.head(v1Index), legacyUnwrap)
-        try {
-            return VaultIndex.decodeV1(String(VaultFile.Reader(v1Index, k).stream().use { it.readBytes() }))
-        } finally {
-            k.fill(0)
-        }
-    }
-
-    private fun indexBytes(): ByteArray = VaultIndex.encode(items, folders, synchronized(fileKeys) { HashMap(fileKeys) })
-
-    // Under the ring's hold on the key: leaving the app cannot wipe it while the index is sealed with it.
-    private fun save() = ring.withKey(KeyRing.VAULT, ::save)
-
-    // Written aside and renamed: a failure in the middle leaves the previous index.
-    private fun save(dataKey: ByteArray) {
-        if (!opened) throw KeyRing.LockedException()
-        if (unreadable) throw java.io.IOException("the vault index could not be read")
-        val plain = indexBytes()
-        val tmp = File(dir, "index.box.tmp")
-        try {
-            tmp.outputStream().use { out ->
-                out.write(Ciphers.box(cipher(), dataKey, plain, INDEX_AAD))
-                out.fd.sync()
-            }
-        } finally {
-            plain.fill(0)
-        }
-        Durable.rename(tmp, index)
-        oldIndex.delete()
-    }
-
-    // A file's key goes away with a new data key: the index that held it can never be opened again.
-    private fun saveRotated() {
-        ring.rotate(KeyRing.VAULT) { _, fresh -> save(fresh) }
+    // The core's lists, as the interface sees them.
+    private fun show() {
+        items = core.items
+        folders = core.folders
     }
 
     private fun refresh() {
         main.post { revision.intValue++ }
     }
 
-    // An open file missing from the index (an older version could lose its entry) would never be encrypted: it is
-    // taken in under a made-up name and encrypted with the rest.
-    private fun adoptStrays() {
-        val known = items.map { it.id }.toSet()
-        val strays = dir.listFiles().orEmpty().mapNotNull { f -> f.name.toLongOrNull()?.takeIf { it !in known }?.let { it to f } }
-        items = items + strays.map { (id, f) ->
-            val mime = runCatching { f.inputStream().buffered().use { URLConnection.guessContentTypeFromStream(it) } }.getOrNull()
-            Item(id, "recovered-$id", mime ?: "application/octet-stream", f.length(), f.lastModified(), "")
-        }
-    }
+    fun reader(item: Item) = core.reader(item)
 
-    private fun file(item: Item) = File(dir, "${item.id}.enc")
-
-    private fun oldFile(item: Item) = File(dir, item.id.toString())
-
-    private fun needsWork(item: Item): Boolean {
-        if (oldFile(item).exists()) return true
-        val f = file(item)
-        if (!f.exists()) return false
-        val head = runCatching { VaultFile.head(f) }.getOrNull() ?: return false
-        return head.version == 1 || synchronized(fileKeys) { item.id !in fileKeys }
-    }
-
-    private fun keyOf(item: Item): ByteArray =
-        synchronized(fileKeys) { fileKeys[item.id] } ?: throw java.io.IOException("no key for vault file ${item.id}")
-
-    fun reader(item: Item) = VaultFile.Reader(file(item), keyOf(item))
-
-    // A small preview, encrypted with the file's own key next to it, so the grid does not decrypt whole files.
-    private fun thumbFile(item: Item) = File(dir, "${item.id}.thumb")
-
-    fun thumb(item: Item): ByteArray? = runCatching {
-        thumbFile(item).takeIf { it.exists() }?.let { f -> VaultFile.Reader(f, keyOf(item)).stream().use { it.readBytes() } }
-    }.getOrNull()
+    fun thumb(item: Item): ByteArray? = core.thumb(item)
 
     fun saveThumb(item: Item, jpeg: ByteArray) {
-        runCatching {
-            val tmp = File(dir, "${item.id}.thumb.tmp")
-            VaultFile.writer(tmp.outputStream(), cipher(), keyOf(item)).use { it.write(jpeg) }
-            if (!tmp.renameTo(thumbFile(item))) tmp.delete()
-        }
-    }
-
-    private fun newKey(item: Item): ByteArray =
-        Ciphers.randomBytes(Cipher256.KEY).also { synchronized(fileKeys) { fileKeys[item.id] = it } }
-
-    private fun forgetKey(id: Long) {
-        synchronized(fileKeys) { fileKeys.remove(id)?.fill(0) }
+        runCatching { core.saveThumb(item, jpeg) }.onFailure { Log.w("Antite", "vault preview not saved", it) }
     }
 
     // A download straight into the vault: the entry is made up front, its file is written by the download and the
     // entry joins the index only once the file is complete.
     fun reserve(name: String, mime: String, source: String): Item {
         if (!opened) throw KeyRing.LockedException()
-        return Item(nextId++, sanitize(name), mime, 0, System.currentTimeMillis(), source).also {
-            newKey(it)
-            synchronized(this) { inFlight += it.id }
-        }
+        return core.reserve(Item(core.newId(), sanitize(name), mime, 0, System.currentTimeMillis(), source))
     }
 
-    fun output(item: Item): OutputStream = VaultFile.writer(file(item).outputStream(), cipher(), keyOf(item))
+    fun output(item: Item): OutputStream = core.output(item)
 
     fun discard(item: Item) {
-        io.launch {
-            synchronized(this@MediaVault) { inFlight -= item.id }
-            erase(file(item))
-            forgetKey(item.id)
-        }
+        io.launch { runCatching { core.discard(item) }.onFailure { Log.w("Antite", "vault download not discarded", it) } }
     }
 
     fun receive(item: Item, size: Long) {
         io.launch {
-            synchronized(this@MediaVault) {
-                inFlight -= item.id
-                if (!opened) return@launch Unit.also { finished += item.copy(size = size) }
-                items = items + item.copy(size = size)
-            }
-            runCatching { save() }.onFailure { Log.w("Antite", "vault index not saved", it) }
+            runCatching { core.receive(item, size) }.onFailure { Log.w("Antite", "vault index not saved", it) }
+            show()
             refresh()
         }
     }
 
-    private fun erase(f: File) {
-        if (zeros()) VaultFile.wipe(f) else f.delete()
-    }
-
-    // From version 1 to the key ring, each step durable before the next, so a stop anywhere loses nothing:
-    // version 1 keys go into the new index before their headers are rewritten; an open file is encrypted under its
-    // final name before it is erased. The old device key is no longer needed after that.
     private fun moveOver() {
-        val v1 = items.filter { file(it).exists() && runCatching { VaultFile.head(file(it)).version == 1 }.getOrDefault(false) }
-        for (item in v1) {
-            if (synchronized(fileKeys) { item.id in fileKeys }) continue
-            runCatching { synchronized(fileKeys) { fileKeys[item.id] = VaultFile.v1Key(VaultFile.head(file(item)), legacyUnwrap) } }
-                .onFailure { Log.w("Antite", "vault file ${item.id} key unreadable", it) }
-        }
-        if (runCatching { save() }.onFailure { Log.w("Antite", "vault index not moved over", it) }.isFailure) return
-        v1Index.delete()
-        for (item in v1) runCatching { VaultFile.upgradeHeader(file(item)) }
-        pending = pending - v1.map { it.id }.toSet()
-        for (item in items) {
-            val old = oldFile(item)
-            if (!old.exists()) continue
-            runCatching {
-                val tmp = File(dir, "${item.id}.enc.tmp")
-                val key = newKey(item)
-                old.inputStream().use { input -> VaultFile.writer(tmp.outputStream(), cipher(), key).use { input.copyTo(it) } }
-                if (!tmp.renameTo(file(item))) throw java.io.IOException("cannot rename ${tmp.name}")
-                save()
-                VaultFile.wipe(old)
-            }.onFailure { Log.w("Antite", "vault file ${item.id} not encrypted", it) }
-            pending = pending - item.id
-        }
-        if (!v1Index.exists() && items.none { runCatching { VaultFile.head(file(it)).version == 1 }.getOrDefault(false) }) {
-            legacyMoved()
-        }
+        val clean = core.moveOver { id -> pending = pending - id }
+        if (clean) legacyMoved()
+        show()
         refresh()
     }
 
     // Puts every file under the given cipher, one at a time, then replaces the data key so the old file keys die.
-    // A file is re-encrypted under a new id: the index switches to it in one write, so a stop leaves either the old
-    // or the new file listed, and the other is an orphan for dropOrphans().
     fun recrypt(target: Cipher256, done: () -> Unit = {}) {
         io.launch {
-            val todo = items.filter { runCatching { VaultFile.head(file(it)).cipher != target }.getOrDefault(false) }
+            val todo = items.filter { core.cipherOf(it).let { c -> c != null && c != target } }
             pending = pending + todo.map { it.id }
             for (item in todo) {
-                runCatching {
-                    val moved = item.copy(id = nextId++)
-                    val key = newKey(moved)
-                    reader(item).stream().use { input -> VaultFile.writer(file(moved).outputStream(), target, key).use { input.copyTo(it) } }
-                    items = items.map { if (it.id == item.id) moved else it }
-                    save()
-                    forgetKey(item.id)
-                    erase(file(item))
-                    erase(thumbFile(item))
-                }.onFailure { Log.w("Antite", "vault file ${item.id} not re-encrypted", it) }
+                runCatching { core.recrypt(item, target) }.onFailure { Log.w("Antite", "vault file ${item.id} not re-encrypted", it) }
+                show()
                 pending = pending - item.id
                 refresh()
             }
-            runCatching { saveRotated() }.onFailure { Log.w("Antite", "vault key not replaced", it) }
+            runCatching { core.saveRotated() }.onFailure { Log.w("Antite", "vault key not replaced", it) }
             main.post(done)
             refresh()
         }
     }
 
-    // Encrypted files no entry points to: left by a stop between writing a file and the index, or the other way.
-    // A recent one may still be in work.
-    private fun dropOrphans() {
-        val known = items.map { it.id }.toSet()
-        val now = System.currentTimeMillis()
-        for (f in dir.listFiles().orEmpty()) {
-            if (now - f.lastModified() < QUIET_MS) continue
-            val id = f.name.removeSuffix(".enc").removeSuffix(".thumb").removeSuffix(".enc.tmp").toLongOrNull()
-            val busy = synchronized(this) { id != null && (id in inFlight || finished.any { it.id == id }) }
-            if (busy) continue
-            if (f.name.endsWith(".tmp") || ((f.name.endsWith(".enc") || f.name.endsWith(".thumb")) && id != null && id !in known)) erase(f)
+    private fun store(input: InputStream, item: Item) {
+        try {
+            core.store(input, core.begin(item))
+        } finally {
+            show()
         }
-    }
-
-    private fun store(input: InputStream, item: Item): Item {
-        input.use { src -> output(item).use { src.copyTo(it) } }
-        val size = VaultFile.plainLength(file(item).length(), VaultFile.head(file(item)).cipher)
-        if (size <= 0) throw java.io.IOException("empty file")
-        return item.copy(size = size)
     }
 
     // A download entry moves in: the file is copied and indexed, only then the original (if asked) goes away
@@ -375,15 +183,11 @@ class MediaVault(
         val uri = e.url ?: return done(false)
         val mime = Downloads.mime(e).takeIf { it != "*/*" } ?: "application/octet-stream"
         if (!opened) return done(false)
-        val item = Item(nextId++, sanitize(e.title ?: "file"), mime, 0, System.currentTimeMillis(), Downloads.source(e))
-        newKey(item)
+        val item = Item(core.newId(), sanitize(e.title ?: "file"), mime, 0, System.currentTimeMillis(), Downloads.source(e))
         io.launch {
-            val ok = runCatching {
-                items = items + store(context.contentResolver.openInputStream(Uri.parse(uri))!!, item)
-                save()
-            }.isSuccess
-            if (!ok) drop(item)
-            else if (deleteOriginal && deleteFile(Uri.parse(uri))) {
+            val ok = runCatching { store(context.contentResolver.openInputStream(Uri.parse(uri))!!, item) }
+                .onFailure { Log.w("Antite", "vault add failed", it) }.isSuccess
+            if (ok && deleteOriginal && deleteFile(Uri.parse(uri))) {
                 // The row stays while its file does, so the downloads list keeps showing what is on the device.
                 runCatching { Db.get(context).io { deleteDownload(e.id) } }
             }
@@ -405,14 +209,11 @@ class MediaVault(
                         if (c.moveToFirst()) c.getString(0) else null
                     }
                 }.getOrNull() ?: uri.lastPathSegment ?: "file"
-                val item = Item(nextId++, sanitize(name), cr.getType(uri) ?: "application/octet-stream", 0,
+                val item = Item(core.newId(), sanitize(name), cr.getType(uri) ?: "application/octet-stream", 0,
                     System.currentTimeMillis(), "", folder?.takeIf { id -> folders.any { it.id == id } })
-                newKey(item)
-                val ok = runCatching {
-                    items = items + store(cr.openInputStream(uri)!!, item)
-                    save()
-                }.onFailure { Log.w("Antite", "vault import failed", it) }.isSuccess
-                if (!ok) drop(item) else {
+                val ok = runCatching { store(cr.openInputStream(uri)!!, item) }
+                    .onFailure { Log.w("Antite", "vault import failed", it) }.isSuccess
+                if (ok) {
                     added++
                     if (deleteOriginals) deleteFile(uri)
                 }
@@ -451,7 +252,7 @@ class MediaVault(
                         finishDownload(id, uri.toString(), DownloadService.DONE, item.size)
                     }
                 }
-                remove(item)
+                runCatching { remove(item) }.onFailure { Log.w("Antite", "vault file ${item.id} not removed", it) }
             }
             main.post { done(uri != null) }
             refresh()
@@ -460,31 +261,31 @@ class MediaVault(
 
     fun delete(item: Item, done: () -> Unit = {}) {
         io.launch {
-            remove(item)
+            runCatching { remove(item) }.onFailure { Log.w("Antite", "vault file ${item.id} not deleted", it) }
             main.post(done)
             refresh()
         }
     }
 
-    fun move(item: Item, folder: Long?) = change { items = items.map { if (it.id == item.id) it.copy(folder = folder) else it } }
+    fun move(item: Item, folder: Long?) = change { core.items = core.items.map { if (it.id == item.id) it.copy(folder = folder) else it } }
 
     fun addFolder(name: String, parent: Long? = null, done: (Folder) -> Unit = {}) {
-        val f = Folder(nextId++, sanitize(name), parent?.takeIf { id -> folders.any { it.id == id } })
-        change({ done(f) }) { folders = folders + f }
+        val f = Folder(core.newId(), sanitize(name), parent?.takeIf { id -> folders.any { it.id == id } })
+        change({ done(f) }) { core.folders = core.folders + f }
     }
 
     fun renameFolder(f: Folder, name: String) =
-        change { folders = folders.map { if (it.id == f.id) it.copy(name = sanitize(name)) else it } }
+        change { core.folders = core.folders.map { if (it.id == f.id) it.copy(name = sanitize(name)) else it } }
 
     fun deleteFolder(f: Folder) = change {
-        val (fs, its) = VaultIndex.deleteFolder(folders, items, f)
-        folders = fs
-        items = its
+        val (fs, its) = VaultIndex.deleteFolder(core.folders, core.items, f)
+        core.folders = fs
+        core.items = its
     }
 
     fun moveFolder(f: Folder, parent: Long?) {
         if (!VaultIndex.canMove(folders, f, parent)) return
-        change { folders = folders.map { if (it.id == f.id) it.copy(parent = parent) else it } }
+        change { core.folders = core.folders.map { if (it.id == f.id) it.copy(parent = parent) else it } }
     }
 
     fun path(id: Long?): List<Folder> = VaultIndex.path(folders, id)
@@ -492,7 +293,8 @@ class MediaVault(
     private fun change(done: () -> Unit = {}, block: () -> Unit) {
         io.launch {
             block()
-            runCatching { save() }.onFailure { Log.w("Antite", "vault index not saved", it) }
+            runCatching { core.save() }.onFailure { Log.w("Antite", "vault index not saved", it) }
+            show()
             main.post(done)
             refresh()
         }
@@ -505,20 +307,11 @@ class MediaVault(
         else cr.delete(uri, null, null) > 0
     }.getOrDefault(false)
 
-    private fun drop(item: Item) {
-        items = items.filter { it.id != item.id }
-        forgetKey(item.id)
-        erase(file(item))
-    }
-
-    // The private copy goes with the entry: nothing hidden stays behind after a restore or a delete. The index is
-    // written under a new data key, so the file's key cannot be read back from any old copy of the index.
     private fun remove(item: Item) {
-        items = items.filter { it.id != item.id }
-        forgetKey(item.id)
-        saveRotated()
-        erase(file(item))
-        erase(thumbFile(item))
-        erase(oldFile(item))
+        try {
+            core.remove(item)
+        } finally {
+            show()
+        }
     }
 }

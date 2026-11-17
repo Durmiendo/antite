@@ -132,8 +132,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     val translation get() = if (TRANSLATION_ENABLED) engine.translation else null
     val defaultBrowser = DefaultBrowserOffer(activity, prefs, ::toast)
     val vaultAccess = VaultAccess(this)
-    val categoryKeys = CategoryKeys(File(activity.filesDir, "history/keys"), { ring.withKey(KeyRing.HISTORY, it) }, { Secure.cipher(activity) })
-    val history = HistoryStore(File(activity.filesDir, "history"), categoryKeys::key, { Secure.cipher(activity) })
+    val categoryKeys = CategoryKeys(Secure.disk(activity), File(activity.filesDir, "history/keys"), { ring.withKey(KeyRing.HISTORY, it) }, { Secure.cipher(activity) })
+    val history = HistoryStore(Secure.disk(activity), File(activity.filesDir, "history"), categoryKeys::key, { Secure.cipher(activity) })
     // The history page shows this: Categories.ALL or a category id.
     var historyScope by mutableStateOf(Categories.ALL)
     // The tab whose last picture is drawn over the page while it loads again after being lost in the background.

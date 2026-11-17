@@ -5,7 +5,6 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 
 // The format of a file in the secure storage: a 70-byte header naming the cipher, then
@@ -39,7 +38,7 @@ object VaultFile {
         }
     }
 
-    fun head(file: File): Head = RandomAccessFile(file, "r").use { raf -> ByteArray(HEADER).also { raf.readFully(it) }.let(::head) }
+    fun head(disk: Disk, file: File): Head = disk.open(file, Disk.Open.READ).use { h -> ByteArray(HEADER).also { h.readFully(0, it) }.let(::head) }
 
     // The key of a version 1 file, as a 64-byte key of this format. unwrap opens the old device-wrapped form.
     fun v1Key(head: Head, unwrap: (ByteArray) -> ByteArray): ByteArray {
@@ -52,11 +51,10 @@ object VaultFile {
     }
 
     // A version 1 file becomes a version 2 one: its chunks are already AES under the same key and nonces.
-    fun upgradeHeader(file: File) {
-        RandomAccessFile(file, "rw").use { raf ->
-            raf.seek(0)
-            raf.write(header(Cipher256.AES))
-            raf.fd.sync()
+    fun upgradeHeader(disk: Disk, file: File) {
+        disk.open(file, Disk.Open.WRITE).use { h ->
+            h.write(0, header(Cipher256.AES))
+            h.sync()
         }
     }
 
@@ -120,8 +118,8 @@ object VaultFile {
     }
 
     // Reads with a copy of the key, wiped on close().
-    class Reader(file: File, key: ByteArray) : Closeable {
-        private val raf = RandomAccessFile(file, "r")
+    class Reader(disk: Disk, file: File, key: ByteArray) : Closeable {
+        private val raf = disk.open(file, Disk.Open.READ)
         private val key = key.copyOf()
         private val cipher: Cipher256
         val length: Long
@@ -132,9 +130,9 @@ object VaultFile {
         init {
             try {
                 val h = ByteArray(HEADER)
-                raf.readFully(h)
+                raf.readFully(0, h)
                 cipher = head(h).cipher
-                length = plainLength(raf.length(), cipher)
+                length = plainLength(raf.length, cipher)
                 chunks = maxOf(1, (length + CHUNK - 1) / CHUNK)
             } catch (e: Exception) {
                 close()
@@ -148,8 +146,7 @@ object VaultFile {
             val size = (if (last) length - index * CHUNK else CHUNK.toLong()).toInt() + cipher.overhead
             if (size < cipher.overhead) throw IOException("vault file is damaged at chunk $index")
             val data = ByteArray(size)
-            raf.seek(HEADER + index * (CHUNK + cipher.overhead))
-            raf.readFully(data)
+            raf.readFully(HEADER + index * (CHUNK + cipher.overhead), data)
             plain.fill(0)
             plain = try {
                 Ciphers.open(cipher, key, nonce(index), aad(index, last), data, 0, size)
@@ -196,21 +193,19 @@ object VaultFile {
 
     // Overwrites the file with zeros and syncs before it is deleted. On flash memory this guarantees nothing by
     // itself; the guarantee comes from destroying the key.
-    fun wipe(file: File) {
-        if (!file.exists()) return
-        runCatching {
-            RandomAccessFile(file, "rw").use { raf ->
-                val zeros = ByteArray(CHUNK)
-                var left = raf.length()
-                raf.seek(0)
-                while (left > 0) {
-                    val n = minOf(left, CHUNK.toLong()).toInt()
-                    raf.write(zeros, 0, n)
-                    left -= n
-                }
-                raf.fd.sync()
+    fun wipe(disk: Disk, file: File) {
+        if (!disk.exists(file)) return
+        disk.open(file, Disk.Open.WRITE).use { h ->
+            val zeros = ByteArray(CHUNK)
+            val size = h.length
+            var at = 0L
+            while (at < size) {
+                val n = minOf(size - at, CHUNK.toLong()).toInt()
+                h.write(at, zeros, 0, n)
+                at += n
             }
+            h.sync()
         }
-        file.delete()
+        disk.deleteDurably(file)
     }
 }

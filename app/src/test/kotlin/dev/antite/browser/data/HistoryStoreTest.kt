@@ -4,6 +4,7 @@ import dev.antite.browser.data.HistoryIndex.Event
 import dev.antite.keys.CategoryKeys
 import dev.antite.keys.Cipher256
 import dev.antite.keys.Ciphers
+import dev.antite.keys.RealDisk
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,8 +23,8 @@ class HistoryStoreTest {
     private var clock = 1_800_000_000_000L
     private val domain = Ciphers.randomBytes(Cipher256.KEY)
     private val keyDir get() = File(tmp.root, "keys")
-    private fun keys() = CategoryKeys(keyDir, { op -> op(domain) }) { Cipher256.AES }
-    private fun store(k: CategoryKeys = keys()) = HistoryStore(File(tmp.root, "history"), k::key, { Cipher256.XCHACHA }) { clock }
+    private fun keys() = CategoryKeys(RealDisk(tmp.root), keyDir, { op -> op(domain) }) { Cipher256.AES }
+    private fun store(k: CategoryKeys = keys()) = HistoryStore(RealDisk(tmp.root), File(tmp.root, "history"), k::key, { Cipher256.XCHACHA }) { clock }
 
     @Test
     fun visitsStayInTheirCategoryAndSurviveARestart() {

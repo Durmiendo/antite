@@ -35,7 +35,7 @@ class KeyRingTest {
         MessageDigest.getInstance("SHA-512").digest(password + salt)
     }
 
-    private fun ring(dir: File = tmp.root) = KeyRing(dir, device, kdf)
+    private fun ring(dir: File = tmp.root) = KeyRing(RealDisk(tmp.root), dir, device, kdf)
     private fun pw(s: String) = s.toByteArray()
 
     @Test

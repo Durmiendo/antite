@@ -6,6 +6,7 @@ import java.io.File
 // ring. Forgetting a category deletes its key file: what its files hold cannot be read again.
 // withDomainKey runs its block with the history domain key held, so locking the ring cannot wipe it half way.
 class CategoryKeys(
+    private val disk: Disk,
     private val dir: File,
     private val withDomainKey: ((ByteArray) -> ByteArray) -> ByteArray,
     private val cipher: () -> Cipher256,
@@ -19,10 +20,10 @@ class CategoryKeys(
         keys[name]?.let { return it }
         val f = file(name)
         val aad = name.toByteArray()
-        val k = if (f.exists()) withDomainKey { d -> Ciphers.unbox(d, f.readBytes(), aad) } else {
+        val k = if (disk.exists(f)) withDomainKey { d -> Ciphers.unbox(d, disk.readAll(f), aad) } else {
             val fresh = Ciphers.randomBytes(Cipher256.KEY)
-            dir.mkdirs()
-            Durable.replace(f, withDomainKey { d -> Ciphers.box(cipher(), d, fresh, aad) })
+            disk.mkdirs(dir)
+            disk.replace(f, withDomainKey { d -> Ciphers.box(cipher(), d, fresh, aad) })
             fresh
         }
         keys[name] = k
@@ -32,7 +33,7 @@ class CategoryKeys(
     @Synchronized
     fun forget(name: String) {
         keys.remove(name)?.fill(0)
-        file(name).delete()
+        disk.deleteDurably(file(name))
     }
 
     @Synchronized

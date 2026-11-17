@@ -50,14 +50,14 @@ class GoldenTest {
             VaultFile.writer(out, c, key).use { it.write(content) }
             assertArrayEquals(c.name, golden(name), out.toByteArray())
             val f = File(tmp.root, name).apply { writeBytes(golden(name)) }
-            assertArrayEquals(c.name, content, VaultFile.Reader(f, key).stream().use { it.readBytes() })
+            assertArrayEquals(c.name, content, VaultFile.Reader(RealDisk(tmp.root), f, key).stream().use { it.readBytes() })
         }
     }
 
     @Test
     fun anOldLogReads() {
         val f = File(tmp.root, "h.log").apply { writeBytes(golden("log-xchacha.bin")) }
-        assertEquals(listOf("r0", "r1", "r2"), EncryptedLog(f, key) { Cipher256.XCHACHA }.read().map { String(it) })
+        assertEquals(listOf("r0", "r1", "r2"), EncryptedLog(RealDisk(tmp.root), f, key) { Cipher256.XCHACHA }.read().map { String(it) })
     }
 
     // The key derivation here is a stand-in for Argon2id, so the file checks the container; Argon2id itself is checked

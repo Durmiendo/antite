@@ -2,7 +2,6 @@ package dev.antite.keys
 
 import java.io.File
 import java.io.IOException
-import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
@@ -14,7 +13,7 @@ import java.security.MessageDigest
 //   header: "ANTLOG01", version, log id (16), slot 0, slot 1, padding to HEADER
 //   slot:   length 1, box(seq 8, count 8, last hash 32), aad = log id + slot number
 //   record: length 4, box(record), aad = log id + number 8 + previous hash
-class EncryptedLog(private val file: File, key: ByteArray, private val cipher: () -> Cipher256) {
+class EncryptedLog(private val disk: Disk, private val file: File, key: ByteArray, private val cipher: () -> Cipher256) {
     // Its own copy: the caller may wipe its key, and close() wipes this one.
     private val key = key.copyOf()
 
@@ -43,14 +42,14 @@ class EncryptedLog(private val file: File, key: ByteArray, private val cipher: (
     // Every record in order. A missing file reads as an empty log.
     fun read(): List<ByteArray> {
         opened = true
-        if (!file.exists()) {
+        if (!disk.exists(file)) {
             create()
             return emptyList()
         }
-        RandomAccessFile(file, "rw").use { f ->
+        disk.open(file, Disk.Open.WRITE).use { f ->
             val head = ByteArray(HEADER)
-            if (f.length() < HEADER) throw DamagedException("no header")
-            f.readFully(head)
+            if (f.length < HEADER) throw DamagedException("no header")
+            f.readFully(0, head)
             if (!head.copyOf(8).contentEquals(MAGIC) || head[8] != VERSION) throw DamagedException("not a log")
             logId = head.copyOfRange(9, 25)
             val slots = (0..1).mapNotNull { i -> slot(head, i) }
@@ -62,12 +61,11 @@ class EncryptedLog(private val file: File, key: ByteArray, private val cipher: (
             var pos = HEADER.toLong()
             var prev = NO_HASH
             var n = 0L
-            val size = f.length()
+            val size = f.length
             while (pos + 4 <= size) {
-                f.seek(pos)
-                val len = f.readInt()
+                val len = ByteArray(4).also { f.readFully(pos, it) }.let { ByteBuffer.wrap(it).int }
                 if (len <= 0 || len > MAX_RECORD || pos + 4 + len > size) break
-                val boxed = ByteArray(len).also { f.readFully(it) }
+                val boxed = ByteArray(len).also { f.readFully(pos + 4, it) }
                 val plain = try {
                     Ciphers.unbox(key, boxed, aad(n, prev))
                 } catch (e: IOException) {
@@ -85,7 +83,7 @@ class EncryptedLog(private val file: File, key: ByteArray, private val cipher: (
             count = n
             lastHash = prev
             end = pos
-            if (size > pos) f.setLength(pos)
+            if (size > pos) f.truncate(pos)
             if (n > counted) writeSlot(f)
             return out
         }
@@ -97,17 +95,15 @@ class EncryptedLog(private val file: File, key: ByteArray, private val cipher: (
     fun appendAll(records: List<ByteArray>) {
         check(opened) { "read the log first" }
         if (records.isEmpty()) return
-        RandomAccessFile(file, "rw").use { f ->
-            f.seek(end)
+        disk.open(file, Disk.Open.WRITE).use { f ->
             for (r in records) {
                 val boxed = Ciphers.box(cipher(), key, r, aad(count, lastHash))
-                f.writeInt(boxed.size)
-                f.write(boxed)
+                f.write(end, ByteBuffer.allocate(4 + boxed.size).putInt(boxed.size).put(boxed).array())
                 end += 4 + boxed.size
                 count++
                 lastHash = sha256(boxed)
             }
-            f.fd.sync()
+            f.sync()
             writeSlot(f)
         }
     }
@@ -117,12 +113,12 @@ class EncryptedLog(private val file: File, key: ByteArray, private val cipher: (
     // The log written again with only these records, under a new id: aside first, then renamed over the old one.
     fun rewrite(records: List<ByteArray>) {
         val tmp = File(file.path + ".new")
-        val next = EncryptedLog(tmp, key, cipher)
-        tmp.delete()
+        val next = EncryptedLog(disk, tmp, key, cipher)
+        disk.delete(tmp)
         next.read()
         next.appendAll(records)
         next.close()
-        if (!tmp.renameTo(file)) throw IOException("cannot replace ${file.name}")
+        disk.renameDurably(tmp, file)
         logId = next.logId
         seq = next.seq
         count = next.count
@@ -137,12 +133,15 @@ class EncryptedLog(private val file: File, key: ByteArray, private val cipher: (
         count = 0
         lastHash = NO_HASH
         end = HEADER.toLong()
-        file.parentFile?.mkdirs()
-        RandomAccessFile(file, "rw").use { f ->
-            f.setLength(0)
-            f.write(ByteBuffer.allocate(HEADER).put(MAGIC).put(VERSION).put(logId).array())
+        // Made aside and renamed in: a stop half way must not leave a log without a header.
+        val fresh = File(file.path + ".create")
+        disk.mkdirs(file.absoluteFile.parentFile)
+        disk.open(fresh, Disk.Open.WRITE).use { f ->
+            f.truncate(0)
+            f.write(0, ByteBuffer.allocate(HEADER).put(MAGIC).put(VERSION).put(logId).array())
             writeSlot(f)
         }
+        disk.renameDurably(fresh, file)
     }
 
     private fun aad(n: Long, prev: ByteArray) = ByteBuffer.allocate(16 + 8 + 32).put(logId).putLong(n).put(prev).array()
@@ -158,13 +157,12 @@ class EncryptedLog(private val file: File, key: ByteArray, private val cipher: (
         Triple(b.long, b.long, ByteArray(32).also { b.get(it) })
     }.getOrNull()
 
-    private fun writeSlot(f: RandomAccessFile) {
+    private fun writeSlot(f: Disk.Handle) {
         seq++
         val i = (seq % 2).toInt()
         val plain = ByteBuffer.allocate(48).putLong(seq).putLong(count).put(lastHash).array()
         val box = Ciphers.box(cipher(), key, plain, slotAad(i))
-        f.seek((25 + i * SLOT).toLong())
-        f.write(byteArrayOf(box.size.toByte()) + box)
-        f.fd.sync()
+        f.write((25 + i * SLOT).toLong(), byteArrayOf(box.size.toByte()) + box)
+        f.sync()
     }
 }

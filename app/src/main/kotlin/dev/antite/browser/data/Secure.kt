@@ -6,7 +6,9 @@ import android.security.keystore.KeyProperties
 import com.lambdapioneer.argon2kt.Argon2Kt
 import com.lambdapioneer.argon2kt.Argon2Mode
 import dev.antite.keys.Cipher256
+import dev.antite.keys.Disk
 import dev.antite.keys.KeyRing
+import dev.antite.keys.RealDisk
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -29,8 +31,16 @@ object Secure {
     // Bumped after a change of the key mode, the password or the cipher, for the pages that show them.
     val revision = androidx.compose.runtime.mutableIntStateOf(0)
 
+    @Volatile
+    private var disk: Disk? = null
+
+    // The app's one way to its private folder for keys and encrypted stores.
+    fun disk(context: Context): Disk = disk ?: synchronized(this) {
+        disk ?: RealDisk(context.applicationContext.dataDir).also { disk = it }
+    }
+
     fun ring(context: Context): KeyRing = ring ?: synchronized(this) {
-        ring ?: KeyRing(File(context.applicationContext.filesDir, "keys"), Keystore, Argon2).also {
+        ring ?: KeyRing(disk(context), File(context.applicationContext.filesDir, "keys"), Keystore, Argon2).also {
             if (!it.exists) it.create()
             ring = it
         }

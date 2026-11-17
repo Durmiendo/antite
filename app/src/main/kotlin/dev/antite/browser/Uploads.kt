@@ -3,7 +3,9 @@ package dev.antite.browser
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import dev.antite.browser.data.MediaVault
+import dev.antite.browser.data.Secure
 import dev.antite.keys.VaultFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,7 +47,14 @@ object Uploads {
     }
 
     fun wipe(context: Context) {
-        File(context.cacheDir, VAULT_DIR).walkBottomUp().forEach { f -> if (f.isFile) VaultFile.wipe(f) else f.delete() }
+        val disk = Secure.disk(context)
+        File(context.cacheDir, VAULT_DIR).walkBottomUp().forEach { f ->
+            if (!f.isFile) f.delete()
+            else runCatching { VaultFile.wipe(disk, f) }.onFailure { e ->
+                Log.w("Antite", "upload copy not wiped", e)
+                f.delete()
+            }
+        }
     }
 
     private const val VAULT_DIR = "uploads-vault"

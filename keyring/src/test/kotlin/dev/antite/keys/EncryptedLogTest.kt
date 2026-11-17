@@ -15,7 +15,7 @@ class EncryptedLogTest {
 
     private val key = Ciphers.randomBytes(Cipher256.KEY)
     private fun file() = File(tmp.root, "h.log")
-    private fun log(cipher: Cipher256 = Cipher256.AES, k: ByteArray = key) = EncryptedLog(file(), k) { cipher }
+    private fun log(cipher: Cipher256 = Cipher256.AES, k: ByteArray = key) = EncryptedLog(RealDisk(tmp.root), file(), k) { cipher }
     private fun rec(i: Int) = "record $i".toByteArray()
     private fun texts(l: List<ByteArray>) = l.map { String(it) }
 
@@ -127,7 +127,7 @@ class EncryptedLogTest {
     @Test
     fun theLogKeepsItsOwnCopyOfTheKey() {
         val k = key.copyOf()
-        val l = EncryptedLog(file(), k) { Cipher256.AES }
+        val l = EncryptedLog(RealDisk(tmp.root), file(), k) { Cipher256.AES }
         l.read()
         l.append(rec(0))
         k.fill(0)

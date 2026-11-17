@@ -19,6 +19,7 @@ import javax.crypto.spec.SecretKeySpec
 class VaultFileTest {
     @get:Rule
     val tmp = TemporaryFolder()
+    private val disk by lazy { RealDisk(tmp.root) }
 
     private val key = Ciphers.randomBytes(Cipher256.KEY)
 
@@ -40,7 +41,7 @@ class VaultFileTest {
         return f
     }
 
-    private fun read(f: File, k: ByteArray = key) = VaultFile.Reader(f, k).stream().use { it.readBytes() }
+    private fun read(f: File, k: ByteArray = key) = VaultFile.Reader(disk, f, k).stream().use { it.readBytes() }
 
     @Test
     fun contentComesBackForSizesAroundTheChunkInEveryCipher() {
@@ -48,7 +49,7 @@ class VaultFileTest {
             for (size in listOf(0, 1, VaultFile.CHUNK - 1, VaultFile.CHUNK, VaultFile.CHUNK + 1, 3 * VaultFile.CHUNK, 200_000)) {
                 val plain = data(size)
                 val f = write(plain, cipher)
-                assertEquals(cipher, VaultFile.head(f).cipher)
+                assertEquals(cipher, VaultFile.head(disk, f).cipher)
                 assertEquals(size.toLong(), VaultFile.plainLength(f.length(), cipher))
                 assertArrayEquals("$cipher size $size", plain, read(f))
             }
@@ -67,7 +68,7 @@ class VaultFileTest {
     fun readsFromAnyPosition() {
         val plain = data(200_000)
         for (cipher in Cipher256.entries) {
-            VaultFile.Reader(write(plain, cipher), key).use { r ->
+            VaultFile.Reader(disk, write(plain, cipher), key).use { r ->
                 assertEquals(200_000L, r.length)
                 for (pos in listOf(0, 1, VaultFile.CHUNK - 3, VaultFile.CHUNK, 150_000, 199_999)) {
                     val buf = ByteArray(100)
@@ -149,7 +150,7 @@ class VaultFileTest {
     fun readerWipesItsKeyCopyAndLeavesTheCallersKey() {
         val f = write(data(10))
         val mine = key.copyOf()
-        VaultFile.Reader(f, mine).close()
+        VaultFile.Reader(disk, f, mine).close()
         assertArrayEquals(key, mine)
     }
 
@@ -172,13 +173,13 @@ class VaultFileTest {
         val plain = data(150_000)
         val key32 = Ciphers.randomBytes(32)
         val f = v1File(plain, key32, 0x5A)
-        val head = VaultFile.head(f)
+        val head = VaultFile.head(disk, f)
         assertEquals(1, head.version)
         val k = VaultFile.v1Key(head) { b -> ByteArray(b.size) { (b[it].toInt() xor 0x5A).toByte() } }
         assertEquals(Cipher256.KEY, k.size)
         assertArrayEquals(plain, read(f, k))
-        VaultFile.upgradeHeader(f)
-        assertEquals(2, VaultFile.head(f).version)
+        VaultFile.upgradeHeader(disk, f)
+        assertEquals(2, VaultFile.head(disk, f).version)
         assertArrayEquals(plain, read(f, k))
     }
 
@@ -187,7 +188,7 @@ class VaultFileTest {
         val f = write(data(200_000))
         val same = File(f.path)
         val raf = java.io.RandomAccessFile(same, "r")
-        VaultFile.wipe(f)
+        VaultFile.wipe(disk, f)
         assertFalse(f.exists())
         // The data the open handle still sees was overwritten in place.
         val rest = ByteArray(1000).also { raf.seek(VaultFile.HEADER.toLong()); raf.readFully(it) }

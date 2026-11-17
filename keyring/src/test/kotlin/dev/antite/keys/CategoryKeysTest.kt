@@ -15,7 +15,7 @@ class CategoryKeysTest {
 
     private val domain = Ciphers.randomBytes(Cipher256.KEY)
     private val keyDir get() = File(tmp.root, "keys")
-    private fun keys() = CategoryKeys(keyDir, { op -> op(domain) }) { Cipher256.AES }
+    private fun keys() = CategoryKeys(RealDisk(tmp.root), keyDir, { op -> op(domain) }) { Cipher256.AES }
 
     @Test
     fun categoryKeysAreRandomAndSealed() {
@@ -24,7 +24,7 @@ class CategoryKeysTest {
         assertFalse(a.contentEquals(k.key("b")))
         assertArrayEquals(a, keys().key("a"))
         assertThrows(IOException::class.java) {
-            CategoryKeys(keyDir, { op -> op(Ciphers.randomBytes(Cipher256.KEY)) }) { Cipher256.AES }.key("a")
+            CategoryKeys(RealDisk(tmp.root), keyDir, { op -> op(Ciphers.randomBytes(Cipher256.KEY)) }) { Cipher256.AES }.key("a")
         }
     }
 

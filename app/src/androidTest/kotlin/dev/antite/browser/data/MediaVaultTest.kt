@@ -46,7 +46,7 @@ class MediaVaultTest {
         for (d in KeyRing.DOMAINS) for (gen in 1..10) runCatching { Secure.Keystore.destroy("$prefix-$d-$gen") }
     }
 
-    private fun newRing() = KeyRing(keyDir, Secure.Keystore, Secure.Argon2, prefix)
+    private fun newRing() = KeyRing(Secure.disk(context), keyDir, Secure.Keystore, Secure.Argon2, prefix)
 
     // The device key of version 1 vaults, played by a mask.
     private val legacy: (ByteArray) -> ByteArray = { b -> ByteArray(b.size) { (b[it].toInt() xor 0x5A).toByte() } }
@@ -149,7 +149,7 @@ class MediaVaultTest {
         val vault = vault()
         waitFor("moved over") { vault.pending.isEmpty() && !File(dir, "index.enc").exists() }
         assertEquals(setOf("1.enc", "2.enc", "index.box"), dir.list()!!.toSet())
-        for (n in listOf("1.enc", "2.enc")) assertEquals(2, VaultFile.head(File(dir, n)).version)
+        for (n in listOf("1.enc", "2.enc")) assertEquals(2, VaultFile.head(Secure.disk(context), File(dir, n)).version)
         File(dir, "1.enc").readBytes().let { assertArrayEquals(chunksBefore, it.copyOfRange(VaultFile.HEADER, it.size)) }
         assertArrayEquals(a, content(vault, vault.items.single { it.id == 1L }))
         assertArrayEquals(b, content(vault, vault.items.single { it.id == 2L }))
@@ -219,7 +219,7 @@ class MediaVaultTest {
         vault.recrypt(Cipher256.CASCADE) { done = true }
         waitFor("re-encrypted") { done }
         val item = vault.items.single()
-        assertEquals(Cipher256.CASCADE, VaultFile.head(File(dir, "${item.id}.enc")).cipher)
+        assertEquals(Cipher256.CASCADE, VaultFile.head(Secure.disk(context), File(dir, "${item.id}.enc")).cipher)
         assertArrayEquals(data, content(vault, item))
         assertEquals(setOf("${item.id}.enc", "index.box"), dir.list()!!.toSet())
         assertArrayEquals(data, vault().let { content(it, it.items.single()) })

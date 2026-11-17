@@ -2,7 +2,10 @@ package dev.antite.browser.data
 
 import dev.antite.browser.data.HistoryIndex.Event
 import dev.antite.keys.Cipher256
+import dev.antite.keys.Disk
 import dev.antite.keys.EncryptedLog
+import dev.antite.keys.deleteDurably
+import dev.antite.keys.renameDurably
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromByteArray
@@ -16,6 +19,7 @@ import java.io.File
 // events far outnumber the pages.
 @OptIn(ExperimentalSerializationApi::class)
 class HistoryStore(
+    private val disk: Disk,
     private val dir: File,
     private val keyOf: (name: String) -> ByteArray,
     private val cipher: () -> Cipher256,
@@ -61,14 +65,14 @@ class HistoryStore(
 
     private fun book(name: String): Book = books.getOrPut(name) {
         val key = keyOf(name)
-        var log = EncryptedLog(file(name), key, cipher)
+        var log = EncryptedLog(disk, file(name), key, cipher)
         val records = try {
             log.read()
         } catch (e: EncryptedLog.DamagedException) {
             // Put aside rather than lost or stuck: the category's history starts again.
             log.close()
-            file(name).renameTo(File(file(name).path + ".bad"))
-            log = EncryptedLog(file(name), key, cipher)
+            disk.renameDurably(file(name), File(file(name).path + ".bad"))
+            log = EncryptedLog(disk, file(name), key, cipher)
             log.read()
         }
         val index = HistoryIndex(now)
@@ -129,7 +133,7 @@ class HistoryStore(
     fun forget(category: String?) {
         val name = nameOf(category)
         books.remove(name)?.log?.close()
-        file(name).delete()
+        disk.deleteDurably(file(name))
     }
 
     // Logs stay on the disk; they are read again, with their keys, on next use. Their copies of the keys are wiped.
