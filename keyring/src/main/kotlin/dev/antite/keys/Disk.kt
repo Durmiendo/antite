@@ -9,6 +9,7 @@ import java.io.RandomAccessFile
 import java.nio.channels.FileChannel
 import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.StandardOpenOption
 
 sealed class DiskException(message: String, cause: Throwable? = null) : IOException(message, cause) {
@@ -31,13 +32,15 @@ interface Disk {
         fun sync()
     }
 
+    // A link counts as an entry of its own: it exists, it is no folder, it is never followed.
     fun exists(f: File): Boolean
     fun isDirectory(f: File): Boolean
+    fun isLink(f: File): Boolean
     fun length(f: File): Long
     fun modified(f: File): Long
     // The files in a folder; none if there is no folder.
     fun list(dir: File): List<File>
-    // Files and folders in a folder, links left out; none if there is no folder.
+    // Files, folders and links in a folder; none if there is no folder.
     fun children(dir: File): List<File>
     // Makes the missing folders, each one on the disk before the next.
     fun mkdirs(dir: File)
@@ -45,7 +48,7 @@ interface Disk {
     fun open(f: File, mode: Open): Handle
     // Puts a file in place of to; a folder only where nothing is.
     fun rename(from: File, to: File)
-    // A file or an empty folder.
+    // A file, a link or an empty folder.
     fun delete(f: File): Boolean
     fun syncFolder(dir: File)
     // Held until closed, also against other processes; null while someone else holds it.
@@ -87,7 +90,7 @@ fun Disk.deleteDurably(f: File) {
     if (delete(f)) syncFolder(f.absoluteFile.parentFile)
 }
 
-// A file or a folder with all in it, gone once this returns.
+// A file or a folder with all in it, gone once this returns. Links go themselves; what they point to stays.
 fun Disk.deleteTree(f: File) {
     if (!exists(f)) return
     if (isDirectory(f)) children(f).forEach { deleteTree(it) }
@@ -167,18 +170,29 @@ class RealDisk(root: File) : Disk {
         throw DiskException.Failed(what, e)
     }
 
-    override fun exists(f: File) = checked(f).exists()
+    // An entry itself, which may be a link: only the folders above it must be real and under root.
+    private fun entry(f: File): File {
+        val abs = f.absoluteFile.normalize()
+        if (abs == root) return checked(f)
+        checked(abs.parentFile)
+        return abs
+    }
 
-    override fun isDirectory(f: File) = checked(f).isDirectory
+    private val noFollow = LinkOption.NOFOLLOW_LINKS
+
+    override fun exists(f: File) = Files.exists(entry(f).toPath(), noFollow)
+
+    override fun isDirectory(f: File) = Files.isDirectory(entry(f).toPath(), noFollow)
+
+    override fun isLink(f: File) = Files.isSymbolicLink(entry(f).toPath())
 
     override fun length(f: File): Long = checked(f).let { if (it.isFile) it.length() else throw DiskException.NotFound(f.path) }
 
     override fun modified(f: File): Long = checked(f).let { if (it.exists()) it.lastModified() else throw DiskException.NotFound(f.path) }
 
-    override fun list(dir: File): List<File> = children(dir).filter { it.isFile }
+    override fun list(dir: File): List<File> = children(dir).filter { Files.isRegularFile(it.toPath(), noFollow) }
 
-    override fun children(dir: File): List<File> =
-        checked(dir).listFiles().orEmpty().filter { !Files.isSymbolicLink(it.toPath()) }.sortedBy { it.name }
+    override fun children(dir: File): List<File> = checked(dir).listFiles().orEmpty().sortedBy { it.name }
 
     override fun mkdirs(dir: File) {
         val d = checked(dir)
@@ -214,17 +228,17 @@ class RealDisk(root: File) : Disk {
     }
 
     override fun rename(from: File, to: File) {
-        val a = checked(from)
-        val b = checked(to)
-        if (!a.exists()) throw DiskException.NotFound(from.path)
-        if (a.isDirectory && b.exists()) throw DiskException.Failed("${to.name} is in the way of folder ${from.name}")
+        val a = entry(from)
+        val b = entry(to)
+        if (!exists(a)) throw DiskException.NotFound(from.path)
+        if (isDirectory(a) && exists(b)) throw DiskException.Failed("${to.name} is in the way of folder ${from.name}")
         if (!a.renameTo(b)) throw DiskException.Failed("cannot rename ${from.name} to ${to.name}")
     }
 
     override fun delete(f: File): Boolean {
-        val file = checked(f)
-        if (!file.exists()) return false
-        if (!file.delete()) throw DiskException.Failed("cannot delete ${f.name}")
+        val p = entry(f).toPath()
+        if (!Files.exists(p, noFollow)) return false
+        io("cannot delete ${f.name}") { Files.delete(p) }
         return true
     }
 

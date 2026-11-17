@@ -9,4 +9,5 @@ transfer-imported = Done. The data is restored.
 transfer-bad-password = Wrong password or a damaged file. The browser data is unchanged.
 transfer-export-failed = Could not save the data: { $reason }
 transfer-import-failed = Could not restore the data: { $reason }. The browser data is unchanged.
+transfer-import-unfinished = The data from the file is accepted, but replacing it did not finish: { $reason }. The browser finishes it on its next start.
 transfer-cannot-stop = could not stop the browser processes

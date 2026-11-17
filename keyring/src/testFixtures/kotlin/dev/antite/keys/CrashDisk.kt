@@ -170,6 +170,11 @@ class CrashDisk : Disk {
         return node(f) is Dir
     }
 
+    override fun isLink(f: File): Boolean {
+        alive()
+        return false
+    }
+
     private fun fileNode(f: File) = node(f) as? FileNode ?: throw DiskException.NotFound(f.path)
 
     override fun length(f: File): Long {

@@ -154,8 +154,15 @@ object DataTransfer {
             swap.recover { adopt -> if (adopt) ring.adoptImports() else ring.dropImports() }
             throw e
         }
-        swap.recover { adopt -> if (adopt) ring.adoptImports() else ring.dropImports() }
+        // Past the commit the import stands: what stops it here, the next start carries through.
+        try {
+            swap.recover { adopt -> if (adopt) ring.adoptImports() else ring.dropImports() }
+        } catch (e: IOException) {
+            throw Unfinished(e)
+        }
     }
+
+    class Unfinished(cause: IOException) : IOException(cause.message, cause)
 
     private fun isEngine(rel: String) = DataSwap.DEVICE_ONLY.any { rel == it || rel.startsWith("$it/") }
 
@@ -165,6 +172,7 @@ object DataTransfer {
             val children = disk.children(dir)
             if (children.isEmpty() && rel.isNotEmpty()) out += rel to dir
             for (c in children) {
+                if (disk.isLink(c)) continue
                 val r = if (rel.isEmpty()) c.name else "$rel/${c.name}"
                 if (rel.isEmpty() && c.name in DataSwap.SKIPPED) continue
                 if (disk.isDirectory(c)) walk(c, r) else out += r to c

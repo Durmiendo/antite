@@ -149,6 +149,9 @@ class TransferActivity : ComponentActivity() {
             }
         } catch (e: WrongPasswordException) {
             T.transferBadPassword
+        } catch (e: DataTransfer.Unfinished) {
+            Log.w("Antite", "transfer unfinished", e)
+            T.transferImportUnfinished(reason = e.message)
         } catch (e: Exception) {
             Log.w("Antite", "transfer failed", e)
             if (export) T.transferExportFailed(reason = e.message) else T.transferImportFailed(reason = e.message)
