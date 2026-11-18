@@ -30,6 +30,36 @@ class CategoryKeys(
         return k
     }
 
+    // Every category key file sealed with another cipher than the current one, sealed again: the same keys, each file
+    // replaced whole.
+    @Synchronized
+    fun rewrap() {
+        val target = cipher()
+        if (!disk.exists(dir)) return
+        for (f in disk.list(dir)) {
+            val name = f.name.removePrefix("category-").removeSuffix(".key")
+            if (name == f.name || !f.name.endsWith(".key")) continue
+            val boxed = disk.readAll(f)
+            if (Ciphers.boxCipher(boxed) == target) continue
+            val aad = name.toByteArray()
+            disk.replace(f, withDomainKey { d ->
+                val plain = Ciphers.unbox(d, boxed, aad)
+                try {
+                    Ciphers.box(target, d, plain, aad)
+                } finally {
+                    plain.fill(0)
+                }
+            })
+        }
+    }
+
+    // Whether any category key is sealed with another cipher than the current one.
+    @Synchronized
+    fun needsRewrap(): Boolean {
+        val target = cipher()
+        return disk.exists(dir) && disk.list(dir).any { it.name.startsWith("category-") && it.name.endsWith(".key") && Ciphers.boxCipher(disk.readAll(it)) != target }
+    }
+
     @Synchronized
     fun forget(name: String) {
         keys.remove(name)?.fill(0)

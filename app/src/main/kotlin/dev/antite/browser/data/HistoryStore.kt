@@ -90,6 +90,28 @@ class HistoryStore(
         }
     }
 
+    // Every log with a record sealed in another cipher than the current one written again, all in the current one.
+    @Synchronized
+    fun recrypt() {
+        if (!disk.exists(dir)) return
+        val target = cipher()
+        for (f in disk.list(dir)) {
+            if (!f.name.endsWith(".log")) continue
+            val b = book(f.name.removeSuffix(".log"))
+            if (b.log.ciphers.all { it == target }) continue
+            b.log.rewrite(b.index.snapshot().map(::encode))
+            b.index.compacted()
+        }
+    }
+
+    // Whether any log read so far holds a record in another cipher than the current one.
+    @Synchronized
+    fun needsRecrypt(): Boolean {
+        if (!disk.exists(dir)) return false
+        val target = cipher()
+        return disk.list(dir).filter { it.name.endsWith(".log") }.any { f -> book(f.name.removeSuffix(".log")).log.ciphers.any { it != target } }
+    }
+
     @Synchronized
     fun visit(category: String?, url: String, title: String?) = write(nameOf(category), Event.Visit(url, title, now()))
 

@@ -2,6 +2,7 @@ package dev.antite.browser
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import dev.antite.browser.data.Secure
 import dev.antite.browser.l10n.T
 import dev.antite.keys.Cipher256
@@ -52,6 +53,7 @@ fun Browser.askPassword(title: String, then: () -> Unit, cancelled: () -> Unit =
             done(e)
             if (e == null) {
                 mediaVault.open()
+                moveCipher()
                 then()
             }
         }
@@ -110,7 +112,41 @@ fun Browser.setCipher(c: Cipher256, changed: () -> Unit) {
         prefs.edit { putInt(Secure.PREF_CIPHER, c.id) }
         changed()
         toast(T.keysCipherWorking)
-        mediaVault.recrypt(c) { toast(T.keysApplied) }
-        keyWork({ kotlinx.coroutines.runBlocking { vault.io { recrypt() } } }) { e -> if (e != null) toast(e) }
+        recryptAll(c) { e, _ -> toast(e ?: T.keysApplied) }
+    }
+}
+
+// Everything sealed with another cipher than c, sealed again: vault files and index, saved secrets, category keys,
+// history logs and the key ring's password boxes. Each store survives a stop on its own. complete: nothing is left in
+// another cipher.
+private fun Browser.recryptAll(c: Cipher256, done: (error: String?, complete: Boolean) -> Unit) {
+    mediaVault.recrypt(c) {
+        var left = true
+        keyWork({
+            kotlinx.coroutines.runBlocking { vault.io { recrypt() } }
+            categoryKeys.rewrap()
+            history.recrypt()
+            if (ring.needsRewrap()) ring.rewrap()
+            left = !mediaVault.opened || mediaVault.waitsForCipher(c)
+        }) { e -> done(e, e == null && !left) }
+    }
+}
+
+private const val CIPHER_MOVED = "cipherMovedToXChaCha"
+
+// Main thread only: a second activity must not start the move again while the first one runs.
+private var cipherMoving = false
+
+// Once, from AES as the main cipher to XChaCha20 (decision 0013): an AES setting moves, then everything written before
+// is sealed again. Needs the keys, so with a password it waits for an unlock; until every store is done it is tried
+// again at the next start or unlock.
+fun Browser.moveCipher() {
+    if (cipherMoving || prefs.bool(CIPHER_MOVED, false) || !ring.unlocked) return
+    cipherMoving = true
+    if (Secure.cipher(activity) == Cipher256.AES) prefs.edit { putInt(Secure.PREF_CIPHER, Cipher256.XCHACHA.id) }
+    recryptAll(Secure.cipher(activity)) { e, complete ->
+        cipherMoving = false
+        if (complete) prefs.edit { putBoolean(CIPHER_MOVED, true) }
+        else Log.w("Antite", "cipher move not finished: ${e ?: "vault files left"}")
     }
 }

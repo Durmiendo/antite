@@ -157,6 +157,9 @@ class MediaVault(
     }
 
     // Puts every file under the given cipher, one at a time, then replaces the data key so the old file keys die.
+    // Whether a file of the open vault is still sealed with another cipher than target.
+    fun waitsForCipher(target: Cipher256): Boolean = items.any { core.cipherOf(it).let { c -> c != null && c != target } }
+
     fun recrypt(target: Cipher256, done: () -> Unit = {}) {
         io.launch {
             val todo = items.filter { core.cipherOf(it).let { c -> c != null && c != target } }

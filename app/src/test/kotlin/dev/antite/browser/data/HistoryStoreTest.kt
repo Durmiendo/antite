@@ -103,4 +103,24 @@ class HistoryStoreTest {
         assertFalse(store().visited("work", listOf("https://secret.example/")).single())
         assertTrue("the unreadable copy is put aside", File(tmp.root, "history/work.log.bad").exists())
     }
+
+    // A new cipher setting: every log written before is sealed again, and nothing in it is lost.
+    @Test
+    fun recryptSealsOldLogsInTheNewCipher() {
+        var c = Cipher256.AES
+        val k = keys()
+        val old = HistoryStore(RealDisk(tmp.root), File(tmp.root, "history"), k::key, { c }) { clock }
+        old.visit("work", "https://work.example/", "Work")
+        old.visit(null, "https://home.example/", "Home")
+        old.close()
+        c = Cipher256.XCHACHA
+        val s = HistoryStore(RealDisk(tmp.root), File(tmp.root, "history"), k::key, { c }) { clock }
+        assertTrue(s.needsRecrypt())
+        s.recrypt()
+        assertFalse(s.needsRecrypt())
+        s.close()
+        val again = HistoryStore(RealDisk(tmp.root), File(tmp.root, "history"), k::key, { c }) { clock }
+        assertFalse(again.needsRecrypt())
+        assertEquals(listOf("Home", "Work"), again.list(listOf("work", null), null, 10).mapNotNull { it.title }.sorted())
+    }
 }

@@ -10,12 +10,14 @@ import java.util.Base64
 // by the device key, by a key from the password, or by both. Every rotation is a new generation; the device key of
 // the old one is destroyed, which is what makes deleted data unrecoverable.
 // prefix keeps Keystore aliases apart: tests run in the app's process and must never touch its real keys.
+// cipher: what new password boxes are sealed with; boxes of any cipher open.
 class KeyRing(
     private val disk: Disk,
     private val dir: File,
     private val device: DeviceKeys,
     private val kdf: Kdf,
     private val prefix: String = "antite",
+    private val cipher: () -> Cipher256 = { Cipher256.XCHACHA },
 ) {
     enum class Mode(val id: Int) {
         DEVICE(1), PASSWORD(2), BOTH(3);
@@ -96,7 +98,7 @@ class KeyRing(
 
     private fun seal(domain: String, gen: Int, m: Mode, key: ByteArray, with: ByteArray? = kek): JSONObject {
         var blob = key
-        if (m.usesPassword) blob = Ciphers.box(Cipher256.AES, with ?: throw LockedException(), blob, domain.toByteArray())
+        if (m.usesPassword) blob = Ciphers.box(cipher(), with ?: throw LockedException(), blob, domain.toByteArray())
         if (m.usesDevice) blob = device.wrap(alias(domain, gen), blob)
         return JSONObject().put("mode", m.id).put("gen", gen).put("key", b64(blob))
     }
@@ -181,7 +183,7 @@ class KeyRing(
                 val k = kdf.derive(password ?: throw WrongPasswordException(), salt, params)
                 next = k
                 write(stagedPassword, JSONObject().put("salt", b64(salt)).put("t", params.iterations).put("m", params.memoryKib)
-                    .put("p", params.parallelism).put("check", b64(Ciphers.box(Cipher256.AES, k, CHECK, CHECK))))
+                    .put("p", params.parallelism).put("check", b64(Ciphers.box(cipher(), k, CHECK, CHECK))))
             }
             val old = ArrayList<String>()
             for ((d, k) in plain) {
@@ -200,6 +202,48 @@ class KeyRing(
             plain.values.forEach { it.fill(0) }
             password?.fill(0)
         }
+    }
+
+    // Whether a password box (a domain key or the check) is sealed with another cipher than the current one.
+    @Synchronized
+    fun needsRewrap(): Boolean {
+        if (!mode.usesPassword) return false
+        val target = cipher()
+        if (Ciphers.boxCipher(unb64(read(passwordFile).getString("check"))) != target) return true
+        return DOMAINS.any { d ->
+            val f = domainFile(d)
+            if (!disk.exists(f)) return@any false
+            val o = read(f)
+            val m = Mode.of(o.getInt("mode"))
+            if (!m.usesPassword) return@any false
+            var blob = unb64(o.getString("key"))
+            if (m.usesDevice) blob = device.unwrap(alias(d, o.getInt("gen")), blob)
+            Ciphers.boxCipher(blob) != target
+        }
+    }
+
+    // The password boxes sealed again with the current cipher: the same keys, the same generation, so the same device
+    // key. Each file is replaced whole and both the old box and the new one open with the password, so a stop anywhere
+    // leaves a ring that opens. Needs the ring unlocked; nothing to do without a password.
+    @Synchronized
+    fun rewrap() {
+        if (!mode.usesPassword) return
+        val k = kek ?: throw LockedException()
+        for (d in DOMAINS) {
+            val f = domainFile(d)
+            if (!disk.exists(f)) continue
+            val o = read(f)
+            val m = Mode.of(o.getInt("mode"))
+            if (!m.usesPassword) continue
+            val plain = unseal(d, o)
+            try {
+                write(f, seal(d, o.getInt("gen"), m, plain))
+            } finally {
+                plain.fill(0)
+            }
+        }
+        val p = read(passwordFile)
+        write(passwordFile, p.put("check", b64(Ciphers.box(cipher(), k, CHECK, CHECK))))
     }
 
     // A change of mode cut short: without the commit file it is undone, with it it is carried through.

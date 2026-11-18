@@ -38,6 +38,10 @@ class EncryptedLog(private val disk: Disk, private val file: File, key: ByteArra
     private var lastHash = NO_HASH
     private var end = HEADER.toLong()
     private var opened = false
+    private var seen = HashSet<Cipher256>()
+
+    // The ciphers of the records read and appended since: what rewrite() would seal again.
+    val ciphers: Set<Cipher256> get() = seen
 
     // Every record in order. A missing file reads as an empty log.
     fun read(): List<ByteArray> {
@@ -74,6 +78,7 @@ class EncryptedLog(private val disk: Disk, private val file: File, key: ByteArra
                     break
                 }
                 out += plain
+                seen += Ciphers.boxCipher(boxed)
                 prev = sha256(boxed)
                 pos += 4 + len
                 n++
@@ -97,7 +102,9 @@ class EncryptedLog(private val disk: Disk, private val file: File, key: ByteArra
         if (records.isEmpty()) return
         disk.open(file, Disk.Open.WRITE).use { f ->
             for (r in records) {
-                val boxed = Ciphers.box(cipher(), key, r, aad(count, lastHash))
+                val c = cipher()
+                val boxed = Ciphers.box(c, key, r, aad(count, lastHash))
+                seen += c
                 f.write(end, ByteBuffer.allocate(4 + boxed.size).putInt(boxed.size).put(boxed).array())
                 end += 4 + boxed.size
                 count++
@@ -124,6 +131,7 @@ class EncryptedLog(private val disk: Disk, private val file: File, key: ByteArra
         count = next.count
         lastHash = next.lastHash
         end = next.end
+        seen = next.seen
         opened = true
     }
 

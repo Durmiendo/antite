@@ -108,6 +108,7 @@ class MainActivity : ComponentActivity() {
         browser.attachView(browser.engine.createView(this))
         browser.engineNews.pollWhileOpen()
         browser.restore()
+        browser.moveCipher()
         if (state == null) {
             browser.handleIntent(intent, browser.current == null || browser.prefs.int("startup", 0) == 1)
         } else if (browser.current == null) {

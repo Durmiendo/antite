@@ -223,6 +223,50 @@ class CrashTest {
         },
     )
 
+    // A ring whose password boxes are AES, sealed again in XChaCha: the password opens it at every stop.
+    private fun rewrapRing(mode: KeyRing.Mode) = Crashes.everywhere(
+        setup = { d ->
+            val device = CrashDevice(d)
+            val r = KeyRing(d, dir, device, kdf, cipher = { Cipher256.AES }).apply { create() }
+            val keys = KeyRing.DOMAINS.associateWith { r.key(it).copyOf() }
+            r.setMode(mode, pw("pw"))
+            assertTrue(KeyRing(d, dir, device, kdf).apply { unlock(pw("pw")) }.needsRewrap())
+            Ring(device, keys)
+        },
+        action = { d, s -> KeyRing(d, dir, s.device, kdf).apply { unlock(pw("pw")); rewrap() } },
+        check = { d, s, finished, where ->
+            val r = KeyRing(d, dir, s.device, kdf)
+            assertEquals(where, mode, r.mode)
+            r.unlock(pw("pw"))
+            assertKeys(r, s.keys, where)
+            if (finished) assertFalse(where, r.needsRewrap())
+            r.rewrap()
+            assertFalse(where, r.needsRewrap())
+            assertKeys(KeyRing(d, dir, s.device, kdf).apply { unlock(pw("pw")) }, s.keys, "$where, after a second rewrap")
+            assertNoLeftovers(d, where)
+        },
+    )
+
+    @Test
+    fun rewrapPasswordRing() = rewrapRing(KeyRing.Mode.PASSWORD)
+
+    @Test
+    fun rewrapBothRing() = rewrapRing(KeyRing.Mode.BOTH)
+
+    @Test
+    fun rewrapCategoryKeys() = Crashes.everywhere(
+        setup = { d ->
+            val old = CategoryKeys(d, historyKeys, { op -> op(domain) }) { Cipher256.AES }
+            listOf("a", "b", "c").associateWith { old.key(it).copyOf() }
+        },
+        action = { d, _ -> categoryKeys(d).rewrap() },
+        check = { d, keys, finished, where ->
+            val k = categoryKeys(d)
+            for ((name, key) in keys) assertArrayEquals("$where: $name", key, k.key(name))
+            if (finished) assertFalse(where, k.needsRewrap())
+        },
+    )
+
     // Files aside that a finished or undone operation must not leave behind.
     private fun assertNoLeftovers(d: CrashDisk, where: String) {
         val left = d.files().keys.filter { it.endsWith(".mode.json") || it.endsWith("mode.commit") || it.endsWith(".next.json") }

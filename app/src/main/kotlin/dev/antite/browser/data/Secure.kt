@@ -39,14 +39,16 @@ object Secure {
     }
 
     fun ring(context: Context): KeyRing = ring ?: synchronized(this) {
-        ring ?: KeyRing(disk(context), File(context.applicationContext.filesDir, "keys"), Keystore, Argon2).also {
+        val app = context.applicationContext
+        ring ?: KeyRing(disk(app), File(app.filesDir, "keys"), Keystore, Argon2, cipher = { cipher(app) }).also {
             if (!it.exists) it.create()
             ring = it
         }
     }
 
+    // XChaCha20 by default (decision 0013); AES stays a choice.
     fun cipher(context: Context): Cipher256 =
-        runCatching { Cipher256.of(Prefs(context).int(PREF_CIPHER, Cipher256.AES.id)) }.getOrDefault(Cipher256.AES)
+        runCatching { Cipher256.of(Prefs(context).int(PREF_CIPHER, Cipher256.XCHACHA.id)) }.getOrDefault(Cipher256.XCHACHA)
 
     fun wipeZeros(context: Context) = Prefs(context).bool(PREF_WIPE, false)
 
