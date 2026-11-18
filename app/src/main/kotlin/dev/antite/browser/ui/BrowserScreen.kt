@@ -121,6 +121,9 @@ import kotlinx.coroutines.flow.first
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BrowserScreen(b: Browser) {
+    // Counted by tools/e2e/recompose_scroll.py (setprop log.tag.AntiteCompose V): the screen must not be composed
+    // again on every frame of a scroll or of the bars hiding.
+    SideEffect { if (android.util.Log.isLoggable("AntiteCompose", android.util.Log.VERBOSE)) android.util.Log.v("AntiteCompose", "BrowserScreen") }
     val p = LocalPalette.current
     val density = LocalDensity.current
     val toolbarPx = with(density) { 56.dp.toPx() }
@@ -128,24 +131,18 @@ fun BrowserScreen(b: Browser) {
     b.navDeadZonePx = with(density) { b.prefs.pick("navDeadZone", Options.navDeadZones, 2, Options.customNavDeadZone).dp.toPx() }
     val t = b.current
     val bar = if (t?.incognito == true) p.toolbarIncognito else p.toolbar
-    val navInset = WindowInsets.navigationBars.getBottom(density)
-    val imeInset = WindowInsets.ime.getBottom(density)
+    val insets = rememberScreenInsets()
     val navHidden by remember {
         derivedStateOf { !b.fullscreen && b.barsHidden && b.overlay == Overlay.NONE && !b.urlFocused }
     }
-    // The page is resized once per keyboard transition, not on every animation frame: each resize makes Gecko lay the
-    // page out again and the page jerks. The keyboard counts from where its animation ends when showing, from where it
-    // starts when hiding. The navigation bar never resizes the page: Gecko treats it as part of the dynamic toolbar and
-    // moves fixed bottom elements with it frame by frame (tools/e2e/fixed_bottom_frames.py).
-    val imeTarget = WindowInsets.imeAnimationTarget.getBottom(density)
-    val imeSettled = if (imeInset == imeTarget) imeInset else minOf(WindowInsets.imeAnimationSource.getBottom(density), imeTarget)
-    val navFull = WindowInsets.navigationBarsIgnoringVisibility.getBottom(density)
+    // The navigation bar never resizes the page: Gecko treats it as part of the dynamic toolbar and moves fixed bottom
+    // elements with it frame by frame (tools/e2e/fixed_bottom_frames.py).
     // Back with the keyboard open hides the keyboard; like Firefox, that also ends address editing.
     var imeWasVisible by remember { mutableStateOf(false) }
-    LaunchedEffect(imeInset > 0) {
-        if (imeWasVisible && imeInset == 0 && b.urlFocused) b.urlFocused = false
-        if (imeWasVisible && imeInset == 0) b.dismissLoginOffer()
-        imeWasVisible = imeInset > 0
+    LaunchedEffect(insets.imeUp) {
+        if (imeWasVisible && !insets.imeUp && b.urlFocused) b.urlFocused = false
+        if (imeWasVisible && !insets.imeUp) b.dismissLoginOffer()
+        imeWasVisible = insets.imeUp
     }
     // Pull to refresh: the circle stays until the reload it started finishes and the finger is off the screen.
     LaunchedEffect(t, b.pageStops) {
@@ -175,11 +172,11 @@ fun BrowserScreen(b: Browser) {
     ) {
         val view = b.engineView
         if (view != null) {
-            val bottomGap = if (b.fullscreen) 0 else imeSettled
+            val bottomGap = if (b.fullscreen) 0 else insets.imeSettled
             // Under the keyboard the navigation bar is already outside the page, so it counts as gone.
             val navBars = WindowInsets.navigationBars
-            val keyboardUp by rememberUpdatedState(imeSettled > 0)
-            val navMax by rememberUpdatedState(navFull)
+            val keyboardUp by rememberUpdatedState(insets.imeSettled > 0)
+            val navMax by rememberUpdatedState(insets.navFull)
             val clipping = {
                 if (b.fullscreen) 0
                 else -(b.hidden.toInt() + if (keyboardUp) navMax else navMax - navBars.getBottom(density))
@@ -227,7 +224,7 @@ fun BrowserScreen(b: Browser) {
             }
             // Full screen and PiP have no bars, else Gecko keeps an empty strip for them at the bottom. Gecko resets the
             // clipping to 0 whenever the max height is set, so it is set only when it changes and the clipping is resent.
-            val maxHeight = if (b.pip || b.fullscreen) 0 else toolbarPx.toInt() + navFull
+            val maxHeight = if (b.pip || b.fullscreen) 0 else toolbarPx.toInt() + insets.navFull
             val sentMax = remember(view) { intArrayOf(-1) }
             SideEffect {
                 if (sentMax[0] != maxHeight) {
@@ -287,18 +284,17 @@ fun BrowserScreen(b: Browser) {
             // The navigation bar is transparent with edge-to-edge; while it is shown the page must not show through it.
             // It stays at the screen bottom under the keyboard: hidden while the keyboard inset was not zero, the page
             // flashed through the bar on the frames where the keyboard window had already gone.
-            if (!b.fullscreen && navInset > 0) {
-                val ime = WindowInsets.ime
-                Box(Modifier.align(Alignment.BottomCenter).offset { IntOffset(0, ime.getBottom(this)) }.fillMaxWidth()
-                    .height(with(density) { navInset.toDp() }).background(bar))
+            if (!b.fullscreen && insets.navShown) {
+                Box(Modifier.align(Alignment.BottomCenter).offset { IntOffset(0, insets.ime.getBottom(this)) }.fillMaxWidth()
+                    .insetHeight(insets.navBars).background(bar))
             }
-            b.translateOffer?.let { TranslateBar(b, it, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() })) }
-            b.loginOffer?.let { if (imeInset > 0 && !b.urlFocused && b.overlay == Overlay.NONE) LoginBar(b, it, Modifier.align(Alignment.BottomCenter)) }
+            b.translateOffer?.let { TranslateBar(b, it, Modifier.align(Alignment.BottomCenter).bottomInset(insets.navBars)) }
+            b.loginOffer?.let { if (insets.imeUp && !b.urlFocused && b.overlay == Overlay.NONE) LoginBar(b, it, Modifier.align(Alignment.BottomCenter)) }
             if (b.defaultBrowser.shown && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
-                DefaultBrowserBar(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() }))
+                DefaultBrowserBar(b, Modifier.align(Alignment.BottomCenter).bottomInset(insets.navBars))
             }
             if (b.indexExpired > 0 && !b.defaultBrowser.shown && b.translateOffer == null && !b.fullscreen && !b.urlFocused && b.overlay == Overlay.NONE) {
-                IndexExpiredBar(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() }))
+                IndexExpiredBar(b, Modifier.align(Alignment.BottomCenter).bottomInset(insets.navBars))
             }
             // Composed ahead, a little after start, so opening one only shows it.
             var warm by remember { mutableIntStateOf(0) }
@@ -323,7 +319,7 @@ fun BrowserScreen(b: Browser) {
             BrowserMenu(b)
             b.extensionPopup?.let { ExtensionPopup(b, it) }
             DialogHost(b)
-            Messages(b, Modifier.align(Alignment.BottomCenter).padding(bottom = with(density) { navInset.toDp() } + 12.dp))
+            Messages(b, Modifier.align(Alignment.BottomCenter).bottomInset(insets.navBars, 12.dp))
         }
     }
 

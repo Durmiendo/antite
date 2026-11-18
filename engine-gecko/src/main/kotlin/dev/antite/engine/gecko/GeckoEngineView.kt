@@ -60,5 +60,7 @@ internal class GeckoEngineView(private val gecko: TouchGeckoView) : EngineView {
 
     override fun setVerticalClipping(px: Int) = gecko.setVerticalClipping(px)
 
-    override fun canPullToRefresh(): Boolean? = gecko.pullAllowed
+    // Not until Gecko has answered for this touch: a page at the top whose content takes the drag (a map, a game) must
+    // not lose it to the pull. The layout asks again on every move, so a real pull starts once the answer is in.
+    override fun canPullToRefresh(): Boolean = gecko.pullAllowed ?: false
 }

@@ -166,7 +166,6 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     var barsHidden by mutableStateOf(false)
         private set
-    private var lastScrollY = -1
     val toolbarMotion = ToolbarMotion(this)
 
     init {
@@ -323,7 +322,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         engineView?.show(s)
         s.setActive(true)
         s.setPriority(true)
-        lastScrollY = -1
+        toolbarMotion.resetScroll()
         pageScrollY = 0
         setToolbarHidden(0f)
         hideFind()
@@ -353,6 +352,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val i = tabs.indexOf(t)
         if (i < 0) return
         tabs.removeAt(i)
+        if (pullRefreshTab === t) pullRefreshTab = null
         if (t === current) engineView?.show(null)
         t.engineTab?.close()
         t.engineTab = null
@@ -666,16 +666,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     fun onScroll(t: Tab, y: Int) {
         if (t !== current) return
         pageScrollY = y
-        if (urlFocused) return
-        if (lastScrollY < 0) {
-            lastScrollY = y
-            return
-        }
-        val dy = y - lastScrollY
-        lastScrollY = y
-        if (!prefs.bool("toolbarHide", true)) return
-        val byScroll = toolbarMotion.onScrolled(dy.toFloat())
-        if (y <= 0) moveToolbar(0f) else if (byScroll) moveToolbar(hidden + dy)
+        if (!urlFocused) toolbarMotion.onPageScroll(y)
     }
 
     fun dismissLoginOffer() {

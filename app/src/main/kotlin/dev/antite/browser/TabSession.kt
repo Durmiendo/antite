@@ -62,6 +62,7 @@ internal class TabSession(private val b: Browser, val t: Tab) : TabCallbacks {
         t.progress = 0
         // A new page starts at the top; until Gecko reports a scroll, pull to refresh stays allowed.
         if (t === b.current) b.pageScrollY = 0
+        if (t === b.current) b.toolbarMotion.resetScroll()
         if (t === b.current) b.toolbarMotion.show()
     }
 

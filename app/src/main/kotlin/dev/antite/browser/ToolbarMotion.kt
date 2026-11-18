@@ -11,7 +11,8 @@ import dev.antite.browser.ui.Motion
 import kotlin.math.abs
 
 // Chrome's browser controls (cc/input/browser_controls_offset_manager.cc): the toolbar follows the scroll; when the
-// gesture and its fling are over, a partly shown toolbar finishes showing or hiding, whichever is nearer.
+// gesture and its fling are over, a partly shown toolbar finishes showing or hiding, whichever is nearer. Only the
+// user's gestures move it: a page scrolling itself (scripts, anchors, a restored position on Back) leaves it alone.
 // Under the finger the toolbar follows the finger itself, not the page scroll: the page view moves with the toolbar,
 // so a toolbar moved by the scroll takes only half of the finger's travel.
 class ToolbarMotion(private val b: Browser) {
@@ -35,12 +36,22 @@ class ToolbarMotion(private val b: Browser) {
     // The finger's position in the window while one finger is down, and whether this touch moves the toolbar.
     private var fingerY: Float? = null
     private var following = false
+    // Where this touch started, and whether a touch or the fling after it is still going on: until the toolbar settles.
+    private var startY: Float? = null
+    private var gesture = false
+    // The page's last reported scroll; -1 when the next report starts afresh (another tab or page).
+    private var lastY = -1
 
     fun onTouch(down: Boolean) {
         if (down == touching) return
         touching = down
-        if (down) stop() else {
+        if (down) {
+            gesture = true
+            startY = fingerY
+            stop()
+        } else {
             following = false
+            startY = null
             schedule()
         }
     }
@@ -51,16 +62,37 @@ class ToolbarMotion(private val b: Browser) {
         fingerY = y
         if (y == null) {
             following = false
+            startY = null
             return
         }
+        // A pull down that scrolls nothing (the page cannot scroll, or stopped scrolling under a menu) brings the
+        // toolbar back, or it would stay hidden with no way to it.
+        val start = startY
+        if (touching && !following && start != null && y - start > b.toolbarHeightPx && b.hidden > 0f && animator == null) show()
         if (!following || !touching || last == null || y == last) return
         lastDelta = last - y
         b.moveToolbar(b.hidden + (last - y))
     }
 
-    // False when the scroll must not move the toolbar: the finger does. A touch starts moving the toolbar once it
-    // scrolls the page itself, so a swipe over a carousel or an inner list leaves the toolbar alone.
-    fun onScrolled(dy: Float): Boolean {
+    fun resetScroll() {
+        lastY = -1
+    }
+
+    // The current page's scroll, as the engine reports it.
+    fun onPageScroll(y: Int) {
+        val last = lastY
+        lastY = y
+        if (last < 0 || !b.prefs.bool("toolbarHide", true)) return
+        val dy = (y - last).toFloat()
+        val byScroll = onScrolled(dy)
+        if (y <= 0) b.moveToolbar(0f) else if (byScroll) b.moveToolbar(b.hidden + dy)
+    }
+
+    // False when the scroll must not move the toolbar: the finger does, or no gesture of the user made the scroll.
+    // A touch starts moving the toolbar once it scrolls the page itself, so a swipe over a carousel or an inner list
+    // leaves the toolbar alone.
+    private fun onScrolled(dy: Float): Boolean {
+        if (!gesture) return false
         if (dy != 0f) lastDelta = dy
         stop()
         schedule()
@@ -82,8 +114,10 @@ class ToolbarMotion(private val b: Browser) {
     }
 
     private fun settle() {
+        if (touching) return
+        gesture = false
         val height = b.toolbarHeightPx
-        if (height <= 0f || touching) return
+        if (height <= 0f) return
         val shown = 1f - b.hidden / height
         if (shown <= 0f || shown >= 1f) return
         val show = when {
