@@ -32,4 +32,36 @@ object KeyCore {
 
     @JvmStatic
     external fun random(out: ByteArray)
+
+    // The key table: keys live in the core, Kotlin holds handles (CoreKey). A handle of a freed key is refused with
+    // IllegalArgumentException.
+    @JvmStatic
+    external fun keyRandom(): Long
+
+    // The array is wiped.
+    @JvmStatic
+    external fun keyImport(raw: ByteArray): Long
+
+    @JvmStatic
+    external fun keyDerive(password: ByteArray, salt: ByteArray, iterations: Int, memoryKib: Int, lanes: Int): Long
+
+    @JvmStatic
+    external fun keyFree(key: Long)
+
+    @JvmStatic
+    external fun keyCount(): Long
+
+    @JvmStatic
+    external fun sealWith(cipher: Int, key: Long, nonce: ByteArray, aad: ByteArray, data: ByteArray, off: Int, len: Int, soft: Boolean): ByteArray
+
+    @JvmStatic
+    external fun openWith(cipher: Int, key: Long, nonce: ByteArray, aad: ByteArray, data: ByteArray, off: Int, len: Int, soft: Boolean): ByteArray?
+
+    // A box of key under wrapping (cipher id, nonce, sealed key): the only form in which a key leaves the core.
+    @JvmStatic
+    external fun wrap(cipher: Int, wrapping: Long, key: Long, aad: ByteArray): ByteArray
+
+    // The key in a box made by wrap, put into the table; 0 when it does not open under wrapping.
+    @JvmStatic
+    external fun unwrap(wrapping: Long, box: ByteArray, aad: ByteArray): Long
 }

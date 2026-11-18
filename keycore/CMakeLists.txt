@@ -70,6 +70,8 @@ endif()
 add_library(keycore SHARED src/keycore.c ${SODIUM_SOURCES} ${ARCH_SOURCES} ${BEARSSL_SOURCES})
 
 if(NOT ANDROID)
+    find_package(Threads REQUIRED)
+    target_link_libraries(keycore PRIVATE Threads::Threads)
     find_package(JNI REQUIRED COMPONENTS JVM)
     target_include_directories(keycore PRIVATE ${JNI_INCLUDE_DIRS})
 endif()

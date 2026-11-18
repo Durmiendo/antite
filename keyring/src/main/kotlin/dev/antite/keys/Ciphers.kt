@@ -42,5 +42,22 @@ object Ciphers {
         return open(Cipher256.of(boxed[0].toInt()), key, boxed.copyOfRange(1, 25), aad, boxed, 25, boxed.size - 25)
     }
 
+    fun seal(cipher: Cipher256, key: CoreKey, nonce24: ByteArray, aad: ByteArray, data: ByteArray, off: Int = 0, len: Int = data.size): ByteArray =
+        KeyCore.sealWith(cipher.id, key.handle, nonce24, aad, data, off, len, false)
+
+    fun open(cipher: Cipher256, key: CoreKey, nonce24: ByteArray, aad: ByteArray, data: ByteArray, off: Int = 0, len: Int = data.size): ByteArray =
+        KeyCore.openWith(cipher.id, key.handle, nonce24, aad, data, off, len, false) ?: throw IOException("damaged or not for this key")
+
+    fun box(cipher: Cipher256, key: CoreKey, plain: ByteArray, aad: ByteArray = ByteArray(0)): ByteArray {
+        val nonce = randomBytes(24)
+        val body = seal(cipher, key, nonce, aad, plain)
+        return ByteBuffer.allocate(1 + 24 + body.size).put(cipher.id.toByte()).put(nonce).put(body).array()
+    }
+
+    fun unbox(key: CoreKey, boxed: ByteArray, aad: ByteArray = ByteArray(0)): ByteArray {
+        if (boxed.size < 1 + 24 + Cipher256.TAG) throw IOException("box too short")
+        return open(Cipher256.of(boxed[0].toInt()), key, boxed.copyOfRange(1, 25), aad, boxed, 25, boxed.size - 25)
+    }
+
     fun boxCipher(boxed: ByteArray) = Cipher256.of(boxed[0].toInt())
 }

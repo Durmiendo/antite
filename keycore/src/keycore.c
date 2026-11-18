@@ -6,6 +6,7 @@
 // do not open under this key.
 
 #include <jni.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -149,6 +150,88 @@ static void slot_give_back(unsigned char *p) {
     }
 }
 
+// The key table: the keys of the ring, the categories and the files, 64 bytes each in guarded memory locked in RAM,
+// grown by pages of slots. Kotlin holds a handle only (slot number and generation): a handle whose key was freed is
+// refused, and a key is copied into a pool slot for the length of each call, so freeing it never races a call.
+enum { PAGE_SLOTS = 64, MAX_PAGES = 256 };
+typedef struct {
+    unsigned char *keys;
+    uint32_t gen[PAGE_SLOTS];
+    uint64_t used;
+} key_page;
+static key_page pages[MAX_PAGES];
+static int npages;
+static int table_unlocked;
+static long table_count;
+static pthread_mutex_t table = PTHREAD_MUTEX_INITIALIZER;
+
+static jlong handle_of(int page, int slot, uint32_t gen) {
+    return (jlong) (((uint64_t) (page * PAGE_SLOTS + slot) << 32) | gen);
+}
+
+// A new slot for a key, held for the caller until it fills it: *at points into the table. NO_MEMORY or 0.
+static int table_new(unsigned char **at, jlong *handle) {
+    int pg, slot, err = 0;
+
+    pthread_mutex_lock(&table);
+    for (pg = 0; pg < npages && pages[pg].used == UINT64_MAX; pg++) {
+    }
+    if (pg == npages) {
+        // A page stays for the life of the process: not counted as live by the fault tests.
+        if (npages == MAX_PAGES || (pages[pg].keys = FAULT() ? NULL : sodium_malloc((size_t) SLOT * PAGE_SLOTS)) == NULL) {
+            err = NO_MEMORY;
+        } else {
+            if (sodium_mlock(pages[pg].keys, (size_t) SLOT * PAGE_SLOTS) != 0) table_unlocked = 1;
+            npages++;
+        }
+    }
+    if (err == 0) {
+        slot = __builtin_ctzll(~pages[pg].used);
+        pages[pg].used |= UINT64_C(1) << slot;
+        if (++pages[pg].gen[slot] == 0) pages[pg].gen[slot] = 1;
+        *at = pages[pg].keys + (size_t) slot * SLOT;
+        *handle = handle_of(pg, slot, pages[pg].gen[slot]);
+        table_count++;
+    }
+    pthread_mutex_unlock(&table);
+    return err;
+}
+
+static int table_find(jlong handle, int *pg, int *slot) {
+    uint64_t h = (uint64_t) handle;
+    uint32_t index = (uint32_t) (h >> 32), gen = (uint32_t) h;
+
+    *pg = (int) (index / PAGE_SLOTS);
+    *slot = (int) (index % PAGE_SLOTS);
+    return gen != 0 && *pg < npages && (pages[*pg].used >> *slot & 1) && pages[*pg].gen[*slot] == gen ? 0 : BAD_ARGS;
+}
+
+// The key of a handle copied into dst (a pool slot). BAD_ARGS for a handle that is not a live key.
+static int table_copy(jlong handle, unsigned char *dst) {
+    int pg, slot, err;
+
+    pthread_mutex_lock(&table);
+    err = table_find(handle, &pg, &slot);
+    if (err == 0) memcpy(dst, pages[pg].keys + (size_t) slot * SLOT, KEY);
+    pthread_mutex_unlock(&table);
+    return err;
+}
+
+static int table_free(jlong handle) {
+    int pg, slot, err;
+
+    pthread_mutex_lock(&table);
+    err = table_find(handle, &pg, &slot);
+    if (err == 0) {
+        sodium_memzero(pages[pg].keys + (size_t) slot * SLOT, SLOT);
+        pages[pg].used &= ~(UINT64_C(1) << slot);
+        if (++pages[pg].gen[slot] == 0) pages[pg].gen[slot] = 1;
+        table_count--;
+    }
+    pthread_mutex_unlock(&table);
+    return err;
+}
+
 JNIEXPORT jboolean JNICALL Java_dev_antite_keys_KeyCore_init(JNIEnv *env, jclass cls) {
     (void) env;
     (void) cls;
@@ -178,7 +261,7 @@ JNIEXPORT jboolean JNICALL Java_dev_antite_keys_KeyCore_aesHardware(JNIEnv *env,
 JNIEXPORT jboolean JNICALL Java_dev_antite_keys_KeyCore_memoryLocked(JNIEnv *env, jclass cls) {
     (void) env;
     (void) cls;
-    return pool_locked ? JNI_TRUE : JNI_FALSE;
+    return pool_locked && !table_unlocked ? JNI_TRUE : JNI_FALSE;
 }
 
 static jbyteArray give(JNIEnv *env, const unsigned char *p, size_t n) {
@@ -259,8 +342,9 @@ static int run(int seal, int cipher, int soft, const unsigned char *key, const u
     }
 }
 
-static jbyteArray crypt(JNIEnv *env, int seal, jint cipher, jbyteArray key, jbyteArray nonce, jbyteArray aad,
-                        jbyteArray data, jint off, jint len, jboolean soft) {
+// The key comes from the array, or, when it is null, from the table by handle.
+static jbyteArray crypt(JNIEnv *env, int seal, jint cipher, jbyteArray key, jlong handle, jbyteArray nonce,
+                        jbyteArray aad, jbyteArray data, jint off, jint len, jboolean soft) {
     unsigned char n24[NONCE];
     unsigned char *k = NULL, *a = NULL, *w = NULL;
     size_t aad_n, cap, n;
@@ -268,8 +352,8 @@ static jbyteArray crypt(JNIEnv *env, int seal, jint cipher, jbyteArray key, jbyt
     jbyteArray r = NULL;
     int err = 0;
 
-    if (cipher < AES || cipher > CASCADE || key == NULL || nonce == NULL || aad == NULL || data == NULL ||
-        (*env)->GetArrayLength(env, key) != KEY || (*env)->GetArrayLength(env, nonce) != NONCE || off < 0 ||
+    if (cipher < AES || cipher > CASCADE || nonce == NULL || aad == NULL || data == NULL ||
+        (key != NULL && (*env)->GetArrayLength(env, key) != KEY) || (*env)->GetArrayLength(env, nonce) != NONCE || off < 0 ||
         len < 0 || (jlong) off + len > (*env)->GetArrayLength(env, data) ||
         (*env)->GetArrayLength(env, aad) > MAX_AAD || (seal && (jlong) len + (jlong) over > INT32_MAX)) {
         fail(env, BAD_ARGS, "wrong arguments");
@@ -281,16 +365,17 @@ static jbyteArray crypt(JNIEnv *env, int seal, jint cipher, jbyteArray key, jbyt
     if ((k = slot_take()) == NULL || (a = plain_alloc(aad_n)) == NULL || (w = plain_alloc(cap)) == NULL) {
         err = NO_MEMORY;
     } else {
-        (*env)->GetByteArrayRegion(env, key, 0, KEY, (jbyte *) k);
+        if (key != NULL) (*env)->GetByteArrayRegion(env, key, 0, KEY, (jbyte *) k);
+        else err = table_copy(handle, k);
         (*env)->GetByteArrayRegion(env, nonce, 0, NONCE, (jbyte *) n24);
         (*env)->GetByteArrayRegion(env, aad, 0, (jsize) aad_n, (jbyte *) a);
         (*env)->GetByteArrayRegion(env, data, off, len, (jbyte *) w);
-        if (!(*env)->ExceptionCheck(env)) {
+        if (err == 0 && !(*env)->ExceptionCheck(env)) {
             err = run(seal, cipher, soft == JNI_TRUE, k, n24, a, aad_n, w, &n);
             if (err == 0) r = give(env, w, n);
         }
     }
-    fail(env, err, "the key core has no memory");
+    fail(env, err, err == NO_MEMORY ? "the key core has no memory" : "no such key");
     plain_free(w, cap);
     plain_free(a, aad_n);
     slot_give_back(k);
@@ -301,37 +386,174 @@ JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_seal(JNIEnv *env, jcla
                                                                jbyteArray nonce, jbyteArray aad, jbyteArray data,
                                                                jint off, jint len, jboolean soft) {
     (void) cls;
-    return crypt(env, 1, cipher, key, nonce, aad, data, off, len, soft);
+    if (key == NULL) {
+        fail(env, BAD_ARGS, "no key");
+        return NULL;
+    }
+    return crypt(env, 1, cipher, key, 0, nonce, aad, data, off, len, soft);
 }
 
 JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_open(JNIEnv *env, jclass cls, jint cipher, jbyteArray key,
                                                                jbyteArray nonce, jbyteArray aad, jbyteArray data,
                                                                jint off, jint len, jboolean soft) {
     (void) cls;
-    return crypt(env, 0, cipher, key, nonce, aad, data, off, len, soft);
-}
-
-// Argon2id with any number of lanes: libsodium's own crypto_pwhash fixes them at 1, and passwords set before the
-// core were derived with 2.
-JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_argon2id(JNIEnv *env, jclass cls, jbyteArray password,
-                                                                   jbyteArray salt, jint iterations, jint memoryKib,
-                                                                   jint lanes, jint length) {
-    argon2_context c;
-    unsigned char *p = NULL, *s = NULL, *out = NULL;
-    size_t p_n, s_n;
-    jbyteArray r = NULL;
-    int err = 0, res;
-
-    (void) cls;
-    if (password == NULL || salt == NULL || iterations < 1 || lanes < 1 || lanes > MAX_LANES ||
-        memoryKib < 8 * lanes || length < (jint) ARGON2_MIN_OUTLEN || length > MAX_DERIVED ||
-        (*env)->GetArrayLength(env, salt) < (jint) ARGON2_MIN_SALT_LENGTH) {
-        fail(env, BAD_ARGS, "wrong Argon2id arguments");
+    if (key == NULL) {
+        fail(env, BAD_ARGS, "no key");
         return NULL;
     }
+    return crypt(env, 0, cipher, key, 0, nonce, aad, data, off, len, soft);
+}
+
+JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_sealWith(JNIEnv *env, jclass cls, jint cipher, jlong key,
+                                                                   jbyteArray nonce, jbyteArray aad, jbyteArray data,
+                                                                   jint off, jint len, jboolean soft) {
+    (void) cls;
+    return crypt(env, 1, cipher, NULL, key, nonce, aad, data, off, len, soft);
+}
+
+JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_openWith(JNIEnv *env, jclass cls, jint cipher, jlong key,
+                                                                   jbyteArray nonce, jbyteArray aad, jbyteArray data,
+                                                                   jint off, jint len, jboolean soft) {
+    (void) cls;
+    return crypt(env, 0, cipher, NULL, key, nonce, aad, data, off, len, soft);
+}
+
+// A new random key in the table.
+JNIEXPORT jlong JNICALL Java_dev_antite_keys_KeyCore_keyRandom(JNIEnv *env, jclass cls) {
+    unsigned char *at;
+    jlong h = 0;
+
+    (void) cls;
+    if (table_new(&at, &h) != 0) {
+        fail(env, NO_MEMORY, "the key table is full");
+        return 0;
+    }
+    randombytes_buf(at, KEY);
+    return h;
+}
+
+// A key from outside (the device key store, an old backup) into the table; the given array is wiped.
+JNIEXPORT jlong JNICALL Java_dev_antite_keys_KeyCore_keyImport(JNIEnv *env, jclass cls, jbyteArray raw) {
+    static const unsigned char zero[KEY];
+    unsigned char *at;
+    jlong h = 0;
+
+    (void) cls;
+    if (raw == NULL || (*env)->GetArrayLength(env, raw) != KEY) {
+        fail(env, BAD_ARGS, "a key is 64 bytes");
+        return 0;
+    }
+    if (table_new(&at, &h) != 0) {
+        fail(env, NO_MEMORY, "the key table is full");
+    } else {
+        (*env)->GetByteArrayRegion(env, raw, 0, KEY, (jbyte *) at);
+    }
+    (*env)->SetByteArrayRegion(env, raw, 0, KEY, (const jbyte *) zero);
+    return h;
+}
+
+JNIEXPORT void JNICALL Java_dev_antite_keys_KeyCore_keyFree(JNIEnv *env, jclass cls, jlong key) {
+    (void) cls;
+    if (table_free(key) != 0) fail(env, BAD_ARGS, "no such key");
+}
+
+JNIEXPORT jlong JNICALL Java_dev_antite_keys_KeyCore_keyCount(JNIEnv *env, jclass cls) {
+    long n;
+
+    (void) env;
+    (void) cls;
+    pthread_mutex_lock(&table);
+    n = table_count;
+    pthread_mutex_unlock(&table);
+    return (jlong) n;
+}
+
+// A box of a key under another key, as Ciphers.box makes them: cipher id, a random nonce of 24 bytes, the sealed key.
+// What leaves the core is only ever sealed.
+JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_wrap(JNIEnv *env, jclass cls, jint cipher, jlong wrapping,
+                                                               jlong key, jbyteArray aad) {
+    unsigned char *k = NULL, *w = NULL, *a = NULL, nonce[NONCE];
+    size_t aad_n, n = KEY;
+    jbyteArray r = NULL;
+    int err = 0;
+
+    (void) cls;
+    if (cipher < AES || cipher > CASCADE || aad == NULL || (*env)->GetArrayLength(env, aad) > MAX_AAD) {
+        fail(env, BAD_ARGS, "wrong arguments");
+        return NULL;
+    }
+    aad_n = (size_t) (*env)->GetArrayLength(env, aad);
+    if ((k = slot_take()) == NULL || (w = guarded_alloc(1 + NONCE + KEY + 2 * TAG)) == NULL || (a = plain_alloc(aad_n)) == NULL) {
+        err = NO_MEMORY;
+    } else if ((err = table_copy(wrapping, k)) == 0 && (err = table_copy(key, w + 1 + NONCE)) == 0) {
+        (*env)->GetByteArrayRegion(env, aad, 0, (jsize) aad_n, (jbyte *) a);
+        randombytes_buf(nonce, NONCE);
+        w[0] = (unsigned char) cipher;
+        memcpy(w + 1, nonce, NONCE);
+        err = run(1, cipher, 0, k, nonce, a, aad_n, w + 1 + NONCE, &n);
+        if (err == 0) r = give(env, w, 1 + NONCE + n);
+    }
+    fail(env, err, err == NO_MEMORY ? "the key core has no memory" : "no such key");
+    plain_free(a, aad_n);
+    if (w != NULL) sodium_memzero(w, 1 + NONCE + KEY + 2 * TAG);
+    guarded_free(w);
+    slot_give_back(k);
+    return r;
+}
+
+// A box made by wrap opened straight into the table: the handle of the key in it, or 0 when it does not open under
+// this key.
+JNIEXPORT jlong JNICALL Java_dev_antite_keys_KeyCore_unwrap(JNIEnv *env, jclass cls, jlong wrapping, jbyteArray box,
+                                                            jbyteArray aad) {
+    unsigned char *k = NULL, *w = NULL, *a = NULL, *at, nonce[NONCE];
+    size_t aad_n, box_n, n;
+    jlong h = 0;
+    int err = 0, cipher;
+
+    (void) cls;
+    if (box == NULL || aad == NULL || (*env)->GetArrayLength(env, aad) > MAX_AAD) {
+        fail(env, BAD_ARGS, "wrong arguments");
+        return 0;
+    }
+    box_n = (size_t) (*env)->GetArrayLength(env, box);
+    aad_n = (size_t) (*env)->GetArrayLength(env, aad);
+    // A box of another length or cipher is damage, not a wrong argument.
+    if (box_n != 1 + NONCE + KEY + TAG && box_n != 1 + NONCE + KEY + 2 * TAG) return 0;
+    if ((k = slot_take()) == NULL || (w = guarded_alloc(box_n)) == NULL || (a = plain_alloc(aad_n)) == NULL) {
+        err = NO_MEMORY;
+    } else if ((err = table_copy(wrapping, k)) == 0) {
+        (*env)->GetByteArrayRegion(env, box, 0, (jsize) box_n, (jbyte *) w);
+        (*env)->GetByteArrayRegion(env, aad, 0, (jsize) aad_n, (jbyte *) a);
+        cipher = w[0];
+        memcpy(nonce, w + 1, NONCE);
+        n = box_n - 1 - NONCE;
+        if (cipher < AES || cipher > CASCADE || n != KEY + (cipher == CASCADE ? 2 * TAG : TAG) ||
+            run(0, cipher, 0, k, nonce, a, aad_n, w + 1 + NONCE, &n) != 0 || n != KEY) {
+            err = NOT_OPEN;
+        } else if ((err = table_new(&at, &h)) == 0) {
+            memcpy(at, w + 1 + NONCE, KEY);
+        }
+    }
+    fail(env, err, err == NO_MEMORY ? "the key core has no memory" : "no such key");
+    plain_free(a, aad_n);
+    if (w != NULL) sodium_memzero(w, box_n);
+    guarded_free(w);
+    slot_give_back(k);
+    return err == 0 ? h : 0;
+}
+
+// Argon2id with any number of lanes into out: libsodium's own crypto_pwhash fixes them at 1, and passwords set before
+// the core were derived with 2.
+static int argon2_into(JNIEnv *env, jbyteArray password, jbyteArray salt, jint iterations, jint memoryKib, jint lanes,
+                       unsigned char *out, jint length) {
+    argon2_context c;
+    unsigned char *p = NULL, *s = NULL;
+    size_t p_n, s_n;
+    int err = 0, res;
+
     p_n = (size_t) (*env)->GetArrayLength(env, password);
     s_n = (size_t) (*env)->GetArrayLength(env, salt);
-    if ((p = guarded_alloc(p_n)) == NULL || (s = plain_alloc(s_n)) == NULL || (out = guarded_alloc((size_t) length)) == NULL) {
+    if ((p = guarded_alloc(p_n)) == NULL || (s = plain_alloc(s_n)) == NULL) {
         err = NO_MEMORY;
     } else {
         (*env)->GetByteArrayRegion(env, password, 0, (jsize) p_n, (jbyte *) p);
@@ -349,15 +571,60 @@ JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_argon2id(JNIEnv *env, 
         c.threads = (uint32_t) lanes;
         c.flags = ARGON2_DEFAULT_FLAGS;
         res = argon2_ctx(&c, Argon2_id);
-        if (res == ARGON2_OK) r = give(env, out, (size_t) length);
-        else err = res == ARGON2_MEMORY_ALLOCATION_ERROR ? NO_MEMORY : BAD_ARGS;
+        if (res != ARGON2_OK) err = res == ARGON2_MEMORY_ALLOCATION_ERROR ? NO_MEMORY : BAD_ARGS;
     }
+    plain_free(s, s_n);
+    if (p != NULL) sodium_memzero(p, p_n);
+    guarded_free(p);
+    return err;
+}
+
+static int argon2_args(JNIEnv *env, jbyteArray password, jbyteArray salt, jint iterations, jint memoryKib, jint lanes,
+                       jint length) {
+    if (password == NULL || salt == NULL || iterations < 1 || lanes < 1 || lanes > MAX_LANES ||
+        memoryKib < 8 * lanes || length < (jint) ARGON2_MIN_OUTLEN || length > MAX_DERIVED ||
+        (*env)->GetArrayLength(env, salt) < (jint) ARGON2_MIN_SALT_LENGTH) {
+        fail(env, BAD_ARGS, "wrong Argon2id arguments");
+        return BAD_ARGS;
+    }
+    return 0;
+}
+
+JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_argon2id(JNIEnv *env, jclass cls, jbyteArray password,
+                                                                   jbyteArray salt, jint iterations, jint memoryKib,
+                                                                   jint lanes, jint length) {
+    unsigned char *out = NULL;
+    jbyteArray r = NULL;
+    int err;
+
+    (void) cls;
+    if (argon2_args(env, password, salt, iterations, memoryKib, lanes, length) != 0) return NULL;
+    if ((out = guarded_alloc((size_t) length)) == NULL) err = NO_MEMORY;
+    else err = argon2_into(env, password, salt, iterations, memoryKib, lanes, out, length);
+    if (err == 0) r = give(env, out, (size_t) length);
     fail(env, err, err == NO_MEMORY ? "no memory for Argon2id" : "Argon2id refused its parameters");
     if (out != NULL) sodium_memzero(out, (size_t) length);
     guarded_free(out);
-    plain_free(s, s_n);
-    guarded_free(p);
     return r;
+}
+
+// A 64-byte key from a password, straight into the table.
+JNIEXPORT jlong JNICALL Java_dev_antite_keys_KeyCore_keyDerive(JNIEnv *env, jclass cls, jbyteArray password,
+                                                               jbyteArray salt, jint iterations, jint memoryKib,
+                                                               jint lanes) {
+    unsigned char *at;
+    jlong h = 0;
+    int err;
+
+    (void) cls;
+    if (argon2_args(env, password, salt, iterations, memoryKib, lanes, KEY) != 0) return 0;
+    err = table_new(&at, &h);
+    if (err == 0) {
+        err = argon2_into(env, password, salt, iterations, memoryKib, lanes, at, KEY);
+        if (err != 0) table_free(h);
+    }
+    fail(env, err, err == NO_MEMORY ? "no memory for Argon2id" : "Argon2id refused its parameters");
+    return err == 0 ? h : 0;
 }
 
 // Fills the array through a small buffer on the stack: nothing to allocate, so nothing that can fail and leave it as

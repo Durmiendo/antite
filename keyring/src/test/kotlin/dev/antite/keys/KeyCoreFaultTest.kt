@@ -87,6 +87,41 @@ class KeyCoreFaultTest {
         assertEquals(7, made)
     }
 
+    @Test
+    fun keysInTheTableUnderEveryFailure() {
+        val raw = Ciphers.randomBytes(64)
+        CoreKey.import(raw.copyOf()).use { w ->
+            CoreKey.import(raw.copyOf()).use { k ->
+                val box = k.wrapUnder(w, Cipher256.XCHACHA)
+                val sealed = Ciphers.seal(Cipher256.XCHACHA, k, nonce, aad, plain)
+                everyAllocationFails("seal with a handle") { assertArrayEquals(sealed, Ciphers.seal(Cipher256.XCHACHA, k, nonce, aad, plain)) }
+                everyAllocationFails("wrap") { CoreKey.unwrap(w, k.wrapUnder(w, Cipher256.CASCADE))!!.close() }
+                everyAllocationFails("unwrap") { CoreKey.unwrap(w, box)!!.close() }
+                everyAllocationFails("derive") { CoreKey.derive("pw".toByteArray(), ByteArray(16), KeyRing.KdfParams(1, 64, 2)).close() }
+            }
+        }
+    }
+
+    // A failure leaves no key behind in the table either.
+    @Test
+    fun noKeyLeftAfterFailures() {
+        val before = KeyCore.keyCount()
+        CoreKey.random().use { w ->
+            val box = CoreKey.random().use { it.wrapUnder(w, Cipher256.XCHACHA) }
+            for (n in 1L..12L) {
+                KeyCoreFaults.arm(n)
+                try {
+                    CoreKey.unwrap(w, box)?.close()
+                    CoreKey.derive("pw".toByteArray(), ByteArray(16), KeyRing.KdfParams(1, 64, 2)).close()
+                } catch (e: OutOfMemoryError) {
+                } finally {
+                    KeyCoreFaults.arm(-1)
+                }
+            }
+        }
+        assertEquals(before, KeyCore.keyCount())
+    }
+
     // Random bytes either come or the call throws: never a buffer left as it was.
     @Test
     fun randomNeverLeavesZeros() {
