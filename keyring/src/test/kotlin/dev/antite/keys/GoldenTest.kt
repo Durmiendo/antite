@@ -68,4 +68,14 @@ class GoldenTest {
         val back = BackupCipher.decrypt(ByteArrayInputStream(golden("backup-v2.bin")), "golden".toCharArray(), kdf).use { it.readBytes() }
         assertArrayEquals(ByteArray(1000) { (it % 13).toByte() }, back)
     }
+
+    @Test
+    fun version3BackupsRead() {
+        val kdf = KeyRing.Kdf { p, s, params -> MessageDigest.getInstance("SHA-512").digest(p + s + params.toString().toByteArray()) }
+        for (c in Cipher256.entries) {
+            val g = golden("backup-v3-${c.name.lowercase()}.bin")
+            val back = BackupCipher.decrypt(ByteArrayInputStream(g), "golden".toCharArray(), kdf).use { it.readBytes() }
+            assertArrayEquals(c.name, ByteArray(1000) { (it % 13).toByte() }, back)
+        }
+    }
 }

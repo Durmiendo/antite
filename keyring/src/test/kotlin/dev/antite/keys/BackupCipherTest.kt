@@ -78,7 +78,7 @@ class BackupCipherTest {
 
     @Test
     fun hugeWorkIsRefusedBeforeDerivingTheKey() {
-        for ((offset, value) in listOf(9 to 1000, 13 to 4 * 1024 * 1024, 13 to 0)) {
+        for ((offset, value) in listOf(10 to 1000, 14 to 4 * 1024 * 1024, 14 to 0)) {
             val sealed = seal(byteArrayOf(1, 2, 3), "p")
             ByteBuffer.wrap(sealed).putInt(offset, value)
             asked.clear()
@@ -98,8 +98,33 @@ class BackupCipherTest {
     }
 
     @Test
-    fun newFilesAreVersion2() {
-        assertEquals(2, seal(byteArrayOf(), "p")[8].toInt())
+    fun newFilesAreVersion3InXChaChaByDefault() {
+        val sealed = seal(byteArrayOf(), "p")
+        assertEquals(3, sealed[8].toInt())
+        assertEquals(Cipher256.XCHACHA.id, sealed[9].toInt())
+    }
+
+    @Test
+    fun everyCipherRoundTrips() {
+        val plain = ByteArray(BackupCipher.CHUNK + 5) { (it % 241).toByte() }
+        for (c in Cipher256.entries) {
+            val out = ByteArrayOutputStream()
+            BackupCipher.encrypt(out, "pw".toCharArray(), kdf, c).use { it.write(plain) }
+            val sealed = out.toByteArray()
+            assertEquals(c.id, sealed[9].toInt())
+            assertArrayEquals(c.name, plain, open(sealed, "pw"))
+        }
+    }
+
+    // The cipher byte is under the tag: another cipher named in the header does not open the file.
+    @Test
+    fun swappedCipherIsRejected() {
+        val out = ByteArrayOutputStream()
+        BackupCipher.encrypt(out, "pw".toCharArray(), kdf, Cipher256.CASCADE).use { it.write(byteArrayOf(1, 2, 3)) }
+        for (other in listOf(Cipher256.AES, Cipher256.XCHACHA)) {
+            val sealed = out.toByteArray().also { it[9] = other.id.toByte() }
+            assertThrows(WrongPasswordException::class.java) { open(sealed, "pw") }
+        }
     }
 
     // Written by build 16 (PBKDF2, 1000 rounds); old backups must still open.

@@ -58,7 +58,7 @@ object DataTransfer {
         val files = collect(disk, root).filter { (rel, _) -> !isEngine(rel) }
         val total = files.sumOf { (_, f) -> if (disk.isDirectory(f)) 0L else disk.length(f) }
         var done = 0L
-        ZipOutputStream(BackupCipher.encrypt(out, password, Secure.Argon2)).use { zip ->
+        ZipOutputStream(BackupCipher.encrypt(out, password, Secure.Argon2, Secure.cipher(context))).use { zip ->
             zip.putNextEntry(ZipEntry(MANIFEST))
             zip.write(JSONObject()
                 .put("format", FORMAT)
