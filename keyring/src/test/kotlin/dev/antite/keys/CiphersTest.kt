@@ -22,8 +22,8 @@ class CiphersTest {
                 "ae64c6708c54c216cb96b72e1213b4522f8c9ba40db5d945b11b69b982c1bb9e3f3fac2bc369488f76b2383565d3fff9" +
                 "21f9664c97637da9768812f615c68b13b52e" + "c0875924c1c7987947deafd8780acf49",
         )
-        assertArrayEquals(expected, Ciphers.seal(Cipher256.XCHACHA, key, nonce, aad, plain))
-        assertArrayEquals(plain, Ciphers.open(Cipher256.XCHACHA, key, nonce, aad, expected))
+        assertArrayEquals(expected, sealRaw(Cipher256.XCHACHA, key, nonce, aad, plain))
+        assertArrayEquals(plain, openRaw(Cipher256.XCHACHA, key, nonce, aad, expected))
     }
 
     @Test
@@ -31,15 +31,15 @@ class CiphersTest {
         val key = Ciphers.randomBytes(Cipher256.KEY)
         val plain = Ciphers.randomBytes(1000)
         for (c in Cipher256.entries) {
-            val box = Ciphers.box(c, key, plain, byteArrayOf(7))
+            val box = boxRaw(c, key, plain, byteArrayOf(7))
             assertEquals(c, Ciphers.boxCipher(box))
             assertEquals(1 + 24 + plain.size + c.overhead, box.size)
-            assertArrayEquals(plain, Ciphers.unbox(key, box, byteArrayOf(7)))
-            assertThrows(IOException::class.java) { Ciphers.unbox(key, box, byteArrayOf(8)) }
+            assertArrayEquals(plain, unboxRaw(key, box, byteArrayOf(7)))
+            assertThrows(IOException::class.java) { unboxRaw(key, box, byteArrayOf(8)) }
             val bad = box.copyOf().also { it[30] = (it[30].toInt() xor 1).toByte() }
-            assertThrows(IOException::class.java) { Ciphers.unbox(key, bad, byteArrayOf(7)) }
+            assertThrows(IOException::class.java) { unboxRaw(key, bad, byteArrayOf(7)) }
             val other = key.copyOf().also { it[if (c == Cipher256.AES) 0 else 40] = (it[0] + 1).toByte() }
-            assertThrows(IOException::class.java) { Ciphers.unbox(other, box, byteArrayOf(7)) }
+            assertThrows(IOException::class.java) { unboxRaw(other, box, byteArrayOf(7)) }
         }
     }
 
@@ -47,10 +47,10 @@ class CiphersTest {
     @Test
     fun theCascadeNeedsBothKeys() {
         val key = Ciphers.randomBytes(Cipher256.KEY)
-        val box = Ciphers.box(Cipher256.CASCADE, key, "secret".toByteArray())
+        val box = boxRaw(Cipher256.CASCADE, key, "secret".toByteArray())
         for (half in listOf(0, 40)) {
             val other = key.copyOf().also { it[half] = (it[half] + 1).toByte() }
-            assertThrows(IOException::class.java) { Ciphers.unbox(other, box) }
+            assertThrows(IOException::class.java) { unboxRaw(other, box) }
         }
     }
 }

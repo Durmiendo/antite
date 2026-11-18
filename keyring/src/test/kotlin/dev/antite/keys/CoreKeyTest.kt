@@ -22,7 +22,7 @@ class CoreKeyTest {
             for (c in Cipher256.entries) {
                 val plain = "plain ${c.name}".toByteArray()
                 val sealed = Ciphers.seal(c, k, nonce, aad, plain)
-                assertArrayEquals(c.name, Ciphers.seal(c, copy, nonce, aad, plain), sealed)
+                assertArrayEquals(c.name, sealRaw(c, copy, nonce, aad, plain), sealed)
                 assertArrayEquals(c.name, plain, Ciphers.open(c, k, nonce, aad, sealed))
             }
         }
@@ -33,7 +33,7 @@ class CoreKeyTest {
         val raw = Ciphers.randomBytes(64)
         CoreKey.import(raw.copyOf()).use { k ->
             val box = Ciphers.box(Cipher256.XCHACHA, k, "x".toByteArray(), aad)
-            assertArrayEquals("x".toByteArray(), Ciphers.unbox(raw, box, aad))
+            assertArrayEquals("x".toByteArray(), unboxRaw(raw, box, aad))
         }
     }
 
@@ -76,7 +76,7 @@ class CoreKeyTest {
         val raw = Ciphers.randomBytes(64)
         val wRaw = Ciphers.randomBytes(64)
         CoreKey.import(wRaw.copyOf()).use { w ->
-            CoreKey.import(raw.copyOf()).use { k -> assertArrayEquals(raw, Ciphers.unbox(wRaw, k.wrapUnder(w, Cipher256.CASCADE, aad), aad)) }
+            CoreKey.import(raw.copyOf()).use { k -> assertArrayEquals(raw, unboxRaw(wRaw, k.wrapUnder(w, Cipher256.CASCADE, aad), aad)) }
         }
     }
 
@@ -85,10 +85,11 @@ class CoreKeyTest {
         val pw = "correct horse".toByteArray()
         val salt = "antite-salt-0001".toByteArray()
         val params = KeyRing.KdfParams(1, 1024, 2)
-        val raw = KeyCore.argon2id(pw, salt, params.iterations, params.memoryKib, params.parallelism, 64)
+        // echo -n "correct horse" | argon2 antite-salt-0001 -id -t 1 -k 1024 -p 2 -l 64 -r
+        val raw = "e16513b0b2a2c3228256559f8714fa0786d330bdf53e3cbd39693b15505ed5a99d9681c20aceebdfd9d1dd3118b1ba76f141bc613880a4025a467c19a6a5c8c2".chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         CoreKey.derive(pw, salt, params).use { k ->
             val sealed = Ciphers.seal(Cipher256.XCHACHA, k, nonce, aad, ByteArray(3))
-            assertArrayEquals(Ciphers.seal(Cipher256.XCHACHA, raw, nonce, aad, ByteArray(3)), sealed)
+            assertArrayEquals(sealRaw(Cipher256.XCHACHA, raw, nonce, aad, ByteArray(3)), sealed)
         }
         assertThrows(IllegalArgumentException::class.java) { CoreKey.derive(pw, ByteArray(4), params) }
     }

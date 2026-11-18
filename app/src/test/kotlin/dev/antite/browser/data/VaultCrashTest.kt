@@ -6,20 +6,26 @@ import dev.antite.keys.CrashDevice
 import dev.antite.keys.CrashDisk
 import dev.antite.keys.Crashes
 import dev.antite.keys.KeyRing
+import dev.antite.keys.replace
+import dev.antite.keys.readAll
+import dev.antite.keys.output
+import dev.antite.keys.keyOf
+import dev.antite.keys.VaultFile
+import dev.antite.keys.Ciphers
+import dev.antite.keys.fastKdf
+import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
-import java.security.MessageDigest
 
 // Every step of the secure storage cut short by a kill, a power cut and a torn write: after the restart every file
 // listed opens with what was put in it, and nothing listed before is lost.
 class VaultCrashTest {
     private val files = File("/data/files")
     private val dir = File(files, "vault")
-    private val kdf = KeyRing.Kdf { password, salt, _ -> MessageDigest.getInstance("SHA-512").digest(password + salt) }
+    private val kdf = fastKdf()
     private val content = mapOf(
         "a" to ByteArray(70_000) { (it % 251).toByte() },
         "b" to ByteArray(3_000) { (it % 13).toByte() },
@@ -61,6 +67,40 @@ class VaultCrashTest {
         val known = c.items.map { it.id.toString() }.toSet()
         val stray = d.files().keys.map(::File).filter { it.parentFile == dir && it.name.substringBefore('.') !in known + "index" }
         assertTrue("$where: $stray", stray.isEmpty())
+    }
+
+    private fun ring(d: CrashDisk, device: CrashDevice) = KeyRing(d, File(files, "keys"), device, kdf).apply { if (!exists) create() }
+
+    // An index of version 2 held the file keys themselves: the first open puts them into the core, boxes them and
+    // writes the index again as version 3. A stop anywhere leaves one index or the other, and every file opens.
+    @Test
+    fun aVersion2IndexMovesToBoxedKeys() {
+        val raw = mapOf(1L to Ciphers.randomBytes(Cipher256.KEY), 2L to Ciphers.randomBytes(Cipher256.KEY))
+        val names = mapOf(1L to "a", 2L to "b")
+        Crashes.everywhere(
+            setup = { d ->
+                val device = CrashDevice(d)
+                d.mkdirs(dir)
+                for ((id, k) in raw) {
+                    VaultFile.writer(d.output(File(dir, "$id.enc"), sync = true), Cipher256.XCHACHA, keyOf(k)).use { it.write(content.getValue(names.getValue(id))) }
+                }
+                val items = org.json.JSONArray().apply {
+                    for ((id, n) in names) put(org.json.JSONObject().put("id", id).put("name", n).put("mime", "application/octet-stream")
+                        .put("size", content.getValue(n).size).put("time", 1).put("source", ""))
+                }
+                val json = org.json.JSONObject().put("items", items).put("folders", org.json.JSONArray()).toString().toByteArray()
+                val plain = java.nio.ByteBuffer.allocate(4 + json.size + raw.size * (8 + Cipher256.KEY)).putInt(json.size).put(json)
+                    .apply { raw.forEach { (id, k) -> putLong(id).put(k) } }.array()
+                d.replace(File(dir, "index.box"), Ciphers.box(Cipher256.XCHACHA, ring(d, device).key(KeyRing.VAULT), plain, "antite-vault-index".toByteArray()))
+                device
+            },
+            action = { d, device -> opened(d, device) },
+            check = { d, device, finished, where ->
+                assertHolds(listed(d, device, where), listOf("a", "b"), where)
+                val stored = Ciphers.unbox(ring(d, device).key(KeyRing.VAULT), d.readAll(File(dir, "index.box")), "antite-vault-index".toByteArray())
+                assertFalse(where, VaultIndex.decode(stored).raw)
+            },
+        )
     }
 
     @Test

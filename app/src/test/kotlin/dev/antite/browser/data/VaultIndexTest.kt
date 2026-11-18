@@ -29,13 +29,28 @@ class VaultIndexTest {
     }
 
     @Test
-    fun keysStayOutOfTheJson() {
-        val key = ByteArray(Cipher256.KEY) { 0x41 }
-        val bytes = VaultIndex.encode(items.take(1), emptyList(), mapOf(1L to key))
+    fun boxesStayOutOfTheJson() {
+        val box = ByteArray(1 + 24 + Cipher256.KEY + Cipher256.TAG) { 0x41 }
+        val bytes = VaultIndex.encode(items.take(1), emptyList(), mapOf(1L to box))
         val jsonLength = java.nio.ByteBuffer.wrap(bytes).int
         val json = String(bytes, 4, jsonLength)
         assertFalse(json.contains("AAAAAAAA"))
-        assertEquals(4 + jsonLength + 8 + Cipher256.KEY, bytes.size)
+        assertEquals(4 + jsonLength + 8 + 2 + box.size, bytes.size)
+        val back = VaultIndex.decode(bytes)
+        assertFalse(back.raw)
+        assertTrue(box.contentEquals(back.keys.getValue(1L)))
+    }
+
+    // An index of version 2 held the keys themselves, 64 bytes each after the JSON, and no version in it.
+    @Test
+    fun aVersion2IndexGivesItsRawKeys() {
+        val json = "{\"items\":[{\"id\":1,\"name\":\"a\",\"mime\":\"image/png\",\"size\":1,\"time\":1,\"source\":\"\"}],\"folders\":[]}".toByteArray()
+        val key = ByteArray(Cipher256.KEY) { 7 }
+        val bytes = java.nio.ByteBuffer.allocate(4 + json.size + 8 + Cipher256.KEY).putInt(json.size).put(json).putLong(1).put(key).array()
+        val i = VaultIndex.decode(bytes)
+        assertTrue(i.raw)
+        assertTrue(key.contentEquals(i.keys.getValue(1L)))
+        assertEquals(1, i.items.size)
     }
 
     @Test

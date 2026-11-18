@@ -21,7 +21,7 @@ class HistoryStoreTest {
     val tmp = TemporaryFolder()
 
     private var clock = 1_800_000_000_000L
-    private val domain = Ciphers.randomBytes(Cipher256.KEY)
+    private val domain = dev.antite.keys.CoreKey.random()
     private val keyDir get() = File(tmp.root, "keys")
     private fun keys() = CategoryKeys(RealDisk(tmp.root), keyDir, { op -> op(domain) }) { Cipher256.AES }
     private fun store(k: CategoryKeys = keys()) = HistoryStore(RealDisk(tmp.root), File(tmp.root, "history"), k::key, { Cipher256.XCHACHA }) { clock }

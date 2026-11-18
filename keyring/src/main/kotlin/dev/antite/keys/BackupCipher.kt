@@ -29,17 +29,16 @@ object BackupCipher {
     private const val MAX_ITERATIONS = 2_000_000
     private val MAX_PARAMS = KeyRing.KdfParams(16, 256 * 1024, 8)
 
-    // Version 1 and 2 keys are AES keys of 32 bytes: the AES half of a core key, the XChaCha half left zero and unused.
-    private fun aesOnly(key32: ByteArray, from: Int = 0) = ByteArray(Cipher256.KEY).also { System.arraycopy(key32, from, it, 0, 32) }
-
-    private fun legacyKey(password: CharArray, salt: ByteArray, iterations: Int): ByteArray {
+    // Version 1 keys are AES keys of 32 bytes: the AES half of a core key, the XChaCha half left zero and unused.
+    private fun legacyKey(password: CharArray, salt: ByteArray, iterations: Int): CoreKey {
         val spec = PBEKeySpec(password, salt, iterations, 256)
         val bytes = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
         spec.clearPassword()
-        return aesOnly(bytes).also { bytes.fill(0) }
+        return CoreKey.import(ByteArray(Cipher256.KEY).also { System.arraycopy(bytes, 0, it, 0, 32) }).also { bytes.fill(0) }
     }
 
-    private fun derive(kdf: KeyRing.Kdf, password: CharArray, salt: ByteArray, params: KeyRing.KdfParams): ByteArray {
+    // Version 2 used the first 32 bytes of the derived key for AES: the AES half of the same key in the core.
+    private fun derive(kdf: KeyRing.Kdf, password: CharArray, salt: ByteArray, params: KeyRing.KdfParams): CoreKey {
         val encoded = Charsets.UTF_8.newEncoder().encode(CharBuffer.wrap(password))
         val bytes = ByteArray(encoded.remaining()).also { encoded.get(it) }
         encoded.clear()
@@ -51,22 +50,23 @@ object BackupCipher {
         }
     }
 
-    fun encrypt(out: OutputStream, password: CharArray, kdf: KeyRing.Kdf, cipher: Cipher256 = Cipher256.XCHACHA): OutputStream {
+    fun encrypt(out: OutputStream, password: CharArray, kdf: KeyRing.Kdf, cipher: Cipher256 = Cipher256.XCHACHA): Writer {
         val salt = Ciphers.randomBytes(16)
         val nonceBase = Ciphers.randomBytes(8)
         val p = params
         val header = ByteBuffer.allocate(HEADER_SIZE).put(MAGIC).put(VERSION).put(cipher.id.toByte())
             .putInt(p.iterations).putInt(p.memoryKib).put(p.parallelism.toByte()).put(salt).put(nonceBase).array()
         val key = derive(kdf, password, salt, p)
-        if (key.size != Cipher256.KEY) {
-            key.fill(0)
-            throw IllegalStateException("the key derivation gave ${key.size} bytes, not ${Cipher256.KEY}")
+        try {
+            out.write(header)
+        } catch (e: Throwable) {
+            key.close()
+            throw e
         }
-        out.write(header)
-        return ChunkWriter(out, cipher, key, header, nonceBase)
+        return Writer(out, cipher, key, header, nonceBase)
     }
 
-    fun decrypt(input: InputStream, password: CharArray, kdf: KeyRing.Kdf): InputStream {
+    fun decrypt(input: InputStream, password: CharArray, kdf: KeyRing.Kdf): Reader {
         val data = DataInputStream(input)
         val start = ByteArray(9)
         try {
@@ -98,11 +98,10 @@ object BackupCipher {
             val p = KeyRing.KdfParams(b.getInt(), b.getInt(), b.get().toInt())
             if (p.iterations !in 1..MAX_PARAMS.iterations || p.memoryKib !in 8..MAX_PARAMS.memoryKib ||
                 p.parallelism !in 1..MAX_PARAMS.parallelism) throw IOException("bad header")
-            val derived = derive(kdf, password, ByteArray(16).also { b.get(it) }, p)
-            if (version == VERSION) derived else aesOnly(derived).also { derived.fill(0) }
+            derive(kdf, password, ByteArray(16).also { b.get(it) }, p)
         }
         val nonceBase = ByteArray(8).also { b.get(it) }
-        return ChunkReader(data, cipher, key, header, nonceBase)
+        return Reader(data, cipher, key, header, nonceBase)
     }
 
     // Unique within the file, and the key is the file's own (fresh salt): the base and the chunk number in the 12
@@ -111,10 +110,13 @@ object BackupCipher {
 
     private fun aad(header: ByteArray, last: Boolean) = header + byteArrayOf(if (last) 1 else 0)
 
-    private class ChunkWriter(
+    // A data key carried by the backup is boxed under the backup's key, bound to this file by its header.
+    private fun keyAad(header: ByteArray) = header + "keyring".toByteArray()
+
+    class Writer internal constructor(
         private val out: OutputStream,
         private val cipher: Cipher256,
-        private val key: ByteArray,
+        private val key: CoreKey,
         private val header: ByteArray,
         private val nonceBase: ByteArray,
     ) : OutputStream() {
@@ -149,23 +151,26 @@ object BackupCipher {
 
         override fun flush() = out.flush()
 
+        // A data key for the backup: only its box under the backup's key leaves the core.
+        fun sealKey(k: CoreKey): ByteArray = k.wrapUnder(key, cipher, keyAad(header))
+
         override fun close() {
             if (closed) return
             closed = true
             try {
                 flushChunk(true)
             } finally {
-                key.fill(0)
+                key.close()
                 buf.fill(0)
                 out.close()
             }
         }
     }
 
-    private class ChunkReader(
+    class Reader internal constructor(
         private val data: DataInputStream,
         private val cipher: Cipher256,
-        private val key: ByteArray,
+        private val key: CoreKey,
         private val header: ByteArray,
         private val nonceBase: ByteArray,
     ) : InputStream() {
@@ -197,7 +202,10 @@ object BackupCipher {
         }
 
         private fun open(sealed: ByteArray, nonce: ByteArray, last: Boolean): ByteArray? =
-            KeyCore.open(cipher.id, key, nonce, aad(header, last), sealed, 0, sealed.size, false)
+            KeyCore.openWith(cipher.id, key.handle, nonce, aad(header, last), sealed, 0, sealed.size, false)
+
+        // A data key boxed by Writer.sealKey, straight into the core; null when the box does not belong to this file.
+        fun openKey(box: ByteArray): CoreKey? = CoreKey.unwrap(key, box, keyAad(header))
 
         override fun read(): Int {
             val one = ByteArray(1)
@@ -214,7 +222,7 @@ object BackupCipher {
         }
 
         override fun close() {
-            key.fill(0)
+            key.close()
             chunk.fill(0)
             data.close()
         }

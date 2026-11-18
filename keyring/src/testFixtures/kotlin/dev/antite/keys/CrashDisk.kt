@@ -356,10 +356,10 @@ object Crashes {
 // A stand-in for the Keystore that outlives the process like the real one; making and destroying a key are steps the
 // process may die before.
 class CrashDevice(private val disk: CrashDisk) : KeyRing.DeviceKeys {
-    val keys = HashMap<String, ByteArray>()
+    val keys = HashMap<String, CoreKey>()
 
     override fun wrap(alias: String, plain: ByteArray): ByteArray {
-        val k = keys[alias] ?: Ciphers.randomBytes(64).also {
+        val k = keys[alias] ?: CoreKey.random().also {
             disk.step()
             keys[alias] = it
         }
@@ -372,6 +372,6 @@ class CrashDevice(private val disk: CrashDisk) : KeyRing.DeviceKeys {
     override fun destroy(alias: String) {
         if (alias !in keys) return
         disk.step()
-        keys.remove(alias)
+        keys.remove(alias)?.close()
     }
 }

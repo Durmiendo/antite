@@ -27,8 +27,8 @@ class GoldenTest {
     fun sealIsByteForByte() {
         for (c in Cipher256.entries) {
             val g = golden("seal-${c.name.lowercase()}.bin")
-            assertArrayEquals(c.name, g, Ciphers.seal(c, key, nonce, aad, plain))
-            assertArrayEquals(c.name, plain, Ciphers.open(c, key, nonce, aad, g))
+            assertArrayEquals(c.name, g, sealRaw(c, key, nonce, aad, plain))
+            assertArrayEquals(c.name, plain, openRaw(c, key, nonce, aad, g))
         }
     }
 
@@ -37,7 +37,7 @@ class GoldenTest {
         for (c in Cipher256.entries) {
             val g = golden("box-${c.name.lowercase()}.bin")
             assertEquals(c.id, g[0].toInt())
-            assertArrayEquals(c.name, plain, Ciphers.unbox(key, g, aad))
+            assertArrayEquals(c.name, plain, unboxRaw(key, g, aad))
         }
     }
 
@@ -47,31 +47,31 @@ class GoldenTest {
         for (c in Cipher256.entries) {
             val name = "vaultfile-${c.name.lowercase()}.bin"
             val out = ByteArrayOutputStream()
-            VaultFile.writer(out, c, key).use { it.write(content) }
+            VaultFile.writer(out, c, keyOf(key)).use { it.write(content) }
             assertArrayEquals(c.name, golden(name), out.toByteArray())
             val f = File(tmp.root, name).apply { writeBytes(golden(name)) }
-            assertArrayEquals(c.name, content, VaultFile.Reader(RealDisk(tmp.root), f, key).stream().use { it.readBytes() })
+            assertArrayEquals(c.name, content, VaultFile.Reader(RealDisk(tmp.root), f, keyOf(key)).stream().use { it.readBytes() })
         }
     }
 
     @Test
     fun anOldLogReads() {
         val f = File(tmp.root, "h.log").apply { writeBytes(golden("log-xchacha.bin")) }
-        assertEquals(listOf("r0", "r1", "r2"), EncryptedLog(RealDisk(tmp.root), f, key) { Cipher256.XCHACHA }.read().map { String(it) })
+        assertEquals(listOf("r0", "r1", "r2"), EncryptedLog(RealDisk(tmp.root), f, keyOf(key)) { Cipher256.XCHACHA }.read().map { String(it) })
     }
 
     // The key derivation here is a stand-in for Argon2id, so the file checks the container; Argon2id itself is checked
     // against RFC 9106 where it is implemented.
     @Test
     fun anOldBackupReads() {
-        val kdf = KeyRing.Kdf { p, s, params -> MessageDigest.getInstance("SHA-512").digest(p + s + params.toString().toByteArray()) }
+        val kdf = fastKdf(withParams = true)
         val back = BackupCipher.decrypt(ByteArrayInputStream(golden("backup-v2.bin")), "golden".toCharArray(), kdf).use { it.readBytes() }
         assertArrayEquals(ByteArray(1000) { (it % 13).toByte() }, back)
     }
 
     @Test
     fun version3BackupsRead() {
-        val kdf = KeyRing.Kdf { p, s, params -> MessageDigest.getInstance("SHA-512").digest(p + s + params.toString().toByteArray()) }
+        val kdf = fastKdf(withParams = true)
         for (c in Cipher256.entries) {
             val g = golden("backup-v3-${c.name.lowercase()}.bin")
             val back = BackupCipher.decrypt(ByteArrayInputStream(g), "golden".toCharArray(), kdf).use { it.readBytes() }

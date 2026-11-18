@@ -10,8 +10,7 @@ import dev.antite.browser.Urls
 import dev.antite.engine.Address
 import dev.antite.engine.Card
 import dev.antite.engine.Login
-import dev.antite.keys.Cipher256
-import dev.antite.keys.Ciphers
+import dev.antite.keys.CoreKey
 import dev.antite.keys.KeyRing
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -57,31 +56,6 @@ class Vault private constructor(private val context: Context) : SQLiteOpenHelper
         private fun newGuid() = "{${UUID.randomUUID()}}"
 
         val SECRET_COLUMNS = listOf("logins" to "password", "addresses" to "data", "cards" to "number")
-        private val AAD = "antite-secret".toByteArray()
-
-        // A value of the version before the key ring: base64 of the IV length (always 12), the IV, the sealed bytes.
-        private fun isLegacy(raw: ByteArray) = raw.isNotEmpty() && raw[0].toInt() == 12
-
-        fun seal(key: ByteArray, cipher: Cipher256, plain: String): String {
-            val bytes = plain.toByteArray(Charsets.UTF_8)
-            try {
-                return Base64.encodeToString(Ciphers.box(cipher, key, bytes, AAD), Base64.NO_WRAP)
-            } finally {
-                bytes.fill(0)
-            }
-        }
-
-        fun open(key: ByteArray, stored: String): String {
-            val raw = Base64.decode(stored, Base64.NO_WRAP)
-            if (isLegacy(raw)) return Crypto.decrypt(stored) ?: throw IOException("legacy value unreadable")
-            val plain = Ciphers.unbox(key, raw, AAD)
-            try {
-                return String(plain, Charsets.UTF_8)
-            } finally {
-                plain.fill(0)
-            }
-        }
-
         private val ADDRESS_KEYS = listOf(
             "name", "givenName", "additionalName", "familyName", "organization", "streetAddress",
             "addressLevel1", "addressLevel2", "addressLevel3", "postalCode", "country", "tel", "email",
@@ -102,12 +76,12 @@ class Vault private constructor(private val context: Context) : SQLiteOpenHelper
     private fun key() {
         ring.key(KeyRing.SECRETS)
         if (ready) return
-        ring.recover(KeyRing.SECRETS) { k -> firstValue()?.let { v -> runCatching { open(k, v) }.isSuccess } ?: true }
+        ring.recover(KeyRing.SECRETS) { k -> firstValue()?.let { v -> runCatching { SecretBox.open(k, v) }.isSuccess } ?: true }
         var left = 0
         ring.withKey(KeyRing.SECRETS) { k ->
             rewrite { v ->
-                if (!isLegacy(Base64.decode(v, Base64.NO_WRAP))) null
-                else runCatching { seal(k, cipher(), open(k, v)) }.getOrNull().also { if (it == null) left++ }
+                if (!SecretBox.isLegacy(Base64.decode(v, Base64.NO_WRAP))) null
+                else runCatching { SecretBox.seal(k, cipher(), SecretBox.open(k, v)) }.getOrNull().also { if (it == null) left++ }
             }
         }
         if (left == 0) Secure.legacyMoved(context, "secrets")
@@ -148,26 +122,26 @@ class Vault private constructor(private val context: Context) : SQLiteOpenHelper
     // After a delete or a change: everything is sealed again under a new key and the old key is destroyed.
     private fun forget() {
         key()
-        ring.rotate(KeyRing.SECRETS) { old, fresh -> rewrite { v -> seal(fresh, cipher(), open(old, v)) } }
+        ring.rotate(KeyRing.SECRETS) { old, fresh -> rewrite { v -> SecretBox.seal(fresh, cipher(), SecretBox.open(old, v)) } }
     }
 
     // A new cipher setting: values are sealed again, under a new key as well.
     fun recrypt() = forget()
 
     // The key is used under the ring's hold, so leaving the app cannot wipe it half way.
-    private fun <R> withKey(block: (ByteArray) -> R): R {
+    private fun <R> withKey(block: (CoreKey) -> R): R {
         key()
         return ring.withKey(KeyRing.SECRETS, block)
     }
 
-    private fun encrypt(plain: String) = withKey { seal(it, cipher(), plain) }
+    private fun encrypt(plain: String) = withKey { SecretBox.seal(it, cipher(), plain) }
 
     private fun decrypt(stored: String?): String? {
         if (stored == null) return null
         // A locked ring throws here, out of the catch below: the caller asks for the password.
         key()
         return try {
-            ring.withKey(KeyRing.SECRETS) { open(it, stored) }
+            ring.withKey(KeyRing.SECRETS) { SecretBox.open(it, stored) }
         } catch (e: IOException) {
             android.util.Log.w("Antite", "secret unreadable", e)
             null

@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import dev.antite.keys.Cipher256
+import dev.antite.keys.CoreKey
 import dev.antite.keys.Disk
 import dev.antite.keys.KeyCore
 import dev.antite.keys.KeyRing
@@ -97,9 +98,8 @@ object Secure {
         override fun destroy(alias: String) = store().deleteEntry(alias)
     }
 
-    // The password goes in through a direct buffer that is zeroed here; the library keeps no copy of it.
+    // The derived key goes straight into the key core; the password is copied into guarded memory there and wiped.
     object Argon2 : KeyRing.Kdf {
-        override fun derive(password: ByteArray, salt: ByteArray, params: KeyRing.KdfParams): ByteArray =
-            KeyCore.argon2id(password, salt, params.iterations, params.memoryKib, params.parallelism, Cipher256.KEY)
+        override fun derive(password: ByteArray, salt: ByteArray, params: KeyRing.KdfParams): CoreKey = CoreKey.derive(password, salt, params)
     }
 }

@@ -40,14 +40,14 @@ object VaultFile {
 
     fun head(disk: Disk, file: File): Head = disk.open(file, Disk.Open.READ).use { h -> ByteArray(HEADER).also { h.readFully(0, it) }.let(::head) }
 
-    // The key of a version 1 file, as a 64-byte key of this format. unwrap opens the old device-wrapped form.
-    fun v1Key(head: Head, unwrap: (ByteArray) -> ByteArray): ByteArray {
+    // The key of a version 1 file, as a key of this format in the core. unwrap opens the old device-wrapped form.
+    fun v1Key(head: Head, unwrap: (ByteArray) -> ByteArray): CoreKey {
         val k = when (head.v1Form) {
             V1_KEY_DEVICE -> unwrap(head.v1Blob)
             V1_KEY_OPEN -> head.v1Blob
             else -> throw IOException("unknown key form ${head.v1Form}")
         }
-        return k.copyOf(Cipher256.KEY).also { k.fill(0) }
+        return CoreKey.import(k.copyOf(Cipher256.KEY).also { k.fill(0) })
     }
 
     // A version 1 file becomes a version 2 one: its chunks are already AES under the same key and nonces.
@@ -65,8 +65,8 @@ object VaultFile {
     private fun aad(index: Long, last: Boolean) =
         ByteBuffer.allocate(14).put(MAGIC).put(1).putLong(index).put(if (last) 1 else 0).array()
 
-    // Encrypts what is written; the file is complete only after close(). The key is the caller's to wipe.
-    fun writer(out: OutputStream, cipher: Cipher256, key: ByteArray): OutputStream {
+    // Encrypts what is written; the file is complete only after close(), which closes the key too.
+    fun writer(out: OutputStream, cipher: Cipher256, key: CoreKey): OutputStream {
         out.write(header(cipher))
         return object : OutputStream() {
             private val buf = ByteArray(CHUNK)
@@ -101,9 +101,13 @@ object VaultFile {
             override fun close() {
                 if (closed) return
                 closed = true
-                flushChunk(true)
-                buf.fill(0)
-                out.close()
+                try {
+                    flushChunk(true)
+                } finally {
+                    buf.fill(0)
+                    key.close()
+                    out.close()
+                }
             }
         }
     }
@@ -117,10 +121,14 @@ object VaultFile {
         return body - chunks * tag
     }
 
-    // Reads with a copy of the key, wiped on close().
-    class Reader(disk: Disk, file: File, key: ByteArray) : Closeable {
-        private val raf = disk.open(file, Disk.Open.READ)
-        private val key = key.copyOf()
+    // Reads with the given key, which close() closes.
+    class Reader(disk: Disk, file: File, private val key: CoreKey) : Closeable {
+        private val raf = try {
+            disk.open(file, Disk.Open.READ)
+        } catch (e: Throwable) {
+            key.close()
+            throw e
+        }
         private val cipher: Cipher256
         val length: Long
         private val chunks: Long
@@ -185,7 +193,7 @@ object VaultFile {
 
         @Synchronized
         override fun close() {
-            key.fill(0)
+            key.close()
             plain.fill(0)
             raf.close()
         }

@@ -7,13 +7,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
-import java.security.MessageDigest
 
 // Every operation of every store, cut short before each of its steps on the disk, by a kill, a power cut and a torn
 // write: what comes back is the old state or the new one, never damaged and never lost.
 class CrashTest {
     private val dir = File("/data/files/keys")
-    private val kdf = KeyRing.Kdf { password, salt, _ -> MessageDigest.getInstance("SHA-512").digest(password + salt) }
+    private val kdf = fastKdf()
     private fun pw(s: String) = s.toByteArray()
 
     private class Ring(val device: CrashDevice, val keys: Map<String, ByteArray>)
@@ -23,7 +22,7 @@ class CrashTest {
     private fun ringIn(d: CrashDisk, mode: KeyRing.Mode, password: String?): Ring {
         val device = CrashDevice(d)
         val r = ring(d, device).apply { create() }
-        val keys = KeyRing.DOMAINS.associateWith { r.key(it).copyOf() }
+        val keys = KeyRing.DOMAINS.associateWith { r.key(it).print() }
         if (mode != KeyRing.Mode.DEVICE) r.setMode(mode, pw(password!!))
         return Ring(device, keys)
     }
@@ -37,7 +36,7 @@ class CrashTest {
     }
 
     private fun assertKeys(r: KeyRing, keys: Map<String, ByteArray>, where: String) {
-        for ((d, k) in keys) assertArrayEquals("$where: $d", k, r.key(d))
+        for ((d, k) in keys) assertArrayEquals("$where: $d", k, r.key(d).print())
     }
 
     @Test
@@ -101,30 +100,31 @@ class CrashTest {
         setup = { d ->
             val s = ringIn(d, KeyRing.Mode.DEVICE, null)
             d.mkdirs(data.parentFile)
-            d.replace(data, Ciphers.box(Cipher256.XCHACHA, s.keys.getValue(KeyRing.VAULT), payload))
+            d.replace(data, Ciphers.box(Cipher256.XCHACHA, ring(d, s.device).key(KeyRing.VAULT), payload))
             s
         },
         action = { d, s -> ring(d, s.device).rotate(KeyRing.VAULT) { _, fresh -> d.replace(data, Ciphers.box(Cipher256.XCHACHA, fresh, payload)) } },
         check = { d, s, finished, where ->
             val r = ring(d, s.device)
-            val opens = { k: ByteArray -> runCatching { Ciphers.unbox(k, d.readAll(data)) }.isSuccess }
+            val opens = { k: CoreKey -> runCatching { Ciphers.unbox(k, d.readAll(data)) }.isSuccess }
             r.recover(KeyRing.VAULT, opens)
             assertFalse(where, r.recovering)
             val k = r.key(KeyRing.VAULT)
             assertArrayEquals(where, payload, Ciphers.unbox(k, d.readAll(data)))
-            if (finished) assertFalse(where, k.contentEquals(s.keys.getValue(KeyRing.VAULT)))
+            if (finished) assertFalse(where, k.print().contentEquals(s.keys.getValue(KeyRing.VAULT)))
             assertNoLeftovers(d, where)
         },
     )
 
     @Test
     fun install() {
-        val incoming = Ciphers.randomBytes(Cipher256.KEY)
+        val incomingRaw = Ciphers.randomBytes(Cipher256.KEY)
+        val incoming = keyOf(incomingRaw).use { it.print() }
         Crashes.everywhere(
             setup = { d -> ringIn(d, KeyRing.Mode.DEVICE, null) },
-            action = { d, s -> ring(d, s.device).install(KeyRing.SECRETS, incoming.copyOf()) },
+            action = { d, s -> ring(d, s.device).install(KeyRing.SECRETS, keyOf(incomingRaw)) },
             check = { d, s, finished, where ->
-                val k = ring(d, s.device).key(KeyRing.SECRETS)
+                val k = ring(d, s.device).key(KeyRing.SECRETS).print()
                 if (finished) assertArrayEquals(where, incoming, k)
                 else assertTrue(where, k.contentEquals(incoming) || k.contentEquals(s.keys.getValue(KeyRing.SECRETS)))
             },
@@ -133,10 +133,10 @@ class CrashTest {
 
     private val history = File("/data/files/history")
     private val historyKeys = File(history, "keys")
-    private val domain = ByteArray(Cipher256.KEY) { it.toByte() }
+    private val domain = keyOf(ByteArray(Cipher256.KEY) { it.toByte() })
 
     private fun categoryKeys(d: CrashDisk) = CategoryKeys(d, historyKeys, { op -> op(domain) }) { Cipher256.XCHACHA }
-    private fun log(d: CrashDisk, key: ByteArray) = EncryptedLog(d, File(history, "a.log"), key) { Cipher256.XCHACHA }
+    private fun log(d: CrashDisk, key: CoreKey) = EncryptedLog(d, File(history, "a.log"), key) { Cipher256.XCHACHA }
     private fun texts(l: EncryptedLog) = l.read().map { String(it) }
 
     @Test
@@ -151,7 +151,7 @@ class CrashTest {
         },
     )
 
-    private fun withLog(records: List<String>): (CrashDisk) -> ByteArray = { d ->
+    private fun withLog(records: List<String>): (CrashDisk) -> CoreKey = { d ->
         val k = categoryKeys(d).key("a")
         log(d, k).apply { read(); appendAll(records.map { it.toByteArray() }) }
         k
@@ -183,12 +183,12 @@ class CrashTest {
 
     @Test
     fun forgettingACategory() = Crashes.everywhere(
-        setup = { d -> categoryKeys(d).key("a").copyOf() },
+        setup = { d -> categoryKeys(d).key("a").print() },
         action = { d, _ -> categoryKeys(d).forget("a") },
         check = { d, k, finished, where ->
             val f = File(historyKeys, "category-a.key")
             if (finished) assertFalse(where, d.exists(f))
-            else if (d.exists(f)) assertArrayEquals(where, k, categoryKeys(d).key("a"))
+            else if (d.exists(f)) assertArrayEquals(where, k, categoryKeys(d).key("a").print())
         },
     )
 
@@ -197,13 +197,13 @@ class CrashTest {
     private val fileKey = ByteArray(Cipher256.KEY) { (it * 3).toByte() }
     private val content = ByteArray(VaultFile.CHUNK + 777) { (it % 253).toByte() }
 
-    private fun readVault(d: CrashDisk) = VaultFile.Reader(d, vaultFile, fileKey).stream().use { it.readBytes() }
+    private fun readVault(d: CrashDisk) = VaultFile.Reader(d, vaultFile, keyOf(fileKey)).stream().use { it.readBytes() }
 
     @Test
     fun aVaultFileWrittenAsideAndRenamed() = Crashes.everywhere(
         setup = { d -> d.mkdirs(vaultFile.parentFile) },
         action = { d, _ ->
-            VaultFile.writer(d.output(tmpVaultFile, sync = true), Cipher256.XCHACHA, fileKey).use { it.write(content) }
+            VaultFile.writer(d.output(tmpVaultFile, sync = true), Cipher256.XCHACHA, keyOf(fileKey)).use { it.write(content) }
             d.renameDurably(tmpVaultFile, vaultFile)
         },
         check = { d, _, finished, where ->
@@ -215,7 +215,7 @@ class CrashTest {
     fun wipingAVaultFile() = Crashes.everywhere(
         setup = { d ->
             d.mkdirs(vaultFile.parentFile)
-            VaultFile.writer(d.output(vaultFile, sync = true), Cipher256.XCHACHA, fileKey).use { it.write(content) }
+            VaultFile.writer(d.output(vaultFile, sync = true), Cipher256.XCHACHA, keyOf(fileKey)).use { it.write(content) }
         },
         action = { d, _ -> VaultFile.wipe(d, vaultFile) },
         check = { d, _, finished, where ->
@@ -228,7 +228,7 @@ class CrashTest {
         setup = { d ->
             val device = CrashDevice(d)
             val r = KeyRing(d, dir, device, kdf, cipher = { Cipher256.AES }).apply { create() }
-            val keys = KeyRing.DOMAINS.associateWith { r.key(it).copyOf() }
+            val keys = KeyRing.DOMAINS.associateWith { r.key(it).print() }
             r.setMode(mode, pw("pw"))
             assertTrue(KeyRing(d, dir, device, kdf).apply { unlock(pw("pw")) }.needsRewrap())
             Ring(device, keys)
@@ -257,12 +257,12 @@ class CrashTest {
     fun rewrapCategoryKeys() = Crashes.everywhere(
         setup = { d ->
             val old = CategoryKeys(d, historyKeys, { op -> op(domain) }) { Cipher256.AES }
-            listOf("a", "b", "c").associateWith { old.key(it).copyOf() }
+            listOf("a", "b", "c").associateWith { old.key(it).print() }
         },
         action = { d, _ -> categoryKeys(d).rewrap() },
         check = { d, keys, finished, where ->
             val k = categoryKeys(d)
-            for ((name, key) in keys) assertArrayEquals("$where: $name", key, k.key(name))
+            for ((name, key) in keys) assertArrayEquals("$where: $name", key, k.key(name).print())
             if (finished) assertFalse(where, k.needsRewrap())
         },
     )

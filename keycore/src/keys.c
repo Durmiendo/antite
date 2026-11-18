@@ -90,24 +90,6 @@ static int argon2_args(JNIEnv *env, jbyteArray password, jbyteArray salt, jint i
     return 0;
 }
 
-JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_argon2id(JNIEnv *env, jclass cls, jbyteArray password,
-                                                                   jbyteArray salt, jint iterations, jint memoryKib,
-                                                                   jint lanes, jint length) {
-    unsigned char *out = NULL;
-    jbyteArray r = NULL;
-    int err;
-
-    (void) cls;
-    if (argon2_args(env, password, salt, iterations, memoryKib, lanes, length) != 0) return NULL;
-    if ((out = guarded_alloc((size_t) length)) == NULL) err = NO_MEMORY;
-    else err = argon2_into(env, password, salt, iterations, memoryKib, lanes, out, length);
-    if (err == 0) r = give(env, out, (size_t) length);
-    fail(env, err, err == NO_MEMORY ? "no memory for Argon2id" : "Argon2id refused its parameters");
-    if (out != NULL) sodium_memzero(out, (size_t) length);
-    guarded_free(out);
-    return r;
-}
-
 // A 64-byte key from a password, straight into the table.
 JNIEXPORT jlong JNICALL Java_dev_antite_keys_KeyCore_keyDerive(JNIEnv *env, jclass cls, jbyteArray password,
                                                                jbyteArray salt, jint iterations, jint memoryKib,

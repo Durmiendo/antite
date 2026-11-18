@@ -22,32 +22,16 @@ enum class Cipher256(val id: Int) {
 object Ciphers {
     fun randomBytes(n: Int) = ByteArray(n).also { KeyCore.random(it) }
 
-    // Seals one piece. The nonce is 24 bytes; AES uses its first 12, which callers keep unique for the key.
-    fun seal(cipher: Cipher256, key: ByteArray, nonce24: ByteArray, aad: ByteArray, data: ByteArray, off: Int = 0, len: Int = data.size): ByteArray =
-        KeyCore.seal(cipher.id, key, nonce24, aad, data, off, len, false)
+    // Seals one piece. The nonce is 24 bytes; AES uses its first 12, which callers keep unique for the key. soft takes
+    // the software AES even where the processor has AES instructions (to check that both write the same bytes).
+    fun seal(cipher: Cipher256, key: CoreKey, nonce24: ByteArray, aad: ByteArray, data: ByteArray, off: Int = 0, len: Int = data.size, soft: Boolean = false): ByteArray =
+        KeyCore.sealWith(cipher.id, key.handle, nonce24, aad, data, off, len, soft)
 
-    fun open(cipher: Cipher256, key: ByteArray, nonce24: ByteArray, aad: ByteArray, data: ByteArray, off: Int = 0, len: Int = data.size): ByteArray =
-        KeyCore.open(cipher.id, key, nonce24, aad, data, off, len, false) ?: throw IOException("damaged or not for this key")
+    fun open(cipher: Cipher256, key: CoreKey, nonce24: ByteArray, aad: ByteArray, data: ByteArray, off: Int = 0, len: Int = data.size, soft: Boolean = false): ByteArray =
+        KeyCore.openWith(cipher.id, key.handle, nonce24, aad, data, off, len, soft) ?: throw IOException("damaged or not for this key")
 
     // A small self-contained box for a long-lived key: cipher id, a random nonce, the sealed bytes. Random nonces
     // are safe here: 24 bytes for XChaCha, and AES boxes under one key stay far below the 2^32 limit.
-    fun box(cipher: Cipher256, key: ByteArray, plain: ByteArray, aad: ByteArray = ByteArray(0)): ByteArray {
-        val nonce = randomBytes(24)
-        val body = seal(cipher, key, nonce, aad, plain)
-        return ByteBuffer.allocate(1 + 24 + body.size).put(cipher.id.toByte()).put(nonce).put(body).array()
-    }
-
-    fun unbox(key: ByteArray, boxed: ByteArray, aad: ByteArray = ByteArray(0)): ByteArray {
-        if (boxed.size < 1 + 24 + Cipher256.TAG) throw IOException("box too short")
-        return open(Cipher256.of(boxed[0].toInt()), key, boxed.copyOfRange(1, 25), aad, boxed, 25, boxed.size - 25)
-    }
-
-    fun seal(cipher: Cipher256, key: CoreKey, nonce24: ByteArray, aad: ByteArray, data: ByteArray, off: Int = 0, len: Int = data.size): ByteArray =
-        KeyCore.sealWith(cipher.id, key.handle, nonce24, aad, data, off, len, false)
-
-    fun open(cipher: Cipher256, key: CoreKey, nonce24: ByteArray, aad: ByteArray, data: ByteArray, off: Int = 0, len: Int = data.size): ByteArray =
-        KeyCore.openWith(cipher.id, key.handle, nonce24, aad, data, off, len, false) ?: throw IOException("damaged or not for this key")
-
     fun box(cipher: Cipher256, key: CoreKey, plain: ByteArray, aad: ByteArray = ByteArray(0)): ByteArray {
         val nonce = randomBytes(24)
         val body = seal(cipher, key, nonce, aad, plain)

@@ -12,17 +12,18 @@ class KeyCoreTest {
     private fun golden(name: String) = javaClass.getResourceAsStream("/golden/$name")!!.use { it.readBytes() }
 
     // From the reference implementation (the PHC argon2 tool): echo -n "correct horse" | argon2 antite-salt-0001 -id
-    // -t T -k M -p P -l L -r. The first one is the key ring's default.
+    // -t T -k M -p P -l 64 -r. The first one is the key ring's default. The derived key never leaves the core, so it is
+    // compared by what it seals with what the expected bytes seal.
     @Test
     fun argon2idMatchesTheReference() {
         val cases = listOf(
-            listOf(3, 65536, 2, 64) to "1a7f6cec4175818a0ec19bfa8d6d5608f49e59e41a13695c3d02b57e4a3e44eb0718a36da8798088545b4198d1f7c49fd5e5092467b837c80931bb335209070f",
-            listOf(1, 8192, 1, 32) to "5bce74d955413cba7a9f92cdfe4b262a4d9e3afdaf6b12fb07a8bb845e51f6c7",
-            listOf(2, 1024, 4, 64) to "f4a7ee709edec46d243db8d3eabc25cc40e551199739fec82792a59be9915e82d4f41b53492471349c5d7fdd8fa7c29299f30bf6b196dda827a4e20cc8a53a63",
+            KeyRing.KdfParams(3, 65536, 2) to "1a7f6cec4175818a0ec19bfa8d6d5608f49e59e41a13695c3d02b57e4a3e44eb0718a36da8798088545b4198d1f7c49fd5e5092467b837c80931bb335209070f",
+            KeyRing.KdfParams(1, 8192, 1) to "fd06bf65d1a2c66a2f3c7ee8baa4b9fd3e27782e3d0fe1cfb5e213f721d69e83f4b5a7cdfb0b6502e2e41293be536bdcd35be760991c8faa434b77315a5c12b5",
+            KeyRing.KdfParams(2, 1024, 4) to "f4a7ee709edec46d243db8d3eabc25cc40e551199739fec82792a59be9915e82d4f41b53492471349c5d7fdd8fa7c29299f30bf6b196dda827a4e20cc8a53a63",
         )
         for ((p, expected) in cases) {
-            val got = KeyCore.argon2id("correct horse".toByteArray(), "antite-salt-0001".toByteArray(), p[0], p[1], p[2], p[3])
-            assertArrayEquals(p.toString(), hex(expected), got)
+            val got = CoreKey.derive("correct horse".toByteArray(), "antite-salt-0001".toByteArray(), p).use { it.print() }
+            assertArrayEquals(p.toString(), keyOf(hex(expected)).use { it.print() }, got)
         }
     }
 
@@ -35,10 +36,10 @@ class KeyCoreTest {
         val plain = "Antite golden 1".toByteArray()
         for (c in listOf(Cipher256.AES, Cipher256.CASCADE)) {
             val g = golden("seal-${c.name.lowercase()}.bin")
-            assertArrayEquals(c.name, g, KeyCore.seal(c.id, key, nonce, aad, plain, 0, plain.size, true))
-            assertArrayEquals(c.name, plain, KeyCore.open(c.id, key, nonce, aad, g, 0, g.size, true))
+            assertArrayEquals(c.name, g, sealRaw(c, key, nonce, aad, plain, soft = true))
+            assertArrayEquals(c.name, plain, openRaw(c, key, nonce, aad, g, soft = true))
             val bad = g.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() }
-            assertNull(c.name, KeyCore.open(c.id, key, nonce, aad, bad, 0, bad.size, true))
+            assertNull(c.name, openRaw(c, key, nonce, aad, bad, soft = true))
         }
     }
 
@@ -52,34 +53,43 @@ class KeyCoreTest {
         val expected = hex("522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662" +
             "76fc6ece0f4e1768cddf8853bb2d551b")
         for (soft in listOf(false, true)) {
-            assertArrayEquals("soft=$soft", expected, KeyCore.seal(Cipher256.AES.id, key, nonce, aad, plain, 0, plain.size, soft))
+            assertArrayEquals("soft=$soft", expected, sealRaw(Cipher256.AES, key, nonce, aad, plain, soft))
         }
     }
 
     @Test
     fun wrongArgumentsThrow() {
         val x = Cipher256.XCHACHA.id
+        val k = CoreKey.random()
+        val h = k.handle
+        val gone = CoreKey.random().let { val g = it.handle; it.close(); g }
         val wrong = listOf<() -> Unit>(
-            { KeyCore.seal(x, ByteArray(32), ByteArray(24), ByteArray(0), ByteArray(4), 0, 4, false) },
-            { KeyCore.seal(x, ByteArray(64), ByteArray(12), ByteArray(0), ByteArray(4), 0, 4, false) },
-            { KeyCore.seal(x, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(4), 2, 4, false) },
-            { KeyCore.seal(x, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(4), -1, 2, false) },
-            { KeyCore.seal(x, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(4), 2, Int.MAX_VALUE, false) },
-            { KeyCore.open(9, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(40), 0, 40, false) },
-            { KeyCore.argon2id(ByteArray(4), ByteArray(4), 1, 64, 1, 32) },
-            { KeyCore.argon2id(ByteArray(4), ByteArray(16), 0, 64, 1, 32) },
-            { KeyCore.argon2id(ByteArray(4), ByteArray(16), 1, 64, 1, 8) },
-            { KeyCore.argon2id(ByteArray(4), ByteArray(16), 1, 64, 1, Int.MAX_VALUE) },
-            { KeyCore.argon2id(ByteArray(4), ByteArray(16), 1, 4, 1, 32) },
-            { KeyCore.argon2id(ByteArray(4), ByteArray(16), 1, 1024, 1000, 32) },
+            { KeyCore.sealWith(x, 0, ByteArray(24), ByteArray(0), ByteArray(4), 0, 4, false) },
+            { KeyCore.sealWith(x, gone, ByteArray(24), ByteArray(0), ByteArray(4), 0, 4, false) },
+            { KeyCore.sealWith(x, h, ByteArray(12), ByteArray(0), ByteArray(4), 0, 4, false) },
+            { KeyCore.sealWith(x, h, ByteArray(24), ByteArray(0), ByteArray(4), 2, 4, false) },
+            { KeyCore.sealWith(x, h, ByteArray(24), ByteArray(0), ByteArray(4), -1, 2, false) },
+            { KeyCore.sealWith(x, h, ByteArray(24), ByteArray(0), ByteArray(4), 2, Int.MAX_VALUE, false) },
+            { KeyCore.openWith(9, h, ByteArray(24), ByteArray(0), ByteArray(40), 0, 40, false) },
+            { KeyCore.wrap(9, h, h, ByteArray(0)) },
+            { KeyCore.wrap(x, h, gone, ByteArray(0)) },
+            { KeyCore.unwrap(gone, ByteArray(1 + 24 + 64 + 16), ByteArray(0)) },
+            { KeyCore.keyImport(ByteArray(32)) },
+            { KeyCore.keyDerive(ByteArray(4), ByteArray(4), 1, 64, 1) },
+            { KeyCore.keyDerive(ByteArray(4), ByteArray(16), 0, 64, 1) },
+            { KeyCore.keyDerive(ByteArray(4), ByteArray(16), 1, 4, 1) },
+            { KeyCore.keyDerive(ByteArray(4), ByteArray(16), 1, 1024, 1000) },
         )
         for ((i, call) in wrong.withIndex()) assertThrows("case $i", IllegalArgumentException::class.java) { call() }
+        k.close()
     }
 
     // Too short to have been sealed is damage, not a wrong argument.
     @Test
     fun tooShortDoesNotOpen() {
-        for (c in Cipher256.entries) assertNull(c.name, KeyCore.open(c.id, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(20), 0, 20, false))
+        CoreKey.random().use { k ->
+            for (c in Cipher256.entries) assertNull(c.name, KeyCore.openWith(c.id, k.handle, ByteArray(24), ByteArray(0), ByteArray(20), 0, 20, false))
+        }
     }
 
     @Test
@@ -97,20 +107,21 @@ class KeyCoreTest {
 
     @Test
     fun manyThreadsAtOnce() {
-        val key = ByteArray(64) { it.toByte() }
+        val key = CoreKey.random()
         val errors = java.util.concurrent.atomic.AtomicInteger()
         val threads = List(100) { t ->
             Thread {
                 repeat(200) {
                     val plain = ByteArray(t + it)
                     val nonce = ByteArray(24).also { n -> n[0] = t.toByte(); n[1] = it.toByte() }
-                    val sealed = KeyCore.seal(Cipher256.CASCADE.id, key, nonce, ByteArray(0), plain, 0, plain.size, false)
-                    if (!plain.contentEquals(KeyCore.open(Cipher256.CASCADE.id, key, nonce, ByteArray(0), sealed, 0, sealed.size, false))) errors.incrementAndGet()
+                    val sealed = Ciphers.seal(Cipher256.CASCADE, key, nonce, ByteArray(0), plain)
+                    if (!plain.contentEquals(Ciphers.open(Cipher256.CASCADE, key, nonce, ByteArray(0), sealed))) errors.incrementAndGet()
                 }
             }
         }
         threads.forEach { it.start() }
         threads.forEach { it.join() }
+        key.close()
         assertEquals(0, errors.get())
     }
 }

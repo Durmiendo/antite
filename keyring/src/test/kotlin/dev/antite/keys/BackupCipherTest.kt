@@ -21,7 +21,7 @@ class BackupCipherTest {
     fun fastKdf() {
         kdf = KeyRing.Kdf { password, salt, params ->
             asked += params
-            MessageDigest.getInstance("SHA-512").digest(password + salt + params.toString().toByteArray())
+            CoreKey.import(MessageDigest.getInstance("SHA-512").digest(password + salt + params.toString().toByteArray()))
         }
         BackupCipher.params = KeyRing.KdfParams(2, 64, 1)
     }

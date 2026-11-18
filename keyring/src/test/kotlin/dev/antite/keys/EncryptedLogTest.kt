@@ -1,6 +1,7 @@
 package dev.antite.keys
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -13,9 +14,9 @@ class EncryptedLogTest {
     @get:Rule
     val tmp = TemporaryFolder()
 
-    private val key = Ciphers.randomBytes(Cipher256.KEY)
+    private val key = CoreKey.random()
     private fun file() = File(tmp.root, "h.log")
-    private fun log(cipher: Cipher256 = Cipher256.AES, k: ByteArray = key) = EncryptedLog(RealDisk(tmp.root), file(), k) { cipher }
+    private fun log(cipher: Cipher256 = Cipher256.AES, k: CoreKey = key) = EncryptedLog(RealDisk(tmp.root), file(), k) { cipher }
     private fun rec(i: Int) = "record $i".toByteArray()
     private fun texts(l: List<ByteArray>) = l.map { String(it) }
 
@@ -97,7 +98,7 @@ class EncryptedLogTest {
     @Test
     fun anotherKeyReadsNothing() {
         written(1)
-        assertThrows(EncryptedLog.DamagedException::class.java) { log(k = Ciphers.randomBytes(Cipher256.KEY)).read() }
+        assertThrows(EncryptedLog.DamagedException::class.java) { log(k = CoreKey.random()).read() }
     }
 
     // Either slot may be the one a stop broke, the newest included: the other one and the records still give the log.
@@ -123,16 +124,19 @@ class EncryptedLogTest {
         assertEquals(listOf("record 7", "record 9", "record 10"), texts(log().read()))
     }
 
-    // The caller wiping its key must not leave the log writing under a key of zeros.
+    // The key is the caller's: the log uses it and leaves it open, and a closed key stops the log instead of letting it
+    // write under something else.
     @Test
-    fun theLogKeepsItsOwnCopyOfTheKey() {
-        val k = key.copyOf()
+    fun theLogUsesTheCallersKey() {
+        val k = CoreKey.random()
         val l = EncryptedLog(RealDisk(tmp.root), file(), k) { Cipher256.AES }
         l.read()
         l.append(rec(0))
-        k.fill(0)
-        l.append(rec(1))
-        assertEquals(listOf("record 0", "record 1"), texts(log().read()))
+        l.rewrite(listOf(rec(0), rec(1)))
+        assertFalse(k.closed)
+        assertEquals(listOf("record 0", "record 1"), texts(EncryptedLog(RealDisk(tmp.root), file(), k) { Cipher256.AES }.read()))
+        k.close()
+        assertThrows(IllegalStateException::class.java) { l.append(rec(2)) }
     }
 
     private fun recordStarts(bytes: ByteArray): List<Int> {

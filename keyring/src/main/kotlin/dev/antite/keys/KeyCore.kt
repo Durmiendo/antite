@@ -19,17 +19,6 @@ object KeyCore {
     @JvmStatic
     external fun memoryLocked(): Boolean
 
-    // Every call throws IllegalArgumentException on wrong arguments and OutOfMemoryError when the core has no memory;
-    // open gives null only when the bytes do not open under this key.
-    @JvmStatic
-    external fun seal(cipher: Int, key: ByteArray, nonce: ByteArray, aad: ByteArray, data: ByteArray, off: Int, len: Int, soft: Boolean): ByteArray
-
-    @JvmStatic
-    external fun open(cipher: Int, key: ByteArray, nonce: ByteArray, aad: ByteArray, data: ByteArray, off: Int, len: Int, soft: Boolean): ByteArray?
-
-    @JvmStatic
-    external fun argon2id(password: ByteArray, salt: ByteArray, iterations: Int, memoryKib: Int, lanes: Int, length: Int): ByteArray
-
     @JvmStatic
     external fun random(out: ByteArray)
 
@@ -51,6 +40,8 @@ object KeyCore {
     @JvmStatic
     external fun keyCount(): Long
 
+    // Every call throws IllegalArgumentException on wrong arguments and OutOfMemoryError when the core has no memory;
+    // openWith gives null only when the bytes do not open under this key.
     @JvmStatic
     external fun sealWith(cipher: Int, key: Long, nonce: ByteArray, aad: ByteArray, data: ByteArray, off: Int, len: Int, soft: Boolean): ByteArray
 

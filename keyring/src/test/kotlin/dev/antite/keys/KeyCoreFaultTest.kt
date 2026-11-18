@@ -31,7 +31,7 @@ class KeyCoreFaultTest {
     @After
     fun disarm() = KeyCoreFaults.arm(-1)
 
-    private val key = ByteArray(64) { it.toByte() }
+    private val key = keyOf(ByteArray(64) { it.toByte() })
     private val nonce = ByteArray(24) { (7 * it).toByte() }
     private val aad = "aad".toByteArray()
     private val plain = ByteArray(70000) { (it * 31).toByte() }
@@ -66,25 +66,25 @@ class KeyCoreFaultTest {
     @Test
     fun sealAndOpenUnderEveryFailure() {
         for (c in Cipher256.entries) for (soft in listOf(false, true)) {
-            val sealed = KeyCore.seal(c.id, key, nonce, aad, plain, 0, plain.size, soft)
+            val sealed = Ciphers.seal(c, key, nonce, aad, plain, soft = soft)
             // Additional data, the work buffer, the array handed back; the key takes a slot of the pool.
             assertEquals(3, everyAllocationFails("seal $c soft=$soft") {
-                assertArrayEquals(sealed, KeyCore.seal(c.id, key, nonce, aad, plain, 0, plain.size, soft))
+                assertArrayEquals(sealed, Ciphers.seal(c, key, nonce, aad, plain, soft = soft))
             })
             everyAllocationFails("open $c soft=$soft") {
-                assertArrayEquals(plain, KeyCore.open(c.id, key, nonce, aad, sealed, 0, sealed.size, soft))
+                assertArrayEquals(plain, Ciphers.open(c, key, nonce, aad, sealed, soft = soft))
             }
         }
     }
 
     @Test
     fun argon2UnderEveryFailure() {
-        val expected = KeyCore.argon2id("pw".toByteArray(), ByteArray(16), 1, 64, 2, 64)
-        val made = everyAllocationFails("argon2id") {
-            assertArrayEquals(expected, KeyCore.argon2id("pw".toByteArray(), ByteArray(16), 1, 64, 2, 64))
-        }
-        // Password, salt, output and the array handed back, plus Argon2's own: its region, blocks and index buffer.
-        assertEquals(7, made)
+        val params = KeyRing.KdfParams(1, 64, 2)
+        val expected = CoreKey.derive("pw".toByteArray(), ByteArray(16), params).use { it.print() }
+        val made = everyAllocationFails("argon2id") { CoreKey.derive("pw".toByteArray(), ByteArray(16), params).close() }
+        // Password and salt, plus Argon2's own: its region, blocks and index buffer. The key goes into the table.
+        assertEquals(5, made)
+        assertArrayEquals(expected, CoreKey.derive("pw".toByteArray(), ByteArray(16), params).use { it.print() })
     }
 
     @Test

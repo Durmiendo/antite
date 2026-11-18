@@ -2,6 +2,7 @@ package dev.antite.browser.data
 
 import dev.antite.browser.data.HistoryIndex.Event
 import dev.antite.keys.Cipher256
+import dev.antite.keys.CoreKey
 import dev.antite.keys.Disk
 import dev.antite.keys.EncryptedLog
 import dev.antite.keys.deleteDurably
@@ -21,7 +22,7 @@ import java.io.File
 class HistoryStore(
     private val disk: Disk,
     private val dir: File,
-    private val keyOf: (name: String) -> ByteArray,
+    private val keyOf: (name: String) -> CoreKey,
     private val cipher: () -> Cipher256,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
@@ -70,7 +71,6 @@ class HistoryStore(
             log.read()
         } catch (e: EncryptedLog.DamagedException) {
             // Put aside rather than lost or stuck: the category's history starts again.
-            log.close()
             disk.renameDurably(file(name), File(file(name).path + ".bad"))
             log = EncryptedLog(disk, file(name), key, cipher)
             log.read()
@@ -154,14 +154,14 @@ class HistoryStore(
     @Synchronized
     fun forget(category: String?) {
         val name = nameOf(category)
-        books.remove(name)?.log?.close()
+        books.remove(name)
         disk.deleteDurably(file(name))
     }
 
-    // Logs stay on the disk; they are read again, with their keys, on next use. Their copies of the keys are wiped.
+    // Logs stay on the disk; they are read again, with their keys, on next use. The keys are the category keys,
+    // closed by their owner.
     @Synchronized
     fun close() {
-        books.values.forEach { it.log.close() }
         books.clear()
     }
 }

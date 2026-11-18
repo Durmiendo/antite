@@ -6,32 +6,35 @@ import dev.antite.keys.CrashDevice
 import dev.antite.keys.CrashDisk
 import dev.antite.keys.Crashes
 import dev.antite.keys.KeyRing
+import dev.antite.keys.fastKdf
+import dev.antite.keys.keyOf
 import dev.antite.keys.output
+import dev.antite.keys.print
 import dev.antite.keys.syncTree
+import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
-import java.security.MessageDigest
 
 // An import cut short anywhere, from writing the staged copy to the last step of the swap: after the next start's
 // recovery the data folder and the data keys are all the old ones or all the backup's.
 class DataSwapCrashTest {
     private val root = File("/data/user/0/dev.antite.browser")
     private val keysDir = File(root, "files/keys")
-    private val kdf = KeyRing.Kdf { password, salt, _ -> MessageDigest.getInstance("SHA-512").digest(password + salt) }
+    private val kdf = fastKdf()
 
     private val before = mapOf("files/tabs.json" to "old tabs", "databases/antite.db" to "old db", "shared_prefs/antite.xml" to "old prefs")
     private val backup = mapOf("files/tabs.json" to "new tabs", "files/history/a.log" to "new log", "databases/vault.db" to "new vault")
     private val deviceOwn = mapOf("files/engines/gecko/lib.so" to "engine", "shared_prefs/engines.xml" to "sources")
-    private val imported = KeyRing.DOMAINS.associateWith { d -> ByteArray(Cipher256.KEY) { (it + d.length).toByte() } }
+    private val importedRaw = KeyRing.DOMAINS.associateWith { d -> ByteArray(Cipher256.KEY) { (it + d.length).toByte() } }
+    private val imported = importedRaw.mapValues { (_, raw) -> keyOf(raw).use { it.print() } }
 
     private class Start(val device: CrashDevice, val keys: Map<String, ByteArray>)
 
     private fun ring(d: CrashDisk, device: CrashDevice) = KeyRing(d, keysDir, device, kdf)
 
-    private fun keys(d: CrashDisk, device: CrashDevice) = ring(d, device).let { r -> KeyRing.DOMAINS.associateWith { r.key(it).copyOf() } }
+    private fun keys(d: CrashDisk, device: CrashDevice) = ring(d, device).let { r -> KeyRing.DOMAINS.associateWith { r.key(it).print() } }
 
     private fun recover(d: CrashDisk, device: CrashDevice) = DataSwap(d, root).recover { adopt ->
         val r = ring(d, device)
@@ -61,7 +64,7 @@ class DataSwapCrashTest {
             }
             d.syncTree(swap.stage)
             val r = ring(d, s.device)
-            for ((dom, k) in imported) r.stageImport(dom, k.copyOf())
+            for ((dom, raw) in importedRaw) r.stageImport(dom, keyOf(raw))
             swap.commit()
             recover(d, s.device)
         },

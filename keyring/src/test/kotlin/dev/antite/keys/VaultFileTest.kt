@@ -27,7 +27,7 @@ class VaultFileTest {
 
     private fun write(plain: ByteArray, cipher: Cipher256 = Cipher256.AES, name: String = "f.enc"): File {
         val f = File(tmp.root, name)
-        VaultFile.writer(f.outputStream(), cipher, key).use { out ->
+        VaultFile.writer(f.outputStream(), cipher, keyOf(key)).use { out ->
             // In uneven pieces, as a download delivers them.
             var at = 0
             var step = 1
@@ -41,7 +41,7 @@ class VaultFileTest {
         return f
     }
 
-    private fun read(f: File, k: ByteArray = key) = VaultFile.Reader(disk, f, k).stream().use { it.readBytes() }
+    private fun read(f: File, k: CoreKey = keyOf(key)) = VaultFile.Reader(disk, f, k).stream().use { it.readBytes() }
 
     @Test
     fun contentComesBackForSizesAroundTheChunkInEveryCipher() {
@@ -68,7 +68,7 @@ class VaultFileTest {
     fun readsFromAnyPosition() {
         val plain = data(200_000)
         for (cipher in Cipher256.entries) {
-            VaultFile.Reader(disk, write(plain, cipher), key).use { r ->
+            VaultFile.Reader(disk, write(plain, cipher), keyOf(key)).use { r ->
                 assertEquals(200_000L, r.length)
                 for (pos in listOf(0, 1, VaultFile.CHUNK - 3, VaultFile.CHUNK, 150_000, 199_999)) {
                     val buf = ByteArray(100)
@@ -137,7 +137,7 @@ class VaultFileTest {
     @Test
     fun anotherKeyDoesNotOpen() {
         val f = write(data(1000))
-        assertThrows(IOException::class.java) { read(f, Ciphers.randomBytes(Cipher256.KEY)) }
+        assertThrows(IOException::class.java) { read(f, CoreKey.random()) }
     }
 
     @Test
@@ -147,11 +147,11 @@ class VaultFileTest {
     }
 
     @Test
-    fun readerWipesItsKeyCopyAndLeavesTheCallersKey() {
+    fun theReaderClosesItsKey() {
         val f = write(data(10))
-        val mine = key.copyOf()
+        val mine = keyOf(key)
         VaultFile.Reader(disk, f, mine).close()
-        assertArrayEquals(key, mine)
+        assertTrue(mine.closed)
     }
 
     // A version 1 file as the previous release wrote it: the key wrapped in the header, AES chunks.
@@ -175,12 +175,11 @@ class VaultFileTest {
         val f = v1File(plain, key32, 0x5A)
         val head = VaultFile.head(disk, f)
         assertEquals(1, head.version)
-        val k = VaultFile.v1Key(head) { b -> ByteArray(b.size) { (b[it].toInt() xor 0x5A).toByte() } }
-        assertEquals(Cipher256.KEY, k.size)
-        assertArrayEquals(plain, read(f, k))
+        val k = { VaultFile.v1Key(head) { b -> ByteArray(b.size) { (b[it].toInt() xor 0x5A).toByte() } } }
+        assertArrayEquals(plain, read(f, k()))
         VaultFile.upgradeHeader(disk, f)
         assertEquals(2, VaultFile.head(disk, f).version)
-        assertArrayEquals(plain, read(f, k))
+        assertArrayEquals(plain, read(f, k()))
     }
 
     @Test

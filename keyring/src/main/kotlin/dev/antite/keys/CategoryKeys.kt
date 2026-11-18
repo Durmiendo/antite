@@ -2,28 +2,40 @@ package dev.antite.keys
 
 import java.io.File
 
-// A random data key per category, kept in files/keys/category-<name>.key sealed by the history domain key of the key
-// ring. Forgetting a category deletes its key file: what its files hold cannot be read again.
-// withDomainKey runs its block with the history domain key held, so locking the ring cannot wipe it half way.
+// A random data key per category, kept in files/keys/category-<name>.key boxed under the history domain key of the key
+// ring, and opened in the core. Forgetting a category deletes its key file: what its files hold cannot be read again.
+// withDomainKey runs its block with the history domain key held, so locking the ring cannot close it half way.
 class CategoryKeys(
     private val disk: Disk,
     private val dir: File,
-    private val withDomainKey: ((ByteArray) -> ByteArray) -> ByteArray,
+    private val withDomainKey: ((CoreKey) -> Unit) -> Unit,
     private val cipher: () -> Cipher256,
 ) {
-    private val keys = HashMap<String, ByteArray>()
+    private val keys = HashMap<String, CoreKey>()
 
     private fun file(name: String) = File(dir, "category-$name.key")
 
+    // The category's key, held here: the caller must not close it, lock() and forget() do.
     @Synchronized
-    fun key(name: String): ByteArray {
+    fun key(name: String): CoreKey {
         keys[name]?.let { return it }
         val f = file(name)
         val aad = name.toByteArray()
-        val k = if (disk.exists(f)) withDomainKey { d -> Ciphers.unbox(d, disk.readAll(f), aad) } else {
-            val fresh = Ciphers.randomBytes(Cipher256.KEY)
+        val k = if (disk.exists(f)) {
+            var opened: CoreKey? = null
+            withDomainKey { d -> opened = CoreKey.unwrap(d, disk.readAll(f), aad) }
+            opened ?: throw java.io.IOException("category key $name damaged")
+        } else {
+            val fresh = CoreKey.random()
             disk.mkdirs(dir)
-            disk.replace(f, withDomainKey { d -> Ciphers.box(cipher(), d, fresh, aad) })
+            try {
+                var box = ByteArray(0)
+                withDomainKey { d -> box = fresh.wrapUnder(d, cipher(), aad) }
+                disk.replace(f, box)
+            } catch (e: Throwable) {
+                fresh.close()
+                throw e
+            }
             fresh
         }
         keys[name] = k
@@ -42,14 +54,11 @@ class CategoryKeys(
             val boxed = disk.readAll(f)
             if (Ciphers.boxCipher(boxed) == target) continue
             val aad = name.toByteArray()
-            disk.replace(f, withDomainKey { d ->
-                val plain = Ciphers.unbox(d, boxed, aad)
-                try {
-                    Ciphers.box(target, d, plain, aad)
-                } finally {
-                    plain.fill(0)
-                }
-            })
+            var box = ByteArray(0)
+            withDomainKey { d ->
+                box = (CoreKey.unwrap(d, boxed, aad) ?: throw java.io.IOException("category key $name damaged")).use { it.wrapUnder(d, target, aad) }
+            }
+            disk.replace(f, box)
         }
     }
 
@@ -62,13 +71,13 @@ class CategoryKeys(
 
     @Synchronized
     fun forget(name: String) {
-        keys.remove(name)?.fill(0)
+        keys.remove(name)?.close()
         disk.deleteDurably(file(name))
     }
 
     @Synchronized
     fun lock() {
-        keys.values.forEach { it.fill(0) }
+        keys.values.forEach { it.close() }
         keys.clear()
     }
 }

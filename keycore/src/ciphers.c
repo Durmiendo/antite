@@ -80,9 +80,9 @@ int run(int seal, int cipher, int soft, const unsigned char *key, const unsigned
     }
 }
 
-// The key comes from the array, or, when it is null, from the table by handle.
-static jbyteArray crypt(JNIEnv *env, int seal, jint cipher, jbyteArray key, jlong handle, jbyteArray nonce,
-                        jbyteArray aad, jbyteArray data, jint off, jint len, jboolean soft) {
+// The key comes from the table by handle.
+static jbyteArray crypt(JNIEnv *env, int seal, jint cipher, jlong handle, jbyteArray nonce, jbyteArray aad,
+                        jbyteArray data, jint off, jint len, jboolean soft) {
     unsigned char n24[NONCE];
     unsigned char *k = NULL, *a = NULL, *w = NULL;
     size_t aad_n, cap, n;
@@ -91,7 +91,7 @@ static jbyteArray crypt(JNIEnv *env, int seal, jint cipher, jbyteArray key, jlon
     int err = 0;
 
     if (cipher < AES || cipher > CASCADE || nonce == NULL || aad == NULL || data == NULL ||
-        (key != NULL && (*env)->GetArrayLength(env, key) != KEY) || (*env)->GetArrayLength(env, nonce) != NONCE || off < 0 ||
+        (*env)->GetArrayLength(env, nonce) != NONCE || off < 0 ||
         len < 0 || (jlong) off + len > (*env)->GetArrayLength(env, data) ||
         (*env)->GetArrayLength(env, aad) > MAX_AAD || (seal && (jlong) len + (jlong) over > INT32_MAX)) {
         fail(env, BAD_ARGS, "wrong arguments");
@@ -103,8 +103,7 @@ static jbyteArray crypt(JNIEnv *env, int seal, jint cipher, jbyteArray key, jlon
     if ((k = slot_take()) == NULL || (a = plain_alloc(aad_n)) == NULL || (w = plain_alloc(cap)) == NULL) {
         err = NO_MEMORY;
     } else {
-        if (key != NULL) (*env)->GetByteArrayRegion(env, key, 0, KEY, (jbyte *) k);
-        else err = table_copy(handle, k);
+        err = table_copy(handle, k);
         (*env)->GetByteArrayRegion(env, nonce, 0, NONCE, (jbyte *) n24);
         (*env)->GetByteArrayRegion(env, aad, 0, (jsize) aad_n, (jbyte *) a);
         (*env)->GetByteArrayRegion(env, data, off, len, (jbyte *) w);
@@ -120,40 +119,18 @@ static jbyteArray crypt(JNIEnv *env, int seal, jint cipher, jbyteArray key, jlon
     return r;
 }
 
-JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_seal(JNIEnv *env, jclass cls, jint cipher, jbyteArray key,
-                                                               jbyteArray nonce, jbyteArray aad, jbyteArray data,
-                                                               jint off, jint len, jboolean soft) {
-    (void) cls;
-    if (key == NULL) {
-        fail(env, BAD_ARGS, "no key");
-        return NULL;
-    }
-    return crypt(env, 1, cipher, key, 0, nonce, aad, data, off, len, soft);
-}
-
-JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_open(JNIEnv *env, jclass cls, jint cipher, jbyteArray key,
-                                                               jbyteArray nonce, jbyteArray aad, jbyteArray data,
-                                                               jint off, jint len, jboolean soft) {
-    (void) cls;
-    if (key == NULL) {
-        fail(env, BAD_ARGS, "no key");
-        return NULL;
-    }
-    return crypt(env, 0, cipher, key, 0, nonce, aad, data, off, len, soft);
-}
-
 JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_sealWith(JNIEnv *env, jclass cls, jint cipher, jlong key,
                                                                    jbyteArray nonce, jbyteArray aad, jbyteArray data,
                                                                    jint off, jint len, jboolean soft) {
     (void) cls;
-    return crypt(env, 1, cipher, NULL, key, nonce, aad, data, off, len, soft);
+    return crypt(env, 1, cipher, key, nonce, aad, data, off, len, soft);
 }
 
 JNIEXPORT jbyteArray JNICALL Java_dev_antite_keys_KeyCore_openWith(JNIEnv *env, jclass cls, jint cipher, jlong key,
                                                                    jbyteArray nonce, jbyteArray aad, jbyteArray data,
                                                                    jint off, jint len, jboolean soft) {
     (void) cls;
-    return crypt(env, 0, cipher, NULL, key, nonce, aad, data, off, len, soft);
+    return crypt(env, 0, cipher, key, nonce, aad, data, off, len, soft);
 }
 
 // A box of a key under another key, as Ciphers.box makes them: cipher id, a random nonce of 24 bytes, the sealed key.

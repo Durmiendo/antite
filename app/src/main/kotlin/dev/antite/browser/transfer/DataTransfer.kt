@@ -3,10 +3,12 @@ package dev.antite.browser.transfer
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import dev.antite.browser.data.Db
+import dev.antite.browser.data.SecretBox
 import dev.antite.browser.data.Secure
 import dev.antite.browser.data.Vault
 import dev.antite.browser.l10n.T
 import dev.antite.keys.BackupCipher
+import dev.antite.keys.CoreKey
 import dev.antite.keys.Disk
 import dev.antite.keys.KeyRing
 import dev.antite.keys.input
@@ -27,7 +29,9 @@ import java.util.zip.ZipOutputStream
 class Progress(val done: Long, val total: Long)
 
 object DataTransfer {
-    private const val FORMAT = 1
+    // 2: the ring's keys are boxed under the backup's key in the core; 1 (read only): the keys themselves.
+    private const val FORMAT = 2
+    private const val RAW_KEYS = 1
     private const val MANIFEST = "manifest.json"
     private const val VAULT = "databases/vault.db"
     // The data keys travel in the open inside the encrypted backup; this device wraps them on import.
@@ -58,7 +62,8 @@ object DataTransfer {
         val files = collect(disk, root).filter { (rel, _) -> !isEngine(rel) }
         val total = files.sumOf { (_, f) -> if (disk.isDirectory(f)) 0L else disk.length(f) }
         var done = 0L
-        ZipOutputStream(BackupCipher.encrypt(out, password, Secure.Argon2, Secure.cipher(context))).use { zip ->
+        val sealed = BackupCipher.encrypt(out, password, Secure.Argon2, Secure.cipher(context))
+        ZipOutputStream(sealed).use { zip ->
             zip.putNextEntry(ZipEntry(MANIFEST))
             zip.write(JSONObject()
                 .put("format", FORMAT)
@@ -85,10 +90,10 @@ object DataTransfer {
                 }
                 zip.closeEntry()
             }
-            // Straight from the ring into the encrypted stream: never a file of their own.
+            // Only boxes of the keys leave the core, sealed under the backup's own key; never a file of their own.
             for (d in KeyRing.DOMAINS) {
                 zip.putNextEntry(ZipEntry("$KEYRING$d"))
-                ring.withKey(d) { zip.write(it) }
+                ring.withKey(d) { zip.write(sealed.sealKey(it)) }
                 zip.closeEntry()
             }
         }
@@ -101,7 +106,7 @@ object DataTransfer {
         val swap = DataSwap(disk, root)
         swap.recover { adopt -> if (adopt) ring.adoptImports() else ring.dropImports() }
         val stage = swap.stage
-        val keys = HashMap<String, ByteArray>()
+        val keys = HashMap<String, CoreKey>()
         try {
             disk.mkdirs(stage)
             val counted = CountingStream(input) { progress(Progress(it, total)) }
@@ -110,7 +115,8 @@ object DataTransfer {
                 val first = zip.nextEntry ?: throw IOException("empty backup")
                 if (first.name != MANIFEST) throw IOException("no manifest")
                 val manifest = JSONObject(String(zip.readBytes()))
-                if (manifest.optInt("format") != FORMAT) throw IOException("unsupported backup format")
+                val format = manifest.optInt("format")
+                if (format != FORMAT && format != RAW_KEYS) throw IOException("unsupported backup format")
                 if (manifest.optString("package") != context.packageName) throw IOException("backup of another app")
                 val base = stage.canonicalFile
                 while (true) {
@@ -119,7 +125,11 @@ object DataTransfer {
                     if (!target.path.startsWith(base.path + File.separator)) throw IOException("bad entry ${e.name}")
                     if (e.name.startsWith(KEYRING)) {
                         val d = e.name.removePrefix(KEYRING)
-                        if (d in KeyRing.DOMAINS && !e.isDirectory) keys[d] = zip.readBytes()
+                        if (d in KeyRing.DOMAINS && !e.isDirectory) {
+                            val bytes = zip.readBytes()
+                            keys.remove(d)?.close()
+                            keys[d] = if (format == RAW_KEYS) CoreKey.import(bytes) else plain.openKey(bytes) ?: throw IOException("damaged key $d")
+                        }
                         continue
                     }
                     val top = e.name.substringBefore('/')
@@ -141,16 +151,16 @@ object DataTransfer {
             }
             // A backup from before the key ring holds its secrets in the open: they are sealed with this device's key.
             if (keys[KeyRing.SECRETS] == null) File(stage, VAULT).takeIf { disk.exists(it) }?.let { v ->
-                ring.withKey(KeyRing.SECRETS) { k -> rewriteSecrets(disk, v) { Vault.seal(k, Secure.cipher(context), it) } }
+                ring.withKey(KeyRing.SECRETS) { k -> rewriteSecrets(disk, v) { SecretBox.seal(k, Secure.cipher(context), it) } }
             }
             File(stage, SETTINGS).takeIf { disk.exists(it) }?.let { f ->
                 disk.replace(f, String(disk.readAll(f)).replace(DEBUG_INSTALL, "").toByteArray())
             }
             disk.syncTree(stage)
-            for ((d, k) in keys) ring.stageImport(d, k)
+            for (d in keys.keys.toList()) ring.stageImport(d, keys.remove(d)!!)
             swap.commit()
         } catch (e: Throwable) {
-            keys.values.forEach { it.fill(0) }
+            keys.values.forEach { it.close() }
             swap.recover { adopt -> if (adopt) ring.adoptImports() else ring.dropImports() }
             throw e
         }

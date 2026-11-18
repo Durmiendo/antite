@@ -4,6 +4,7 @@ import dev.antite.browser.data.MediaVault.Folder
 import dev.antite.browser.data.MediaVault.Item
 import dev.antite.keys.Cipher256
 import dev.antite.keys.Ciphers
+import dev.antite.keys.CoreKey
 import dev.antite.keys.Disk
 import dev.antite.keys.KeyRing
 import dev.antite.keys.VaultFile
@@ -49,6 +50,8 @@ class VaultCore(
     @Volatile
     var opened = false
         private set
+    // The box of each file's key under the vault's data key: what the index holds. A key is opened in the core only for
+    // the length of a read or a write.
     private val fileKeys = HashMap<Long, ByteArray>()
     // Downloads straight into the vault that are still being written, and those finished while it was closed: their
     // keys outlive close(), the finished ones join the index at the next open().
@@ -74,8 +77,8 @@ class VaultCore(
         unreadable = false
         runCatching {
             when {
-                disk.exists(index) -> ring.withKey(KeyRing.VAULT, ::readIndex).let(::apply)
-                disk.exists(v1Index) -> apply(readV1Index())
+                disk.exists(index) -> ring.withKey(KeyRing.VAULT) { k -> apply(readIndex(k), k) }
+                disk.exists(v1Index) -> apply(readV1Index(), null)
                 disk.exists(oldIndex) -> items = VaultIndex.parseItems(JSONArray(String(disk.readAll(oldIndex))))
             }
         }.onFailure {
@@ -94,25 +97,33 @@ class VaultCore(
         return true
     }
 
-    // Forgets the index and wipes the file keys; used when the key ring locks.
+    // Forgets the index and the boxes of the file keys; used when the key ring locks.
     @Synchronized
     fun close() {
         synchronized(fileKeys) {
             val keep = inFlight + finished.map { it.id }
-            fileKeys.keys.filter { it !in keep }.forEach { fileKeys.remove(it)?.fill(0) }
+            fileKeys.keys.retainAll(keep)
         }
         items = emptyList()
         folders = emptyList()
         opened = false
     }
 
-    private fun apply(i: VaultIndex.Index) {
+    private fun aadOf(id: Long) = "antite-vault-file-$id".toByteArray()
+
+    // A version 2 index held the file keys themselves: they go into the core, are boxed under the data key and wiped,
+    // and the index is written again as version 3 right away.
+    private fun apply(i: VaultIndex.Index, dataKey: CoreKey?) {
         items = i.items
         folders = i.folders
-        synchronized(fileKeys) { fileKeys.putAll(i.keys) }
+        val boxes = if (!i.raw) i.keys else i.keys.mapValues { (id, raw) ->
+            CoreKey.import(raw).use { it.wrapUnder(dataKey ?: throw IOException("no data key"), cipher(), aadOf(id)) }
+        }
+        synchronized(fileKeys) { fileKeys.putAll(boxes) }
+        if (i.raw) save(dataKey!!, force = true)
     }
 
-    private fun readIndex(dataKey: ByteArray): VaultIndex.Index {
+    private fun readIndex(dataKey: CoreKey): VaultIndex.Index {
         val plain = Ciphers.unbox(dataKey, disk.readAll(index), INDEX_AAD)
         try {
             return VaultIndex.decode(plain)
@@ -124,22 +135,18 @@ class VaultCore(
     // The version 1 index: a version 1 vault file, its key wrapped by the old device key.
     private fun readV1Index(): VaultIndex.Index {
         val k = VaultFile.v1Key(VaultFile.head(disk, v1Index), legacyUnwrap)
-        try {
-            return VaultIndex.decodeV1(String(VaultFile.Reader(disk, v1Index, k).stream().use { it.readBytes() }))
-        } finally {
-            k.fill(0)
-        }
+        return VaultIndex.decodeV1(String(VaultFile.Reader(disk, v1Index, k).stream().use { it.readBytes() }))
     }
 
-    private fun indexBytes(): ByteArray = VaultIndex.encode(items, folders, synchronized(fileKeys) { HashMap(fileKeys) })
 
     // Under the ring's hold on the key: leaving the app cannot wipe it while the index is sealed with it.
-    fun save() = ring.withKey(KeyRing.VAULT, ::save)
+    fun save() = ring.withKey(KeyRing.VAULT) { save(it) }
 
-    private fun save(dataKey: ByteArray) {
-        if (!opened) throw KeyRing.LockedException()
+    // boxes: those of the keys under dataKey (by default the current ones); force: also before open() has finished.
+    private fun save(dataKey: CoreKey, boxes: Map<Long, ByteArray> = synchronized(fileKeys) { HashMap(fileKeys) }, force: Boolean = false) {
+        if (!opened && !force) throw KeyRing.LockedException()
         if (unreadable) throw IOException("the vault index could not be read")
-        val plain = indexBytes()
+        val plain = VaultIndex.encode(items, folders, boxes)
         val sealed = try {
             Ciphers.box(cipher(), dataKey, plain, INDEX_AAD)
         } finally {
@@ -149,10 +156,20 @@ class VaultCore(
         disk.deleteDurably(oldIndex)
     }
 
-    // A file's key goes away with a new data key: the index that held it can never be opened again.
+    // A file's key goes away with a new data key: the index that held it can never be opened again. The boxes of the
+    // keys that stay are made again under the new data key and written with it in one index.
     fun saveRotated() {
-        ring.rotate(KeyRing.VAULT) { _, fresh -> save(fresh) }
+        var moved: Map<Long, ByteArray>? = null
+        ring.rotate(KeyRing.VAULT) { old, fresh ->
+            val boxes = synchronized(fileKeys) { HashMap(fileKeys) }.mapValues { (id, box) ->
+                (CoreKey.unwrap(old, box, aadOf(id)) ?: throw IOException("vault file $id key damaged")).use { it.wrapUnder(fresh, cipher(), aadOf(id)) }
+            }
+            save(fresh, boxes)
+            moved = boxes
+        }
+        moved?.let { m -> synchronized(fileKeys) { m.forEach { (id, box) -> if (id in fileKeys) fileKeys[id] = box } } }
     }
+
 
     // An open file missing from the index (an older version could lose its entry) would never be encrypted: it is
     // taken in under a made-up name and encrypted with the rest.
@@ -179,8 +196,11 @@ class VaultCore(
         return head.version == 1 || synchronized(fileKeys) { item.id !in fileKeys }
     }
 
-    private fun keyOf(item: Item): ByteArray =
-        synchronized(fileKeys) { fileKeys[item.id] } ?: throw IOException("no key for vault file ${item.id}")
+    // The file's key opened in the core; the caller closes it (a reader or a writer does it with itself).
+    private fun keyOf(item: Item): CoreKey {
+        val box = synchronized(fileKeys) { fileKeys[item.id] } ?: throw IOException("no key for vault file ${item.id}")
+        return ring.withKey(KeyRing.VAULT) { d -> CoreKey.unwrap(d, box, aadOf(item.id)) } ?: throw IOException("vault file ${item.id} key damaged")
+    }
 
     fun reader(item: Item) = VaultFile.Reader(disk, file(item), keyOf(item))
 
@@ -197,22 +217,32 @@ class VaultCore(
         disk.renameDurably(tmp, thumbFile(item))
     }
 
-    private fun newKey(item: Item): ByteArray =
-        Ciphers.randomBytes(Cipher256.KEY).also { synchronized(fileKeys) { fileKeys[item.id] = it } }
+    // A new key for the file, boxed into the index map; the caller closes the key.
+    private fun newKey(item: Item): CoreKey {
+        val k = CoreKey.random()
+        try {
+            val box = ring.withKey(KeyRing.VAULT) { d -> k.wrapUnder(d, cipher(), aadOf(item.id)) }
+            synchronized(fileKeys) { fileKeys[item.id] = box }
+        } catch (e: Throwable) {
+            k.close()
+            throw e
+        }
+        return k
+    }
 
     private fun forgetKey(id: Long) {
-        synchronized(fileKeys) { fileKeys.remove(id)?.fill(0) }
+        synchronized(fileKeys) { fileKeys.remove(id) }
     }
 
     // An entry for a file about to be written, with its key.
-    fun begin(item: Item): Item = item.also { newKey(it) }
+    fun begin(item: Item): Item = item.also { newKey(it).close() }
 
     // A download straight into the vault: the entry is made up front, its file is written by the download and the
     // entry joins the index only once the file is complete.
     @Synchronized
     fun reserve(item: Item): Item {
         if (!opened) throw KeyRing.LockedException()
-        newKey(item)
+        newKey(item).close()
         inFlight += item.id
         return item
     }
@@ -254,7 +284,12 @@ class VaultCore(
         val v1 = items.filter { disk.exists(file(it)) && runCatching { VaultFile.head(disk, file(it)).version == 1 }.getOrDefault(false) }
         for (item in v1) {
             if (synchronized(fileKeys) { item.id in fileKeys }) continue
-            runCatching { synchronized(fileKeys) { fileKeys[item.id] = VaultFile.v1Key(VaultFile.head(disk, file(item)), legacyUnwrap) } }
+            runCatching {
+                VaultFile.v1Key(VaultFile.head(disk, file(item)), legacyUnwrap).use { k ->
+                    val box = ring.withKey(KeyRing.VAULT) { d -> k.wrapUnder(d, cipher(), aadOf(item.id)) }
+                    synchronized(fileKeys) { fileKeys[item.id] = box }
+                }
+            }
                 .onFailure { warn("vault file ${item.id} key unreadable", it) }
         }
         if (runCatching { save() }.onFailure { warn("vault index not moved over", it) }.isFailure) return false

@@ -18,13 +18,13 @@ class KeyRingTest {
 
     // A stand-in for the Keystore: a key per alias that can be destroyed for good.
     private class FakeDevice : KeyRing.DeviceKeys {
-        val keys = HashMap<String, ByteArray>()
+        val keys = HashMap<String, CoreKey>()
         override fun wrap(alias: String, plain: ByteArray) =
-            Ciphers.box(Cipher256.AES, keys.getOrPut(alias) { Ciphers.randomBytes(64) }, plain)
+            Ciphers.box(Cipher256.AES, keys.getOrPut(alias) { CoreKey.random() }, plain)
         override fun unwrap(alias: String, blob: ByteArray) =
             Ciphers.unbox(keys[alias] ?: throw IOException("no key $alias"), blob)
         override fun destroy(alias: String) {
-            keys.remove(alias)
+            keys.remove(alias)?.close()
         }
     }
 
@@ -32,7 +32,7 @@ class KeyRingTest {
     private val seen = ArrayList<ByteArray>()
     private val kdf = KeyRing.Kdf { password, salt, _ ->
         seen += password
-        MessageDigest.getInstance("SHA-512").digest(password + salt)
+        CoreKey.import(MessageDigest.getInstance("SHA-512").digest(password + salt))
     }
 
     private fun ring(dir: File = tmp.root) = KeyRing(RealDisk(tmp.root), dir, device, kdf)
@@ -41,16 +41,16 @@ class KeyRingTest {
     @Test
     fun deviceKeysSurviveARestartWithoutAPassword() {
         val r = ring().apply { create() }
-        val v = r.key(KeyRing.VAULT).copyOf()
-        assertFalse(v.contentEquals(r.key(KeyRing.SECRETS)))
+        val v = r.key(KeyRing.VAULT).print()
+        assertFalse(v.contentEquals(r.key(KeyRing.SECRETS).print()))
         r.lock()
-        assertArrayEquals(v, ring().key(KeyRing.VAULT))
+        assertArrayEquals(v, ring().key(KeyRing.VAULT).print())
     }
 
     @Test
     fun aPasswordIsNeededAfterLockAndIsWiped() {
         val r = ring().apply { create() }
-        val v = r.key(KeyRing.VAULT).copyOf()
+        val v = r.key(KeyRing.VAULT).print()
         r.setMode(KeyRing.Mode.PASSWORD, pw("correct horse"))
         assertTrue(seen.all { p -> p.all { it == 0.toByte() } })
         r.lock()
@@ -60,7 +60,7 @@ class KeyRingTest {
         assertThrows(KeyRing.LockedException::class.java) { again.key(KeyRing.VAULT) }
         assertThrows(KeyRing.WrongPasswordException::class.java) { again.unlock(pw("wrong")) }
         again.unlock(pw("correct horse"))
-        assertArrayEquals(v, again.key(KeyRing.VAULT))
+        assertArrayEquals(v, again.key(KeyRing.VAULT).print())
         assertTrue(seen.all { p -> p.all { it == 0.toByte() } })
     }
 
@@ -86,23 +86,23 @@ class KeyRingTest {
     @Test
     fun backToDeviceForgetsThePassword() {
         val r = ring().apply { create() }
-        val v = r.key(KeyRing.VAULT).copyOf()
+        val v = r.key(KeyRing.VAULT).print()
         r.setMode(KeyRing.Mode.BOTH, pw("p"))
         r.setMode(KeyRing.Mode.DEVICE, null)
         assertFalse(File(tmp.root, "password.json").exists())
         r.lock()
-        assertArrayEquals(v, ring().key(KeyRing.VAULT))
+        assertArrayEquals(v, ring().key(KeyRing.VAULT).print())
     }
 
     @Test
     fun rotationDestroysTheOldDeviceKey() {
         val r = ring().apply { create() }
         val oldFile = File(tmp.root, "vault.json").readText()
-        val old = r.key(KeyRing.VAULT).copyOf()
+        val old = r.key(KeyRing.VAULT).print()
         var seenOld: ByteArray? = null
-        r.rotate(KeyRing.VAULT) { o, _ -> seenOld = o.copyOf() }
+        r.rotate(KeyRing.VAULT) { o, _ -> seenOld = o.print() }
         assertArrayEquals(old, seenOld)
-        val fresh = r.key(KeyRing.VAULT).copyOf()
+        val fresh = r.key(KeyRing.VAULT).print()
         assertFalse(fresh.contentEquals(old))
         assertEquals(setOf("antite-vault-2", "antite-secrets-1"), device.keys.keys)
 
@@ -116,11 +116,11 @@ class KeyRingTest {
         for (rewritten in listOf(false, true)) {
             val dir = tmp.newFolder()
             val r = ring(dir).apply { create() }
-            val old = r.key(KeyRing.VAULT).copyOf()
+            val old = r.key(KeyRing.VAULT).print()
             var fresh: ByteArray? = null
             runCatching {
                 r.rotate(KeyRing.VAULT) { _, n ->
-                    fresh = n.copyOf()
+                    fresh = n.print()
                     if (!rewritten) throw IOException("stopped before the rewrite")
                     throw IOException("stopped after the rewrite")
                 }
@@ -128,19 +128,19 @@ class KeyRingTest {
             val data = if (rewritten) fresh!! else old
             val again = ring(dir)
             assertTrue(again.recovering)
-            again.recover(KeyRing.VAULT) { it.contentEquals(data) }
+            again.recover(KeyRing.VAULT) { it.print().contentEquals(data) }
             assertFalse(again.recovering)
-            assertArrayEquals(data, again.key(KeyRing.VAULT))
-            assertArrayEquals(data, ring(dir).key(KeyRing.VAULT))
+            assertArrayEquals(data, again.key(KeyRing.VAULT).print())
+            assertArrayEquals(data, ring(dir).key(KeyRing.VAULT).print())
         }
     }
 
     @Test
-    fun lockWipesTheKeysItHeld() {
+    fun lockClosesTheKeysItHeld() {
         val r = ring().apply { create() }
         val held = r.key(KeyRing.VAULT)
         r.lock()
-        assertTrue(held.all { it == 0.toByte() })
+        assertTrue(held.closed)
     }
 
     // Rings made before the history domain get it on first use, under the mode the user chose, not the device alone.
@@ -156,20 +156,22 @@ class KeyRingTest {
         assertThrows(KeyRing.LockedException::class.java) { again.key(KeyRing.HISTORY) }
         assertFalse(File(tmp.root, "history.json").exists())
         again.unlock(pw("p"))
-        val h = again.key(KeyRing.HISTORY).copyOf()
+        val h = again.key(KeyRing.HISTORY).print()
         assertEquals(KeyRing.Mode.PASSWORD.id, org.json.JSONObject(File(tmp.root, "history.json").readText()).getInt("mode"))
         again.lock()
         device.keys.clear()
-        assertArrayEquals(h, ring().apply { unlock(pw("p")) }.key(KeyRing.HISTORY))
+        assertArrayEquals(h, ring().apply { unlock(pw("p")) }.key(KeyRing.HISTORY).print())
     }
 
     @Test
     fun aBackupKeyForAMissingDomainIsInstalled() {
         val r = ring().apply { create() }
-        val k = Ciphers.randomBytes(Cipher256.KEY)
-        r.install(KeyRing.HISTORY, k.copyOf())
+        val k = CoreKey.random()
+        val printed = k.print()
+        r.install(KeyRing.HISTORY, k)
+        assertTrue("install takes the key", k.closed)
         r.lock()
-        assertArrayEquals(k, ring().key(KeyRing.HISTORY))
+        assertArrayEquals(printed, ring().key(KeyRing.HISTORY).print())
     }
 
     // Leaving the app locks the ring from the main thread while a background thread may be sealing with a key: the lock
@@ -178,21 +180,20 @@ class KeyRingTest {
     fun lockWaitsForWorkWithAKey() {
         val r = ring().apply { create() }
         val started = java.util.concurrent.CountDownLatch(1)
-        val seen = ArrayList<Byte>()
+        var seen: ByteArray? = null
         val worker = Thread {
             r.withKey(KeyRing.VAULT) { k ->
                 started.countDown()
                 Thread.sleep(300)
-                seen += k[0]
-                seen += k[63]
+                seen = k.print()
             }
         }
-        val before = r.key(KeyRing.VAULT).copyOf()
+        val before = r.key(KeyRing.VAULT).print()
         worker.start()
         started.await()
         r.lock()
         worker.join()
-        assertEquals(listOf(before[0], before[63]), seen)
+        assertArrayEquals(before, seen)
     }
 
     @Test
@@ -202,5 +203,39 @@ class KeyRingTest {
         assertFalse(File(tmp.root, "vault.json.tmp").exists())
         assertFalse(File(tmp.root, "password.json.tmp").exists())
         assertTrue(org.json.JSONObject(File(tmp.root, "vault.json").readText()).getInt("gen") > 1)
+    }
+
+    // Rings written before the key core: the device store wrapped the data key itself (or its password box). They open,
+    // and each file is written again in version 2 on first use, holding the same key.
+    @Test
+    fun version1FilesOpenAndAreWrittenAgain() {
+        for (mode in KeyRing.Mode.entries) {
+            val dir = tmp.newFolder()
+            val b64 = java.util.Base64.getEncoder()
+            val salt = Ciphers.randomBytes(16)
+            val kekRaw = MessageDigest.getInstance("SHA-512").digest(pw("p") + salt)
+            val raws = KeyRing.DOMAINS.associateWith { Ciphers.randomBytes(Cipher256.KEY) }
+            if (mode.usesPassword) {
+                File(dir, "password.json").writeText(org.json.JSONObject().put("salt", b64.encodeToString(salt)).put("t", 1)
+                    .put("m", 64).put("p", 1).put("check", b64.encodeToString(boxRaw(Cipher256.AES, kekRaw,
+                        "antite-password-check".toByteArray(), "antite-password-check".toByteArray()))).toString())
+            }
+            for ((d, raw) in raws) {
+                var blob = raw
+                if (mode.usesPassword) blob = boxRaw(Cipher256.AES, kekRaw, blob, d.toByteArray())
+                if (mode.usesDevice) blob = device.wrap("antite-$d-1", blob)
+                File(dir, "$d.json").writeText(org.json.JSONObject().put("mode", mode.id).put("gen", 1).put("key", b64.encodeToString(blob)).toString())
+            }
+            val r = ring(dir)
+            if (mode.usesPassword) r.unlock(pw("p"))
+            assertTrue("$mode", r.needsRewrap())
+            for ((d, raw) in raws) {
+                assertArrayEquals("$mode $d", keyOf(raw).use { it.print() }, r.key(d).print())
+                assertEquals("$mode $d", 2, org.json.JSONObject(File(dir, "$d.json").readText()).getInt("v"))
+            }
+            r.lock()
+            val again = ring(dir).apply { if (mode.usesPassword) unlock(pw("p")) }
+            for ((d, raw) in raws) assertArrayEquals("$mode $d again", keyOf(raw).use { it.print() }, again.key(d).print())
+        }
     }
 }

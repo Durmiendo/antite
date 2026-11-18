@@ -3,11 +3,13 @@ package dev.antite.browser.transfer
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.antite.browser.data.SecretBox
 import dev.antite.browser.data.Secure
 import dev.antite.browser.data.Vault
 import dev.antite.keys.BackupCipher
 import dev.antite.keys.Cipher256
 import dev.antite.keys.Ciphers
+import dev.antite.keys.CoreKey
 import dev.antite.keys.KeyRing
 import dev.antite.keys.VaultFile
 import dev.antite.keys.WrongPasswordException
@@ -65,7 +67,7 @@ class DataTransferTest {
         }
     }
 
-    private fun seal(plain: String) = Vault.seal(srcRing.key(KeyRing.SECRETS), Cipher256.AES, plain)
+    private fun seal(plain: String) = SecretBox.seal(srcRing.key(KeyRing.SECRETS), Cipher256.AES, plain)
 
     private fun write(root: File, rel: String, bytes: ByteArray) {
         File(root, rel).apply { parentFile!!.mkdirs() }.writeBytes(bytes)
@@ -117,10 +119,10 @@ class DataTransferTest {
         val logins = column(v, "logins", "password")
         assertEquals(column(File(src, "databases/vault.db"), "logins", "password"), logins)
         val k = dstRing.key(KeyRing.SECRETS)
-        assertEquals("pw-alice", Vault.open(k, logins.getValue("a")))
-        assertEquals("{\"name\":\"Ivan\"}", Vault.open(k, column(v, "addresses", "data").getValue("h")))
-        assertEquals("4111111111111111", Vault.open(k, column(v, "cards", "number").getValue("c")))
-        for (d in KeyRing.DOMAINS) assertArrayEquals(srcRing.key(d), dstRing.key(d))
+        assertEquals("pw-alice", SecretBox.open(k, logins.getValue("a")))
+        assertEquals("{\"name\":\"Ivan\"}", SecretBox.open(k, column(v, "addresses", "data").getValue("h")))
+        assertEquals("4111111111111111", SecretBox.open(k, column(v, "cards", "number").getValue("c")))
+        for (d in KeyRing.DOMAINS) assertArrayEquals(srcRing.key(d).print(), dstRing.key(d).print())
         assertTrue("the key files of this side stay its own", File(dst, "files/keys/vault.json").readText().contains("\"gen\":2"))
         assertFalse(File(dst, "keyring").exists())
     }
@@ -143,12 +145,12 @@ class DataTransferTest {
             zip.write(db.readBytes())
             zip.closeEntry()
         }
-        val before = dstRing.key(KeyRing.SECRETS).copyOf()
+        val before = dstRing.key(KeyRing.SECRETS).print()
         import(out.toByteArray(), "secret")
         val stored = column(File(dst, "databases/vault.db"), "logins", "password").getValue("a")
         assertNotEquals("pw-alice", stored)
-        assertEquals("pw-alice", Vault.open(dstRing.key(KeyRing.SECRETS), stored))
-        assertArrayEquals("this side keeps its own keys", before, dstRing.key(KeyRing.SECRETS))
+        assertEquals("pw-alice", SecretBox.open(dstRing.key(KeyRing.SECRETS), stored))
+        assertArrayEquals("this side keeps its own keys", before, dstRing.key(KeyRing.SECRETS).print())
     }
 
     @Test
@@ -156,11 +158,11 @@ class DataTransferTest {
         val photo = Random(9).nextBytes(2 * VaultFile.CHUNK + 77)
         val key = Ciphers.randomBytes(Cipher256.KEY)
         File(src, "files/vault").mkdirs()
-        VaultFile.writer(File(src, "files/vault/7.enc").outputStream(), Cipher256.XCHACHA, key).use { it.write(photo) }
+        VaultFile.writer(File(src, "files/vault/7.enc").outputStream(), Cipher256.XCHACHA, CoreKey.import(key.copyOf())).use { it.write(photo) }
         import(export("secret"), "secret")
         val moved = File(dst, "files/vault/7.enc")
         assertArrayEquals(File(src, "files/vault/7.enc").readBytes(), moved.readBytes())
-        assertArrayEquals(photo, VaultFile.Reader(Secure.disk(context), moved, key).stream().use { it.readBytes() })
+        assertArrayEquals(photo, VaultFile.Reader(Secure.disk(context), moved, CoreKey.import(key.copyOf())).stream().use { it.readBytes() })
     }
 
     @Test
@@ -224,4 +226,7 @@ class DataTransferTest {
         assertEquals("old", File(dst, "files/old.txt").readText())
         assertFalse(File(dst, "files/tabs.json").exists())
     }
+
+    // Keys never leave the core: the same key seals a fixed text into the same bytes.
+    private fun CoreKey.print() = Ciphers.seal(Cipher256.XCHACHA, this, ByteArray(24), "key print".toByteArray(), ByteArray(16))
 }

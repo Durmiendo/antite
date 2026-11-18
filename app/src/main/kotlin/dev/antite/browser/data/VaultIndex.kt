@@ -9,15 +9,18 @@ import java.nio.ByteBuffer
 
 // The secure storage's index without the disk: what goes in it, and the folder tree.
 object VaultIndex {
-    class Index(val items: List<Item>, val folders: List<Folder>, val keys: Map<Long, ByteArray>)
+    // keys: per file, the box of its key under the vault's data key (version 3), or, from a version 2 index, the key
+    // itself (raw), which the caller must put into the core and wipe at once.
+    class Index(val items: List<Item>, val folders: List<Folder>, val keys: Map<Long, ByteArray>, val raw: Boolean = false)
 
-    // The length of the JSON, the JSON, then id and key of every file. Keys stay out of the JSON, so they never become
-    // strings that cannot be wiped.
-    fun encode(items: List<Item>, folders: List<Folder>, keys: Map<Long, ByteArray>): ByteArray {
-        val json = JSONObject().put("items", itemsJson(items)).put("folders", foldersJson(folders)).toString().toByteArray()
-        val kept = items.mapNotNull { i -> keys[i.id]?.let { i.id to it } }
-        val out = ByteBuffer.allocate(4 + json.size + kept.size * (8 + Cipher256.KEY)).putInt(json.size).put(json)
-        kept.forEach { (id, k) -> out.putLong(id).put(k) }
+    private const val VERSION = 3
+
+    // The length of the JSON, the JSON, then id, length and box of the key of every file. Keys stay out of the JSON.
+    fun encode(items: List<Item>, folders: List<Folder>, boxes: Map<Long, ByteArray>): ByteArray {
+        val json = JSONObject().put("v", VERSION).put("items", itemsJson(items)).put("folders", foldersJson(folders)).toString().toByteArray()
+        val kept = items.mapNotNull { i -> boxes[i.id]?.let { i.id to it } }
+        val out = ByteBuffer.allocate(4 + json.size + kept.sumOf { 8 + 2 + it.second.size }).putInt(json.size).put(json)
+        kept.forEach { (id, box) -> out.putLong(id).putShort(box.size.toShort()).put(box) }
         json.fill(0)
         return out.array()
     }
@@ -28,8 +31,18 @@ object VaultIndex {
         val o = JSONObject(String(json))
         json.fill(0)
         val keys = HashMap<Long, ByteArray>()
-        while (buf.remaining() >= 8 + Cipher256.KEY) keys[buf.long] = ByteArray(Cipher256.KEY).also { buf.get(it) }
-        return Index(parseItems(o.getJSONArray("items")), parseFolders(o.getJSONArray("folders")), keys)
+        val raw = o.optInt("v", 2) < VERSION
+        if (raw) {
+            while (buf.remaining() >= 8 + Cipher256.KEY) keys[buf.long] = ByteArray(Cipher256.KEY).also { buf.get(it) }
+        } else {
+            while (buf.remaining() >= 8 + 2) {
+                val id = buf.long
+                val n = buf.short.toInt() and 0xffff
+                if (n > buf.remaining()) throw java.io.IOException("vault index cut short")
+                keys[id] = ByteArray(n).also { buf.get(it) }
+            }
+        }
+        return Index(parseItems(o.getJSONArray("items")), parseFolders(o.getJSONArray("folders")), keys, raw)
     }
 
     // The JSON of a version 1 index: no keys in it.

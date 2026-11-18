@@ -13,9 +13,8 @@ import java.security.MessageDigest
 //   header: "ANTLOG01", version, log id (16), slot 0, slot 1, padding to HEADER
 //   slot:   length 1, box(seq 8, count 8, last hash 32), aad = log id + slot number
 //   record: length 4, box(record), aad = log id + number 8 + previous hash
-class EncryptedLog(private val disk: Disk, private val file: File, key: ByteArray, private val cipher: () -> Cipher256) {
-    // Its own copy: the caller may wipe its key, and close() wipes this one.
-    private val key = key.copyOf()
+// The key is the caller's: the log uses it and never closes it.
+class EncryptedLog(private val disk: Disk, private val file: File, private val key: CoreKey, private val cipher: () -> Cipher256) {
 
     class DamagedException(message: String) : IOException(message)
 
@@ -115,8 +114,6 @@ class EncryptedLog(private val disk: Disk, private val file: File, key: ByteArra
         }
     }
 
-    fun close() = key.fill(0)
-
     // The log written again with only these records, under a new id: aside first, then renamed over the old one.
     fun rewrite(records: List<ByteArray>) {
         val tmp = File(file.path + ".new")
@@ -124,7 +121,6 @@ class EncryptedLog(private val disk: Disk, private val file: File, key: ByteArra
         disk.delete(tmp)
         next.read()
         next.appendAll(records)
-        next.close()
         disk.renameDurably(tmp, file)
         logId = next.logId
         seq = next.seq
