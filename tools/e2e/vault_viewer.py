@@ -104,7 +104,9 @@ def main():
         d.type("vv-")
         d.shell("input keyevent 111")
         time.sleep(1)
-        d.tap(name, exact=True)
+        # On the tile itself: d.tap would pick the smallest clickable node around the name, which is the page under the
+        # storage (Gecko's tree stays visible to accessibility), and press its middle, between the tiles.
+        d.shell("input tap %d %d" % d.center(d.wait(name, exact=True)))
         time.sleep(3)
         if not playing(d, uid):
             d.fail("the video does not play in the viewer")
