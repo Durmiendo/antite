@@ -1,4 +1,4 @@
-# The native key core (decision 0013): keycore.c over a trimmed libsodium and BearSSL's constant-time AES.
+# The native key core (decision 0013): src/*.c over a trimmed libsodium and BearSSL's constant-time AES.
 # Only the files listed here are built; tools/vendor/keycore.py copies exactly these (and the headers they use) from
 # the verified release archives. Built by the NDK for the app and by the host compiler for the JVM tests of :keyring.
 cmake_minimum_required(VERSION 3.22)
@@ -67,7 +67,7 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
     set(ARCH_SOURCES ${SODIUM_ARM64})
 endif()
 
-add_library(keycore SHARED src/keycore.c ${SODIUM_SOURCES} ${ARCH_SOURCES} ${BEARSSL_SOURCES})
+add_library(keycore SHARED src/memory.c src/ciphers.c src/keys.c ${SODIUM_SOURCES} ${ARCH_SOURCES} ${BEARSSL_SOURCES})
 
 if(NOT ANDROID)
     find_package(Threads REQUIRED)
@@ -108,7 +108,7 @@ target_link_options(keycore PRIVATE
     -Wl,--gc-sections -Wl,--no-undefined -Wl,--build-id=none -Wl,-z,relro,-z,now
     -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map
 )
-# Host test builds only: fault injection (see keycore.c), Argon2's own allocations routed through it.
+# Host test builds only: fault injection (see src/memory.c), Argon2's own allocations routed through it.
 option(KEYCORE_FAULTS "fail chosen allocations, for the host tests" OFF)
 if(KEYCORE_FAULTS)
     target_compile_definitions(keycore PRIVATE KEYCORE_FAULTS=1)

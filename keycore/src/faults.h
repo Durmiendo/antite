@@ -1,4 +1,4 @@
-// Forced into argon2-core.c in the host test builds (KEYCORE_FAULTS): its allocations go through keycore.c's fault
+// Forced into argon2-core.c in the host test builds (KEYCORE_FAULTS): its allocations go through memory.c's fault
 // injection. The system headers come first, so only the calls are renamed, not their declarations.
 #include <stdlib.h>
 #include <sys/mman.h>
