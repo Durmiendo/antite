@@ -87,7 +87,9 @@ target_compile_definitions(keycore PRIVATE
     HAVE_INLINE_ASM=1 HAVE_ATOMIC_OPS=1 HAVE_GCC_MEMORY_FENCES=1
 )
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-    target_compile_definitions(keycore PRIVATE HAVE_CPUID=1 HAVE_EMMINTRIN_H=1 HAVE_TMMINTRIN_H=1 HAVE_WMMINTRIN_H=1)
+    # HAVE_AVXINTRIN_H and HAVE_AVX_ASM let the runtime check AVX (CPUID and XCR0); without them AVX looks absent and
+    # the AES-NI code, which needs it, is never chosen. Nothing else built here reads them.
+    target_compile_definitions(keycore PRIVATE HAVE_CPUID=1 HAVE_AVXINTRIN_H=1 HAVE_AVX_ASM=1 HAVE_EMMINTRIN_H=1 HAVE_TMMINTRIN_H=1 HAVE_WMMINTRIN_H=1)
     target_compile_definitions(keycore PRIVATE BR_64=1 BR_LE_UNALIGNED=1)
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
     target_compile_definitions(keycore PRIVATE HAVE_ARMCRYPTO=1 HAVE_ARM_NEON=1)
@@ -104,4 +106,12 @@ target_link_options(keycore PRIVATE
     -Wl,--gc-sections -Wl,--no-undefined -Wl,--build-id=none -Wl,-z,relro,-z,now
     -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map
 )
+# Host test builds only: fault injection (see keycore.c), Argon2's own allocations routed through it.
+option(KEYCORE_FAULTS "fail chosen allocations, for the host tests" OFF)
+if(KEYCORE_FAULTS)
+    target_compile_definitions(keycore PRIVATE KEYCORE_FAULTS=1)
+    set_source_files_properties(${S}/crypto_pwhash/argon2/argon2-core.c PROPERTIES COMPILE_OPTIONS
+        "-include;${CMAKE_CURRENT_SOURCE_DIR}/src/faults.h")
+endif()
+
 set_target_properties(keycore PROPERTIES LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/exports.map)

@@ -29,7 +29,7 @@ tasks.register("hostKeyCore", Exec) {
     def src = rootProject.file("keycore")
     inputs.dir(src)
     outputs.dir(hostCore)
-    commandLine "sh", "-c", "cmake -S '${src}' -B '${hostCore.get().asFile}' -DCMAKE_BUILD_TYPE=Release >/dev/null && cmake --build '${hostCore.get().asFile}' >/dev/null"
+    commandLine "sh", "-c", "cmake -S '${src}' -B '${hostCore.get().asFile}' -DCMAKE_BUILD_TYPE=Release -DKEYCORE_FAULTS=ON >/dev/null && cmake --build '${hostCore.get().asFile}' >/dev/null"
 }
 tasks.withType(Test).configureEach {
     dependsOn "hostKeyCore"

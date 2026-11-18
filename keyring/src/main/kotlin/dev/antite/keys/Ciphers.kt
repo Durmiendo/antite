@@ -24,7 +24,7 @@ object Ciphers {
 
     // Seals one piece. The nonce is 24 bytes; AES uses its first 12, which callers keep unique for the key.
     fun seal(cipher: Cipher256, key: ByteArray, nonce24: ByteArray, aad: ByteArray, data: ByteArray, off: Int = 0, len: Int = data.size): ByteArray =
-        KeyCore.seal(cipher.id, key, nonce24, aad, data, off, len, false) ?: throw IOException("cannot seal with ${cipher.name}")
+        KeyCore.seal(cipher.id, key, nonce24, aad, data, off, len, false)
 
     fun open(cipher: Cipher256, key: ByteArray, nonce24: ByteArray, aad: ByteArray, data: ByteArray, off: Int = 0, len: Int = data.size): ByteArray =
         KeyCore.open(cipher.id, key, nonce24, aad, data, off, len, false) ?: throw IOException("damaged or not for this key")

@@ -1,7 +1,10 @@
 package dev.antite.keys
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class KeyCoreTest {
@@ -54,10 +57,60 @@ class KeyCoreTest {
     }
 
     @Test
-    fun wrongArgumentsGiveNothing() {
-        assertNull(KeyCore.seal(Cipher256.XCHACHA.id, ByteArray(32), ByteArray(24), ByteArray(0), ByteArray(4), 0, 4, false))
-        assertNull(KeyCore.seal(Cipher256.XCHACHA.id, ByteArray(64), ByteArray(12), ByteArray(0), ByteArray(4), 0, 4, false))
-        assertNull(KeyCore.seal(Cipher256.XCHACHA.id, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(4), 2, 4, false))
-        assertNull(KeyCore.seal(9, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(4), 0, 4, false))
+    fun wrongArgumentsThrow() {
+        val x = Cipher256.XCHACHA.id
+        val wrong = listOf<() -> Unit>(
+            { KeyCore.seal(x, ByteArray(32), ByteArray(24), ByteArray(0), ByteArray(4), 0, 4, false) },
+            { KeyCore.seal(x, ByteArray(64), ByteArray(12), ByteArray(0), ByteArray(4), 0, 4, false) },
+            { KeyCore.seal(x, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(4), 2, 4, false) },
+            { KeyCore.seal(x, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(4), -1, 2, false) },
+            { KeyCore.seal(x, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(4), 2, Int.MAX_VALUE, false) },
+            { KeyCore.open(9, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(40), 0, 40, false) },
+            { KeyCore.argon2id(ByteArray(4), ByteArray(4), 1, 64, 1, 32) },
+            { KeyCore.argon2id(ByteArray(4), ByteArray(16), 0, 64, 1, 32) },
+            { KeyCore.argon2id(ByteArray(4), ByteArray(16), 1, 64, 1, 8) },
+            { KeyCore.argon2id(ByteArray(4), ByteArray(16), 1, 64, 1, Int.MAX_VALUE) },
+            { KeyCore.argon2id(ByteArray(4), ByteArray(16), 1, 4, 1, 32) },
+            { KeyCore.argon2id(ByteArray(4), ByteArray(16), 1, 1024, 1000, 32) },
+        )
+        for ((i, call) in wrong.withIndex()) assertThrows("case $i", IllegalArgumentException::class.java) { call() }
+    }
+
+    // Too short to have been sealed is damage, not a wrong argument.
+    @Test
+    fun tooShortDoesNotOpen() {
+        for (c in Cipher256.entries) assertNull(c.name, KeyCore.open(c.id, ByteArray(64), ByteArray(24), ByteArray(0), ByteArray(20), 0, 20, false))
+    }
+
+    @Test
+    fun keysAreLockedInMemory() = assertTrue(KeyCore.memoryLocked())
+
+    // A processor with AES, PCLMUL and AVX gets the hardware AES, not the software one.
+    @Test
+    fun hardwareAesWhereTheProcessorHasIt() {
+        val flags = java.io.File("/proc/cpuinfo").takeIf { it.exists() }?.readLines()
+            ?.firstOrNull { it.startsWith("flags") }?.split(" ")?.toSet() ?: return
+        if (System.getProperty("os.arch") in setOf("amd64", "x86_64") && flags.containsAll(listOf("aes", "pclmulqdq", "avx"))) {
+            assertTrue(KeyCore.aesHardware())
+        }
+    }
+
+    @Test
+    fun manyThreadsAtOnce() {
+        val key = ByteArray(64) { it.toByte() }
+        val errors = java.util.concurrent.atomic.AtomicInteger()
+        val threads = List(100) { t ->
+            Thread {
+                repeat(200) {
+                    val plain = ByteArray(t + it)
+                    val nonce = ByteArray(24).also { n -> n[0] = t.toByte(); n[1] = it.toByte() }
+                    val sealed = KeyCore.seal(Cipher256.CASCADE.id, key, nonce, ByteArray(0), plain, 0, plain.size, false)
+                    if (!plain.contentEquals(KeyCore.open(Cipher256.CASCADE.id, key, nonce, ByteArray(0), sealed, 0, sealed.size, false))) errors.incrementAndGet()
+                }
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        assertEquals(0, errors.get())
     }
 }

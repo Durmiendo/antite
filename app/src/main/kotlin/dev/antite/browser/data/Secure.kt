@@ -99,6 +99,5 @@ object Secure {
     object Argon2 : KeyRing.Kdf {
         override fun derive(password: ByteArray, salt: ByteArray, params: KeyRing.KdfParams): ByteArray =
             KeyCore.argon2id(password, salt, params.iterations, params.memoryKib, params.parallelism, Cipher256.KEY)
-                ?: throw IOException("Argon2id refused its parameters")
     }
 }
