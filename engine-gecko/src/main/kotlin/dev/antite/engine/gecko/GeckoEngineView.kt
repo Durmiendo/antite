@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.view.MotionEvent
 import android.view.View
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeProvider
 import dev.antite.engine.EngineTab
 import dev.antite.engine.EngineView
 import org.mozilla.geckoview.GeckoView
@@ -15,6 +17,19 @@ internal class TouchGeckoView(context: Context) : GeckoView(context) {
     @Volatile
     var pullAllowed: Boolean? = null
         private set
+
+    // While covered, the page gives no accessibility tree at all: hiding the view is not enough for services that
+    // ask for views not important for accessibility too.
+    var accessibilityHidden = false
+        set(value) {
+            if (field == value) return
+            field = value
+            importantForAccessibility = if (value) IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else IMPORTANT_FOR_ACCESSIBILITY_YES
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
+
+    override fun getAccessibilityNodeProvider(): AccessibilityNodeProvider? =
+        if (accessibilityHidden) null else super.getAccessibilityNodeProvider()
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked != MotionEvent.ACTION_DOWN) return super.onTouchEvent(event)
@@ -62,5 +77,9 @@ internal class GeckoEngineView(private val gecko: TouchGeckoView) : EngineView {
 
     // Not until Gecko has answered for this touch: a page at the top whose content takes the drag (a map, a game) must
     // not lose it to the pull. The layout asks again on every move, so a real pull starts once the answer is in.
+    override fun setAccessibilityHidden(hidden: Boolean) {
+        gecko.accessibilityHidden = hidden
+    }
+
     override fun canPullToRefresh(): Boolean = gecko.pullAllowed ?: false
 }

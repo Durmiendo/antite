@@ -1,6 +1,7 @@
 package dev.antite.browser.ui
 
 import android.content.Context
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -16,7 +17,21 @@ class PageRefreshLayout(
         setOnRefreshListener(onRefresh)
     }
 
-    override fun canChildScrollUp() = !atTop()
+    // On the finger down the layout must always note where the touch started: there it never takes the touch, and
+    // the engine has not answered for this touch yet (its answer is still the last touch's). If the layout said "can
+    // scroll up" on the down, it would drop the whole gesture even after the engine allowed the pull.
+    private var down = false
+
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        down = ev.actionMasked == MotionEvent.ACTION_DOWN
+        try {
+            return super.onInterceptTouchEvent(ev)
+        } finally {
+            down = false
+        }
+    }
+
+    override fun canChildScrollUp() = !down && !atTop()
 
     // The page view is created once and is placed into a new wrapper when the screen is rebuilt.
     fun setPage(v: View) {

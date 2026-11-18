@@ -121,8 +121,7 @@ import kotlinx.coroutines.flow.first
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BrowserScreen(b: Browser) {
-    // Counted by tools/e2e/recompose_scroll.py (setprop log.tag.AntiteCompose V): the screen must not be composed
-    // again on every frame of a scroll or of the bars hiding.
+    // Counted by tools/e2e/recompose_scroll.py: not composed again on every frame of a scroll or of the bars hiding.
     SideEffect { if (android.util.Log.isLoggable("AntiteCompose", android.util.Log.VERBOSE)) android.util.Log.v("AntiteCompose", "BrowserScreen") }
     val p = LocalPalette.current
     val density = LocalDensity.current
@@ -253,6 +252,7 @@ fun BrowserScreen(b: Browser) {
             if (secure) b.activity.window.addFlags(flag) else b.activity.window.clearFlags(flag)
         }
         val covered = overlayMotion.currentState != Overlay.NONE && overlayMotion.targetState != Overlay.NONE
+        b.engineView?.let { HideCoveredPage(it, overlayMotion.targetState != Overlay.NONE || (t != null && b.tabLocked(t))) }
         // The picture-in-picture window shows the video alone.
         if (!b.pip) Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.only(WindowInsetsSides.Bottom))) {
             // Under a full-screen page it stays composed but is not placed, so closing that page shows it at once.
