@@ -26,6 +26,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.data.Tab
@@ -37,6 +39,7 @@ import dev.antite.browser.service.MediaService
 import dev.antite.browser.ui.AntiteTheme
 import dev.antite.browser.ui.BrowserScreen
 import dev.antite.browser.ui.LocalBrowser
+import dev.antite.browser.ui.paletteOf
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -117,7 +120,9 @@ class MainActivity : ComponentActivity() {
         })
         setContent {
             val dark = browser.prefs.isDark()
-            AntiteTheme(dark, browser.prefs.isOled()) {
+            val oled = browser.prefs.isOled()
+            SideEffect { browser.engineView?.setCover(paletteOf(dark, oled).page.toArgb()) }
+            AntiteTheme(dark, oled) {
                 CompositionLocalProvider(LocalBrowser provides browser) { BrowserScreen(browser) }
             }
             window.insetsController?.setSystemBarsAppearance(

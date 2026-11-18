@@ -50,6 +50,10 @@ interface EngineView {
 
     fun show(tab: EngineTab?)
 
+    // ARGB colour laid over the view each time show changes the tab, until the new tab draws itself: the picture of
+    // the tab shown before never stays on screen, a tab of a locked category included.
+    fun setCover(argb: Int) {}
+
     fun capture(done: (Bitmap?) -> Unit)
 
     fun setToolbarMaxHeight(px: Int)
