@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.util.LruCache
 import androidx.compose.runtime.mutableIntStateOf
+import dev.antite.browser.lang.catching
 import dev.antite.engine.Engine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -123,7 +124,7 @@ class IconCache(context: Context, private val engine: Engine, private val downlo
                     return@launch
                 }
                 val scaled = Bitmap.createScaledBitmap(bmp, SIZE, SIZE, true)
-                runCatching { FileOutputStream(file(host)).use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+                catching { FileOutputStream(file(host)).use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) } }
                 withContext(Dispatchers.Main) {
                     inFlight.remove(host)
                     mem.put(host, scaled)

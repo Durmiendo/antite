@@ -49,6 +49,7 @@ import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
 import dev.antite.browser.data.Entry
 import dev.antite.browser.l10n.T
+import dev.antite.browser.lang.catching
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.lifecycle.lifecycleScope
@@ -204,7 +205,7 @@ fun Suggestions(b: Browser, modifier: Modifier) {
         delay(150)
         b.engine.fetch(suggest + Uri.encode(text), 64 * 1024) { bytes ->
             if (bytes == null || b.suggestQuery.trim() != text) return@fetch
-            remote = runCatching {
+            remote = catching {
                 val items = JSONArray(String(bytes)).getJSONArray(1)
                 (0 until minOf(items.length(), 6)).map { items.getString(it) }
             }.getOrDefault(emptyList())

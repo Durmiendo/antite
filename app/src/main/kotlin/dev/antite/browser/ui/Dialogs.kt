@@ -68,6 +68,7 @@ import dev.antite.engine.Prompt
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.time.format.DateTimeParseException
 
 @Composable
 fun DialogHost(b: Browser) {
@@ -231,7 +232,7 @@ fun FormDialog(
             Buttons(listOf(T.actionCancel to close, confirm to { if (onConfirm(values.toList())) close() }), false)
         }
     }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { focusQuietly(focus) }
 }
 
 @Composable
@@ -343,7 +344,7 @@ private fun DateTimeDialog(prompt: Prompt.DateTime, remove: () -> Unit, dismiss:
             }
         }
         else -> {
-            val initial = prompt.value?.take(10)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            val initial = prompt.value?.take(10)?.let { try { LocalDate.parse(it) } catch (e: DateTimeParseException) { null } }
             val state = rememberDatePickerState(initial?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli())
             DatePickerDialog(onDismissRequest = dismiss, confirmButton = {
                 TextButton(onClick = {

@@ -124,7 +124,7 @@ internal class Custom(val field: String, val kind: FormField.Kind, val fits: (St
 internal fun number(parse: (String) -> Int?, min: Int, max: Int, show: (String) -> String = { it }) =
     Custom(T.customNumberField(min = min, max = max), FormField.Kind.NUMBER, { parse(it) != null }, show)
 
-internal fun hostOf(url: String): String = runCatching { java.net.URI(url.replace("%s", "q")).host }.getOrNull() ?: url
+internal fun hostOf(url: String): String = try { java.net.URI(url.replace("%s", "q")).host ?: url } catch (e: java.net.URISyntaxException) { url }
 
 internal fun <T> LazyListScope.choice(b: Browser, nav: Nav, title: String, key: String, options: List<Option<T>>, def: Int,
                                      engine: Boolean, custom: Custom? = null, after: () -> Unit = {}) {
@@ -344,7 +344,7 @@ internal fun exportAll(b: Browser) {
                 }
             }
         }, onDismiss = {
-            if (!started) runCatching { DocumentsContract.deleteDocument(b.activity.contentResolver, uri) }
+            if (!started) try { DocumentsContract.deleteDocument(b.activity.contentResolver, uri) } catch (e: java.io.IOException) { false }
         }))
     }
 }

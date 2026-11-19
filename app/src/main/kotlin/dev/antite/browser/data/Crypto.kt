@@ -2,6 +2,7 @@ package dev.antite.browser.data
 
 import android.util.Base64
 import android.util.Log
+import dev.antite.browser.lang.catching
 import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -28,7 +29,7 @@ object Crypto {
     @Synchronized
     fun forget() {
         key = null
-        runCatching { KeyStore.getInstance(STORE).apply { load(null) }.deleteEntry(ALIAS) }
+        catching { KeyStore.getInstance(STORE).apply { load(null) }.deleteEntry(ALIAS) }
     }
 
     fun open(sealed: ByteArray): ByteArray {

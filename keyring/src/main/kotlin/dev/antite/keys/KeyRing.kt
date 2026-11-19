@@ -1,6 +1,7 @@
 package dev.antite.keys
 
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -279,7 +280,7 @@ class KeyRing(
         val staged = DOMAINS.filter { disk.exists(stagedFile(it)) }
         if (!disk.exists(commitFile)) {
             for (d in staged) {
-                runCatching { destroy(d, read(stagedFile(d))) }
+                orNull { destroy(d, read(stagedFile(d))) }
                 disk.deleteDurably(stagedFile(d))
             }
             disk.deleteDurably(stagedPassword)
@@ -291,12 +292,16 @@ class KeyRing(
         if (!mode.usesPassword) disk.deleteDurably(passwordFile)
         val commit = read(commitFile)
         val old = commit.getJSONArray("destroy")
-        for (i in 0 until old.length()) runCatching { device.destroy(old.getString(i)) }
+        for (i in 0 until old.length()) orNull { device.destroy(old.getString(i)) }
         disk.deleteDurably(commitFile)
     }
 
+    // A damaged file or a Keystore refusal; a crash or a lack of memory is not one and goes on up.
+    private inline fun <T> orNull(block: () -> T): T? = try { block() } catch (e: IOException) { null } catch (e: java.security.GeneralSecurityException) { null }
+        catch (e: JSONException) { null } catch (e: IllegalArgumentException) { null }
+
     private fun destroy(domain: String, o: JSONObject) {
-        if (Mode.of(o.getInt("mode")).usesDevice) runCatching { device.destroy(alias(domain, o.getInt("gen"))) }
+        if (Mode.of(o.getInt("mode")).usesDevice) orNull { device.destroy(alias(domain, o.getInt("gen"))) }
     }
 
     // Replaces the data key of a domain. rewrite() must re-encrypt everything under the new key and make it durable;
@@ -326,7 +331,7 @@ class KeyRing(
     fun recover(domain: String, works: (CoreKey) -> Boolean) {
         val next = nextFile(domain).takeIf { disk.exists(it) } ?: return
         val o = read(next)
-        val k = runCatching { unseal(domain, o) }.getOrNull()
+        val k = orNull { unseal(domain, o) }
         if (k != null && works(k)) {
             val current = read(domainFile(domain))
             disk.renameDurably(next, domainFile(domain))
@@ -372,7 +377,7 @@ class KeyRing(
         for (d in DOMAINS) {
             val f = importFile(d)
             if (!disk.exists(f)) continue
-            runCatching { destroy(d, read(f)) }
+            orNull { destroy(d, read(f)) }
             disk.deleteDurably(f)
         }
     }

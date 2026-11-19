@@ -1,6 +1,7 @@
 package dev.antite.browser.data
 
 import java.net.URI
+import java.net.URISyntaxException
 
 // The user's own value of a choice, from the text typed for it: null when the text is not a valid one.
 object CustomValues {
@@ -19,7 +20,11 @@ object CustomValues {
 
     private fun https(s: String): Boolean {
         if (!s.startsWith("https://") || s.any { it.isWhitespace() }) return false
-        val host = runCatching { URI(s).host }.getOrNull()
+        val host = try {
+            URI(s).host
+        } catch (e: URISyntaxException) {
+            null
+        }
         return !host.isNullOrEmpty() && '.' in host
     }
 }

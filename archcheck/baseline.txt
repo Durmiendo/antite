@@ -1,4 +1,19 @@
 # Known breaches of the architecture rules (ArchTest). Only shrinks: a number is a ceiling.
+catch-all app/src/main/kotlin/dev/antite/browser/KeyActions.kt 1
+catch-all app/src/main/kotlin/dev/antite/browser/data/Crypto.kt 1
+catch-all app/src/main/kotlin/dev/antite/browser/data/TabStore.kt 2
+catch-all app/src/main/kotlin/dev/antite/browser/data/VaultShare.kt 1
+catch-all app/src/main/kotlin/dev/antite/browser/engine/EngineInstaller.kt 1
+catch-all app/src/main/kotlin/dev/antite/browser/engine/EngineSetupActivity.kt 2
+catch-all app/src/main/kotlin/dev/antite/browser/engine/EngineUpdates.kt 2
+catch-all app/src/main/kotlin/dev/antite/browser/engine/Sources.kt 1
+catch-all app/src/main/kotlin/dev/antite/browser/service/DownloadService.kt 1
+catch-all app/src/main/kotlin/dev/antite/browser/service/Downloads.kt 1
+catch-all app/src/main/kotlin/dev/antite/browser/transfer/TransferActivity.kt 2
+catch-all app/src/main/kotlin/dev/antite/browser/ui/SettingsScreen.kt 1
+catch-all engine-gecko/src/main/kotlin/dev/antite/engine/gecko/GeckoEngine.kt 4
+catch-all engine-gecko/src/main/kotlin/dev/antite/engine/gecko/GeckoEngineView.kt 1
+catch-all engine-gecko/src/main/kotlin/dev/antite/engine/gecko/GeckoTab.kt 1
 cycle dev.antite.browser dev.antite.browser.data
 cycle dev.antite.browser dev.antite.browser.engine
 cycle dev.antite.browser dev.antite.browser.service

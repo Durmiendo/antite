@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import android.util.Log
+import dev.antite.browser.lang.catching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,7 +49,7 @@ class VaultShare : ContentProvider() {
 
         fun revokeAll(context: Context) {
             for (token in links.keys) {
-                runCatching { context.revokeUriPermission(Uri.parse("content://${authority(context)}/$token"), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                catching { context.revokeUriPermission(Uri.parse("content://${authority(context)}/$token"), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             }
             links.clear()
         }
@@ -63,7 +64,7 @@ class VaultShare : ContentProvider() {
 
     override fun onCreate() = true
 
-    override fun getType(uri: Uri): String? = runCatching { item(uri).mime }.getOrNull()
+    override fun getType(uri: Uri): String? = catching { item(uri).mime }.getOrNull()
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor {
         val i = item(uri)
@@ -83,7 +84,7 @@ class VaultShare : ContentProvider() {
                 vault.reader(i).stream().use { input -> ParcelFileDescriptor.AutoCloseOutputStream(write).use { input.copyTo(it) } }
             } catch (e: Exception) {
                 Log.w("Antite", "vault share of ${i.id} cut short", e)
-                runCatching { write.closeWithError(e.message ?: "read failed") }
+                catching { write.closeWithError(e.message ?: "read failed") }
             }
         }
         return read

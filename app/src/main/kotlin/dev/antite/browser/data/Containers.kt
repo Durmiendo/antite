@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.antite.browser.lang.catching
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -24,7 +25,7 @@ class Containers(private val prefs: Prefs) {
     val list = mutableStateListOf<TabContainer>()
 
     init {
-        runCatching {
+        catching {
             val arr = JSONArray(prefs.string(PREF, "[]"))
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)

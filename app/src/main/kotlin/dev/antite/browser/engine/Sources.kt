@@ -3,6 +3,7 @@ package dev.antite.browser.engine
 import android.content.Context
 import dev.antite.browser.BuildConfig
 import dev.antite.browser.l10n.T
+import java.net.URISyntaxException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
@@ -91,7 +92,11 @@ object Sources {
 
     // HTTPS, or plain HTTP only to this device (a local publishing server).
     fun acceptsUrl(url: String): Boolean {
-        val u = runCatching { URI(url) }.getOrNull() ?: return false
+        val u = try {
+            URI(url)
+        } catch (e: URISyntaxException) {
+            return false
+        }
         if (u.rawUserInfo != null || u.host.isNullOrEmpty()) return false
         return when (u.scheme?.lowercase()) {
             "https" -> true

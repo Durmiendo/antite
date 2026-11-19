@@ -54,7 +54,11 @@ object Urls {
         if (labels.none { it.startsWith("xn--", ignoreCase = true) }) return host
         val decoded = labels.map { l ->
             if (!l.startsWith("xn--", ignoreCase = true)) l
-            else runCatching { java.net.IDN.toUnicode(l, java.net.IDN.ALLOW_UNASSIGNED) }.getOrDefault(l)
+            else try {
+                java.net.IDN.toUnicode(l, java.net.IDN.ALLOW_UNASSIGNED)
+            } catch (e: IllegalArgumentException) {
+                l
+            }
         }
         val tldCyrillic = decoded.last().any { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.CYRILLIC }
         return labels.indices.joinToString(".") { i -> if (safeLabel(decoded[i], tldCyrillic)) decoded[i] else labels[i] }
@@ -102,9 +106,11 @@ object Urls {
         return out.toString()
     }
 
-    private fun utf8(b: ByteArray): String? = runCatching {
+    private fun utf8(b: ByteArray): String? = try {
         java.nio.charset.StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(b)).toString()
-    }.getOrNull()
+    } catch (e: java.nio.charset.CharacterCodingException) {
+        null
+    }
 
     private fun invisible(c: Char) = c.isWhitespace() || Character.getType(c).let {
         it == Character.FORMAT.toInt() || it == Character.CONTROL.toInt() || it == Character.UNASSIGNED.toInt()

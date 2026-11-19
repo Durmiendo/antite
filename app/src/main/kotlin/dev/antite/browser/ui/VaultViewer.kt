@@ -59,6 +59,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import dev.antite.browser.lang.decodedOrNull
 import kotlinx.coroutines.launch
 import me.saket.telephoto.zoomable.rememberZoomableState
 import me.saket.telephoto.zoomable.zoomable
@@ -219,7 +220,7 @@ private fun VideoPage(player: ExoPlayer, current: Boolean) {
 @Composable
 private fun ZoomableImage(vault: MediaVault, item: MediaVault.Item, onTap: () -> Unit) {
     val bmp by produceState<ImageBitmap?>(null, item.id) {
-        if (value == null) value = withContext(Dispatchers.IO) { runCatching { decode(vault, item, 2048) }.getOrNull() }
+        if (value == null) value = withContext(Dispatchers.IO) { decodedOrNull { decode(vault, item, 2048) } }
     }
     val b = bmp
     if (b == null) {
@@ -237,7 +238,7 @@ private fun ZoomableImage(vault: MediaVault, item: MediaVault.Item, onTap: () ->
 // The stored preview, or one made now from the file and stored for the next time.
 internal fun thumbnail(vault: MediaVault, item: MediaVault.Item): ImageBitmap? {
     vault.thumb(item)?.let { bytes -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { return it.asImageBitmap() } }
-    val made = runCatching { decode(vault, item, 320) }.getOrNull() ?: return null
+    val made = decodedOrNull { decode(vault, item, 320) } ?: return null
     val out = java.io.ByteArrayOutputStream()
     made.asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
     vault.saveThumb(item, out.toByteArray())

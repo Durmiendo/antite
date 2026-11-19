@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import dev.antite.browser.engine.Engines
 import dev.antite.browser.l10n.L10n
+import dev.antite.browser.lang.catching
 import dev.antite.browser.transfer.DataTransfer
 
 class AntiteApp : Application() {
@@ -15,7 +16,7 @@ class AntiteApp : Application() {
     override fun onCreate() {
         super.onCreate()
         // Before anything opens the keys or the data; the tab processes never touch them.
-        if (getProcessName() == packageName) runCatching { DataTransfer.recover(this) }.onFailure { Log.e("Antite", "transfer not recovered", it) }
+        if (getProcessName() == packageName) catching { DataTransfer.recover(this) }.onFailure { Log.e("Antite", "transfer not recovered", it) }
         L10n.init(this)
     }
 

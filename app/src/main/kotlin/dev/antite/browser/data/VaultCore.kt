@@ -2,6 +2,7 @@ package dev.antite.browser.data
 
 import dev.antite.browser.data.MediaVault.Folder
 import dev.antite.browser.data.MediaVault.Item
+import dev.antite.browser.lang.catching
 import dev.antite.keys.Cipher256
 import dev.antite.keys.Ciphers
 import dev.antite.keys.CoreKey
@@ -73,9 +74,9 @@ class VaultCore(
     @Synchronized
     fun open(): Boolean {
         if (opened) return false
-        ring.recover(KeyRing.VAULT) { k -> runCatching { readIndex(k) }.isSuccess }
+        ring.recover(KeyRing.VAULT) { k -> catching { readIndex(k) }.isSuccess }
         unreadable = false
-        runCatching {
+        catching {
             when {
                 disk.exists(index) -> ring.withKey(KeyRing.VAULT) { k -> apply(readIndex(k), k) }
                 disk.exists(v1Index) -> apply(readV1Index(), null)
@@ -177,7 +178,7 @@ class VaultCore(
         val known = items.map { it.id }.toSet()
         val strays = disk.list(dir).mapNotNull { f -> f.name.toLongOrNull()?.takeIf { it !in known }?.let { it to f } }
         items = items + strays.map { (id, f) ->
-            val mime = runCatching { disk.input(f).buffered().use { URLConnection.guessContentTypeFromStream(it) } }.getOrNull()
+            val mime = catching { disk.input(f).buffered().use { URLConnection.guessContentTypeFromStream(it) } }.getOrNull()
             Item(id, "recovered-$id", mime ?: "application/octet-stream", disk.length(f), disk.modified(f), "")
         }
     }
@@ -192,7 +193,7 @@ class VaultCore(
         if (disk.exists(oldFile(item))) return true
         val f = file(item)
         if (!disk.exists(f)) return false
-        val head = runCatching { VaultFile.head(disk, f) }.getOrNull() ?: return false
+        val head = catching { VaultFile.head(disk, f) }.getOrNull() ?: return false
         return head.version == 1 || synchronized(fileKeys) { item.id !in fileKeys }
     }
 
@@ -204,10 +205,10 @@ class VaultCore(
 
     fun reader(item: Item) = VaultFile.Reader(disk, file(item), keyOf(item))
 
-    fun cipherOf(item: Item): Cipher256? = runCatching { VaultFile.head(disk, file(item)).cipher }.getOrNull()
+    fun cipherOf(item: Item): Cipher256? = catching { VaultFile.head(disk, file(item)).cipher }.getOrNull()
 
     // A small preview, encrypted with the file's own key next to it, so the grid does not decrypt whole files.
-    fun thumb(item: Item): ByteArray? = runCatching {
+    fun thumb(item: Item): ByteArray? = catching {
         thumbFile(item).takeIf { disk.exists(it) }?.let { f -> VaultFile.Reader(disk, f, keyOf(item)).stream().use { it.readBytes() } }
     }.getOrNull()
 
@@ -281,10 +282,10 @@ class VaultCore(
     // final name before it is erased. The old device key is no longer needed after that. done() is told of each file
     // finished; the result says whether nothing of version 1 is left.
     fun moveOver(done: (Long) -> Unit): Boolean {
-        val v1 = items.filter { disk.exists(file(it)) && runCatching { VaultFile.head(disk, file(it)).version == 1 }.getOrDefault(false) }
+        val v1 = items.filter { disk.exists(file(it)) && catching { VaultFile.head(disk, file(it)).version == 1 }.getOrDefault(false) }
         for (item in v1) {
             if (synchronized(fileKeys) { item.id in fileKeys }) continue
-            runCatching {
+            catching {
                 VaultFile.v1Key(VaultFile.head(disk, file(item)), legacyUnwrap).use { k ->
                     val box = ring.withKey(KeyRing.VAULT) { d -> k.wrapUnder(d, cipher(), aadOf(item.id)) }
                     synchronized(fileKeys) { fileKeys[item.id] = box }
@@ -292,10 +293,10 @@ class VaultCore(
             }
                 .onFailure { warn("vault file ${item.id} key unreadable", it) }
         }
-        if (runCatching { save() }.onFailure { warn("vault index not moved over", it) }.isFailure) return false
+        if (catching { save() }.onFailure { warn("vault index not moved over", it) }.isFailure) return false
         disk.deleteDurably(v1Index)
         for (item in v1) {
-            runCatching { VaultFile.upgradeHeader(disk, file(item)) }.onFailure { warn("vault file ${item.id} header not upgraded", it) }
+            catching { VaultFile.upgradeHeader(disk, file(item)) }.onFailure { warn("vault file ${item.id} header not upgraded", it) }
             done(item.id)
         }
         for (item in items) {
@@ -304,11 +305,11 @@ class VaultCore(
             // Its key in the index means its encrypted copy is complete: what is left is the wiping, cut short, of a
             // copy that may be half zeros by now and must not be encrypted again over the good one.
             if (synchronized(fileKeys) { item.id in fileKeys } && disk.exists(file(item))) {
-                runCatching { VaultFile.wipe(disk, old) }.onFailure { warn("vault file ${item.id} left open", it) }
+                catching { VaultFile.wipe(disk, old) }.onFailure { warn("vault file ${item.id} left open", it) }
                 done(item.id)
                 continue
             }
-            runCatching {
+            catching {
                 val tmp = File(dir, "${item.id}.enc.tmp")
                 val key = newKey(item)
                 disk.input(old).use { input -> VaultFile.writer(disk.output(tmp, sync = true), cipher(), key).use { input.copyTo(it) } }
@@ -318,7 +319,7 @@ class VaultCore(
             }.onFailure { warn("vault file ${item.id} not encrypted", it) }
             done(item.id)
         }
-        return !disk.exists(v1Index) && items.none { runCatching { VaultFile.head(disk, file(it)).version == 1 }.getOrDefault(false) }
+        return !disk.exists(v1Index) && items.none { catching { VaultFile.head(disk, file(it)).version == 1 }.getOrDefault(false) }
     }
 
     // One file put under the given cipher, under a new id: the index switches to it in one write, so a stop leaves
@@ -346,13 +347,13 @@ class VaultCore(
             val busy = synchronized(this) { id != null && (id in inFlight || finished.any { it.id == id }) }
             if (busy) continue
             val orphan = (f.name.endsWith(".enc") || f.name.endsWith(".thumb")) && id != null && id !in known
-            if (f.name.endsWith(".tmp") || orphan) runCatching { erase(f) }.onFailure { warn("vault orphan ${f.name} not erased", it) }
+            if (f.name.endsWith(".tmp") || orphan) catching { erase(f) }.onFailure { warn("vault orphan ${f.name} not erased", it) }
         }
     }
 
     // A file from elsewhere joins the vault: written and on the disk, then indexed. On failure nothing of it stays.
     fun store(input: InputStream, item: Item): Item {
-        val ok = runCatching {
+        val ok = catching {
             input.use { src -> output(item).use { src.copyTo(it) } }
             disk.syncFolder(dir)
             val size = VaultFile.plainLength(disk.length(file(item)), VaultFile.head(disk, file(item)).cipher)
@@ -370,7 +371,7 @@ class VaultCore(
     private fun drop(item: Item) {
         items = items.filter { it.id != item.id }
         forgetKey(item.id)
-        runCatching { erase(file(item)) }.onFailure { warn("vault file ${item.id} not erased", it) }
+        catching { erase(file(item)) }.onFailure { warn("vault file ${item.id} not erased", it) }
     }
 
     // The private copy goes with the entry: nothing hidden stays behind after a restore or a delete. The index is

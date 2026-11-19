@@ -12,6 +12,7 @@ import dev.antite.browser.Browser
 import dev.antite.browser.DialogButton
 import dev.antite.browser.FormField
 import dev.antite.browser.UiDialog
+import dev.antite.browser.lang.catching
 import dev.antite.browser.unlockSecrets
 import dev.antite.browser.data.SavedLogin
 import dev.antite.browser.l10n.T
@@ -62,7 +63,7 @@ internal fun importCsv(b: Browser, done: () -> Unit) = b.activity.openDocument(l
     if (uri == null) return@openDocument
     b.activity.lifecycleScope.launch {
         val n = b.vault.io {
-            runCatching { b.activity.contentResolver.openInputStream(uri)!!.use { importCsv(it) } }.getOrDefault(-1)
+            catching { b.activity.contentResolver.openInputStream(uri)!!.use { importCsv(it) } }.getOrDefault(-1)
         }
         b.toast(if (n < 0) T.passwordsReadFailed else T.passwordsImported(count = n))
         done()
@@ -73,7 +74,7 @@ internal fun exportCsv(b: Browser) = b.activity.createDocument("Antite Passwords
     if (uri == null) return@createDocument
     b.activity.lifecycleScope.launch {
         val n = b.vault.io {
-            runCatching { b.activity.contentResolver.openOutputStream(uri)!!.use { exportCsv(it) } }.getOrDefault(-1)
+            catching { b.activity.contentResolver.openOutputStream(uri)!!.use { exportCsv(it) } }.getOrDefault(-1)
         }
         b.toast(if (n < 0) T.passwordsWriteFailed else T.passwordsExported(count = n))
     }

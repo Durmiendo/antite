@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
 import android.util.Base64
 import dev.antite.browser.Urls
+import dev.antite.browser.lang.catching
 import dev.antite.engine.Address
 import dev.antite.engine.Card
 import dev.antite.engine.Login
@@ -76,12 +77,12 @@ class Vault private constructor(private val context: Context) : SQLiteOpenHelper
     private fun key() {
         ring.key(KeyRing.SECRETS)
         if (ready) return
-        ring.recover(KeyRing.SECRETS) { k -> firstValue()?.let { v -> runCatching { SecretBox.open(k, v) }.isSuccess } ?: true }
+        ring.recover(KeyRing.SECRETS) { k -> firstValue()?.let { v -> catching { SecretBox.open(k, v) }.isSuccess } ?: true }
         var left = 0
         ring.withKey(KeyRing.SECRETS) { k ->
             rewrite { v ->
                 if (!SecretBox.isLegacy(Base64.decode(v, Base64.NO_WRAP))) null
-                else runCatching { SecretBox.seal(k, cipher(), SecretBox.open(k, v)) }.getOrNull().also { if (it == null) left++ }
+                else catching { SecretBox.seal(k, cipher(), SecretBox.open(k, v)) }.getOrNull().also { if (it == null) left++ }
             }
         }
         if (left == 0) Secure.legacyMoved(context, "secrets")
@@ -264,7 +265,7 @@ class Vault private constructor(private val context: Context) : SQLiteOpenHelper
             buildList {
                 while (c.moveToNext()) {
                     val json = decrypt(c.getString(1)) ?: continue
-                    runCatching { add(addressFromJson(c.getString(0), JSONObject(json))) }
+                    catching { add(addressFromJson(c.getString(0), JSONObject(json))) }.onFailure { android.util.Log.w("Antite", "address unreadable", it) }
                 }
             }
         }

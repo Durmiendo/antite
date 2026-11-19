@@ -1,5 +1,6 @@
 package dev.antite.browser.engine
 
+import dev.antite.browser.lang.catching
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -18,15 +19,15 @@ class EngineStore(filesDir: File, val abi: String? = Abi.current, val api: Int =
         const val MAX_FAILED_STARTS = 3
         const val ABI = "abi"
 
-        fun abiOf(engine: File): String? = runCatching { File(engine, ABI).readText().trim() }.getOrNull()
+        fun abiOf(engine: File): String? = catching { File(engine, ABI).readText().trim() }.getOrNull()
 
-        fun apiOf(engine: File): Int? = runCatching { JSONObject(File(engine, "engine.json").readText()).getInt("api") }.getOrNull()
+        fun apiOf(engine: File): Int? = catching { JSONObject(File(engine, "engine.json").readText()).getInt("api") }.getOrNull()
     }
 
     val dir = File(filesDir, "engines")
 
     private fun read(name: String): File? {
-        val value = runCatching { File(dir, name).readText().trim() }.getOrNull() ?: return null
+        val value = catching { File(dir, name).readText().trim() }.getOrNull() ?: return null
         if (value.isEmpty() || '/' in value) return null
         return File(dir, value).takeIf { File(it, READY).exists() && abiOf(it) == abi && apiOf(it) == api }
     }
@@ -69,7 +70,7 @@ class EngineStore(filesDir: File, val abi: String? = Abi.current, val api: Int =
     }
 
     private fun starts(): Pair<String, Int> {
-        val parts = runCatching { File(dir, STARTS).readText().trim().split(' ') }.getOrNull() ?: return "" to 0
+        val parts = catching { File(dir, STARTS).readText().trim().split(' ') }.getOrNull() ?: return "" to 0
         return parts[0] to (parts.getOrNull(1)?.toIntOrNull() ?: 0)
     }
 
@@ -91,11 +92,11 @@ class EngineStore(filesDir: File, val abi: String? = Abi.current, val api: Int =
     }
 
     fun rejected(): Set<String> =
-        runCatching { File(dir, REJECTED).readLines().filter { it.isNotBlank() }.toSet() }.getOrDefault(emptySet())
+        catching { File(dir, REJECTED).readLines().filter { it.isNotBlank() }.toSet() }.getOrDefault(emptySet())
 
     fun takeNotice(): String? {
         val f = File(dir, NOTICE)
-        val text = runCatching { f.readText() }.getOrNull() ?: return null
+        val text = catching { f.readText() }.getOrNull() ?: return null
         f.delete()
         return text
     }
@@ -107,7 +108,7 @@ class EngineStore(filesDir: File, val abi: String? = Abi.current, val api: Int =
     }
 
     fun version(engine: File): String? =
-        runCatching { JSONObject(File(engine, "engine.json").readText()).getString("version") }.getOrNull()
+        catching { JSONObject(File(engine, "engine.json").readText()).getString("version") }.getOrNull()
 
     fun dexFiles(engine: File): List<File> = engine.listFiles { f -> f.name.endsWith(".dex") }.orEmpty().sortedBy { it.name }
 

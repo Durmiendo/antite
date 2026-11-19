@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.antite.browser.lang.catching
 import dev.antite.browser.service.DownloadService
 import dev.antite.browser.service.Downloads
 import dev.antite.keys.Cipher256
@@ -83,7 +84,7 @@ class MediaVault(
     val revision = mutableIntStateOf(0)
 
     init {
-        if (ring.unlocked) runCatching { open() }.onFailure { Log.w("Antite", "vault not opened", it) }
+        if (ring.unlocked) catching { open() }.onFailure { Log.w("Antite", "vault not opened", it) }
     }
 
     // Reads the index; the key ring must be unlocked.
@@ -93,7 +94,7 @@ class MediaVault(
         val joined = core.open()
         opened = true
         show()
-        if (joined) io.launch { runCatching { core.save() }.onFailure { Log.w("Antite", "vault index not saved", it) } }
+        if (joined) io.launch { catching { core.save() }.onFailure { Log.w("Antite", "vault index not saved", it) } }
         pending = items.filter { core.needsWork(it) }.map { it.id }.toSet()
         io.launch { moveOver() }
         refresh()
@@ -125,7 +126,7 @@ class MediaVault(
     fun thumb(item: Item): ByteArray? = core.thumb(item)
 
     fun saveThumb(item: Item, jpeg: ByteArray) {
-        runCatching { core.saveThumb(item, jpeg) }.onFailure { Log.w("Antite", "vault preview not saved", it) }
+        catching { core.saveThumb(item, jpeg) }.onFailure { Log.w("Antite", "vault preview not saved", it) }
     }
 
     // A download straight into the vault: the entry is made up front, its file is written by the download and the
@@ -138,12 +139,12 @@ class MediaVault(
     fun output(item: Item): OutputStream = core.output(item)
 
     fun discard(item: Item) {
-        io.launch { runCatching { core.discard(item) }.onFailure { Log.w("Antite", "vault download not discarded", it) } }
+        io.launch { catching { core.discard(item) }.onFailure { Log.w("Antite", "vault download not discarded", it) } }
     }
 
     fun receive(item: Item, size: Long) {
         io.launch {
-            runCatching { core.receive(item, size) }.onFailure { Log.w("Antite", "vault index not saved", it) }
+            catching { core.receive(item, size) }.onFailure { Log.w("Antite", "vault index not saved", it) }
             show()
             refresh()
         }
@@ -165,12 +166,12 @@ class MediaVault(
             val todo = items.filter { core.cipherOf(it).let { c -> c != null && c != target } }
             pending = pending + todo.map { it.id }
             for (item in todo) {
-                runCatching { core.recrypt(item, target) }.onFailure { Log.w("Antite", "vault file ${item.id} not re-encrypted", it) }
+                catching { core.recrypt(item, target) }.onFailure { Log.w("Antite", "vault file ${item.id} not re-encrypted", it) }
                 show()
                 pending = pending - item.id
                 refresh()
             }
-            runCatching { core.saveRotated() }.onFailure { Log.w("Antite", "vault key not replaced", it) }
+            catching { core.saveRotated() }.onFailure { Log.w("Antite", "vault key not replaced", it) }
             main.post(done)
             refresh()
         }
@@ -192,11 +193,11 @@ class MediaVault(
         if (!opened) return done(false)
         val item = Item(core.newId(), sanitize(e.title ?: "file"), mime, 0, System.currentTimeMillis(), Downloads.source(e))
         io.launch {
-            val ok = runCatching { store(context.contentResolver.openInputStream(Uri.parse(uri))!!, item) }
+            val ok = catching { store(context.contentResolver.openInputStream(Uri.parse(uri))!!, item) }
                 .onFailure { Log.w("Antite", "vault add failed", it) }.isSuccess
             if (ok && deleteOriginal && deleteFile(Uri.parse(uri))) {
                 // The row stays while its file does, so the downloads list keeps showing what is on the device.
-                runCatching { Db.get(context).io { deleteDownload(e.id) } }
+                catching { Db.get(context).io { deleteDownload(e.id) } }.onFailure { Log.w("Antite", "download row not removed", it) }
             }
             main.post { done(ok) }
             refresh()
@@ -211,14 +212,14 @@ class MediaVault(
             var added = 0
             val cr = context.contentResolver
             for (uri in uris) {
-                val name = runCatching {
+                val name = catching {
                     cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
                         if (c.moveToFirst()) c.getString(0) else null
                     }
                 }.getOrNull() ?: uri.lastPathSegment ?: "file"
                 val item = Item(core.newId(), sanitize(name), cr.getType(uri) ?: "application/octet-stream", 0,
                     System.currentTimeMillis(), "", folder?.takeIf { id -> folders.any { it.id == id } })
-                val ok = runCatching { store(cr.openInputStream(uri)!!, item) }
+                val ok = catching { store(cr.openInputStream(uri)!!, item) }
                     .onFailure { Log.w("Antite", "vault import failed", it) }.isSuccess
                 if (ok) {
                     added++
@@ -236,7 +237,7 @@ class MediaVault(
     fun restore(items: List<Item>, done: (Int) -> Unit) {
         io.launch {
             val back = items.filter { copyOut(it) }
-            runCatching { remove(back) }.onFailure { Log.w("Antite", "vault files not removed after restore", it) }
+            catching { remove(back) }.onFailure { Log.w("Antite", "vault files not removed after restore", it) }
             main.post { done(back.size) }
             refresh()
         }
@@ -244,7 +245,7 @@ class MediaVault(
 
     private suspend fun copyOut(item: Item): Boolean {
         val cr = context.contentResolver
-        val uri = runCatching {
+        val uri = catching {
             val target = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, item.name)
                 put(MediaStore.Downloads.MIME_TYPE, item.mime)
@@ -256,24 +257,24 @@ class MediaVault(
                 }
                 cr.update(target, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
             } catch (e: Exception) {
-                runCatching { cr.delete(target, null, null) }
+                catching { cr.delete(target, null, null) }
                 throw e
             }
             target
         }.onFailure { Log.w("Antite", "vault file ${item.id} not restored", it) }.getOrNull() ?: return false
         // The file is back in Downloads either way; only its row in the list may be missing.
-        runCatching {
+        catching {
             Db.get(context).io {
                 val id = addDownload(item.name, item.mime, item.source)
                 finishDownload(id, uri.toString(), DownloadService.DONE, item.size)
             }
-        }
+        }.onFailure { Log.w("Antite", "download row of restored ${item.id} not added", it) }
         return true
     }
 
     fun delete(items: List<Item>, done: () -> Unit = {}) {
         io.launch {
-            runCatching { remove(items) }.onFailure { Log.w("Antite", "vault files not deleted", it) }
+            catching { remove(items) }.onFailure { Log.w("Antite", "vault files not deleted", it) }
             main.post(done)
             refresh()
         }
@@ -311,7 +312,7 @@ class MediaVault(
     private fun change(done: () -> Unit = {}, block: () -> Unit) {
         io.launch {
             block()
-            runCatching { core.save() }.onFailure { Log.w("Antite", "vault index not saved", it) }
+            catching { core.save() }.onFailure { Log.w("Antite", "vault index not saved", it) }
             show()
             main.post(done)
             refresh()
@@ -319,7 +320,7 @@ class MediaVault(
     }
 
     // A file saved where the user chose is a document (SAF), which ContentResolver.delete does not remove.
-    private fun deleteFile(uri: Uri): Boolean = runCatching {
+    private fun deleteFile(uri: Uri): Boolean = catching {
         val cr = context.contentResolver
         if (DocumentsContract.isDocumentUri(context, uri)) DocumentsContract.deleteDocument(cr, uri)
         else cr.delete(uri, null, null) > 0

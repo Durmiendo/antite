@@ -5,7 +5,9 @@ import org.junit.Test
 import java.io.File
 
 // The rules of decision 0015 and the plan of 18.11.2026 that need no tool: logic and interface stay apart, files stay
-// small, files do not pull in half the project, packages do not depend on each other in a circle. A breach already
+// small, files do not pull in half the project, packages do not depend on each other in a circle; and of decision
+// 0017: no runCatching (it swallows cancellation and OutOfMemoryError, lang/Catching.kt does not), catching Exception
+// or Throwable whole only where a breach is listed. A breach already
 // known is listed in baseline.txt; a number there is a ceiling the file may not pass. A new breach fails, and so does
 // a listed one that is gone: the list only shrinks.
 class ArchTest {
@@ -42,6 +44,10 @@ class ArchTest {
             if (under(s, uiDirs)) s.imports.filter { i -> storageImports.any { i.startsWith(it) } }.forEach { out["ui-storage ${s.path} $it"] = null }
             val project = s.imports.filter { it.startsWith("dev.antite.") && it.substringBeforeLast('.') != s.pkg }.toSet().size
             if (project > maxProjectImports) out["fanout ${s.path}"] = project
+            val swallowing = Regex("\\brunCatching\\b").findAll(s.text).count()
+            if (swallowing > 0) out["runCatching ${s.path}"] = swallowing
+            val catchAll = if (s.path.endsWith("/lang/Catching.kt")) 0 else swallowedWhole(s.text)
+            if (catchAll > 0) out["catch-all ${s.path}"] = catchAll
         }
         val edges = HashMap<String, MutableSet<String>>()
         for (s in kotlin.filter { it.pkg.startsWith("dev.antite.browser") }) {
@@ -54,6 +60,19 @@ class ArchTest {
         for ((a, targets) in edges) for (b in targets) if (a < b && edges[b]?.contains(a) == true) out["cycle $a $b"] = null
         return out
     }
+
+    // A catch of Exception or Throwable that does not throw the caught one again: cleaning up and passing it on is
+    // not swallowing it.
+    private fun swallowedWhole(text: String): Int = Regex("catch\\s*\\(\\s*(\\w+)\\s*:\\s*(?:Exception|Throwable)\\s*\\)\\s*\\{")
+        .findAll(text).count { m ->
+            var depth = 1
+            var i = m.range.last + 1
+            while (i < text.length && depth > 0) {
+                if (text[i] == '{') depth++ else if (text[i] == '}') depth--
+                i++
+            }
+            !Regex("\\bthrow\\s+${m.groupValues[1]}\\b").containsMatchIn(text.substring(m.range.last + 1, i))
+        }
 
     private fun baseline(): Map<String, Int?> = File(repo, "archcheck/baseline.txt").readLines()
         .map { it.substringBefore('#').trim() }.filter { it.isNotEmpty() }

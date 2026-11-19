@@ -12,6 +12,7 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import android.util.Rational
 import dev.antite.browser.l10n.T
+import dev.antite.browser.lang.catching
 import dev.antite.engine.MediaController
 import dev.antite.engine.MediaEvent
 
@@ -70,13 +71,13 @@ class Pip(private val activity: MainActivity) {
     private fun isPlaying() = video?.let { it in playing } == true
 
     fun update() {
-        runCatching { activity.setPictureInPictureParams(params()) }
+        catching { activity.setPictureInPictureParams(params()) }
     }
 
     // Before Android 12 there is no auto-enter, the activity has to ask while it is being left.
     fun onUserLeaveHint() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && eligible() && isPlaying()) {
-            runCatching { activity.enterPictureInPictureMode(params()) }
+            catching { activity.enterPictureInPictureMode(params()) }
         }
     }
 

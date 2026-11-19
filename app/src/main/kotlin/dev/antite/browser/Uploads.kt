@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import android.util.Log
 import dev.antite.browser.data.MediaVault
 import dev.antite.browser.data.Secure
+import dev.antite.browser.lang.catching
 import dev.antite.keys.VaultFile
 import dev.antite.keys.deleteTree
 import dev.antite.keys.output
@@ -22,10 +23,10 @@ object Uploads {
         val disk = Secure.disk(context)
         val root = File(context.cacheDir, "uploads")
         val now = System.currentTimeMillis()
-        runCatching { disk.children(root).filter { now - disk.modified(it) > KEEP_MS }.forEach { disk.deleteTree(it) } }
+        catching { disk.children(root).filter { now - disk.modified(it) > KEEP_MS }.forEach { disk.deleteTree(it) } }
             .onFailure { Log.w("Antite", "old upload copies not deleted", it) }
         uris.mapIndexedNotNull { i, uri ->
-            runCatching {
+            catching {
                 val dir = File(root, "$now-$i").also { disk.mkdirs(it) }
                 val file = File(dir, name(context, uri))
                 context.contentResolver.openInputStream(uri)!!.use { input ->
@@ -42,7 +43,7 @@ object Uploads {
         val disk = Secure.disk(context)
         val now = System.currentTimeMillis()
         items.mapIndexedNotNull { i, item ->
-            runCatching {
+            catching {
                 val dir = File(File(context.cacheDir, VAULT_DIR), "$now-$i").also { disk.mkdirs(it) }
                 val file = File(dir, item.name.substringAfterLast('/').ifBlank { "file" })
                 vault.reader(item).stream().use { input -> disk.output(file, sync = false).use { input.copyTo(it) } }
@@ -56,10 +57,10 @@ object Uploads {
         fun walk(f: File) {
             if (disk.isDirectory(f)) {
                 disk.children(f).forEach(::walk)
-                runCatching { disk.delete(f) }.onFailure { Log.w("Antite", "upload folder not deleted", it) }
-            } else runCatching { VaultFile.wipe(disk, f) }.onFailure { e ->
+                catching { disk.delete(f) }.onFailure { Log.w("Antite", "upload folder not deleted", it) }
+            } else catching { VaultFile.wipe(disk, f) }.onFailure { e ->
                 Log.w("Antite", "upload copy not wiped", e)
-                runCatching { disk.delete(f) }
+                catching { disk.delete(f) }
             }
         }
         walk(File(context.cacheDir, VAULT_DIR))
@@ -68,7 +69,7 @@ object Uploads {
     private const val VAULT_DIR = "uploads-vault"
 
     private fun name(context: Context, uri: Uri): String {
-        val shown = runCatching {
+        val shown = catching {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
                 if (it.moveToFirst()) it.getString(0) else null
             }

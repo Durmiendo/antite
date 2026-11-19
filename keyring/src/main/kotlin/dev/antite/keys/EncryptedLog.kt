@@ -152,14 +152,20 @@ class EncryptedLog(private val disk: Disk, private val file: File, private val k
 
     private fun slotAad(i: Int) = logId + byteArrayOf(i.toByte())
 
-    private fun slot(head: ByteArray, i: Int): Triple<Long, Long, ByteArray>? = runCatching {
+    // A slot that does not open is a torn write of it or a damaged head: the other slot decides.
+    private fun slot(head: ByteArray, i: Int): Triple<Long, Long, ByteArray>? {
         val at = 25 + i * SLOT
         val len = head[at].toInt() and 0xff
-        require(len in 1 until SLOT)
-        val plain = Ciphers.unbox(key, head.copyOfRange(at + 1, at + 1 + len), slotAad(i))
+        if (len !in 1 until SLOT) return null
+        val plain = try {
+            Ciphers.unbox(key, head.copyOfRange(at + 1, at + 1 + len), slotAad(i))
+        } catch (e: IOException) {
+            return null
+        }
+        if (plain.size < 48) return null
         val b = ByteBuffer.wrap(plain)
-        Triple(b.long, b.long, ByteArray(32).also { b.get(it) })
-    }.getOrNull()
+        return Triple(b.long, b.long, ByteArray(32).also { b.get(it) })
+    }
 
     private fun writeSlot(f: Disk.Handle) {
         seq++

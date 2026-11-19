@@ -1,6 +1,7 @@
 package dev.antite.browser.service
 
 import dev.antite.browser.data.Vault
+import dev.antite.browser.lang.catching
 import dev.antite.engine.Address
 import dev.antite.engine.AutofillStore
 import dev.antite.engine.Card
@@ -21,7 +22,7 @@ class AutofillBridge(
             try {
                 done(vault.io(block))
             } catch (e: KeyRing.LockedException) {
-                unlock({ scope.launch { done(runCatching { vault.io(block) }.getOrDefault(empty)) } }, { done(empty) })
+                unlock({ scope.launch { done(catching { vault.io(block) }.getOrDefault(empty)) } }, { done(empty) })
             }
         }
     }

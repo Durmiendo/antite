@@ -22,6 +22,7 @@ import dev.antite.browser.engine.EngineStore
 import dev.antite.browser.engine.SourceException
 import dev.antite.browser.engine.Sources
 import dev.antite.browser.l10n.T
+import dev.antite.browser.lang.catching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,7 +65,7 @@ internal fun UpdatesPage(b: Browser, nav: Nav) {
     }
     fun checkNow() = ctx.lifecycleScope.launch {
         busy = T.updatesChecking
-        val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx) } }
+        val r = withContext(Dispatchers.IO) { catching { EngineUpdates.check(ctx) } }
         busy = null
         revision++
         val offer = r.getOrNull()?.engine
@@ -218,7 +219,7 @@ internal fun DebugInstall(b: Browser, changed: () -> Unit) {
             busy = T.updatesDebugConnecting(address = DebugAddress.hostPort(url))
             ctx.lifecycleScope.launch {
                 val start = System.currentTimeMillis()
-                val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.fromAddress(ctx, url) } }
+                val r = withContext(Dispatchers.IO) { catching { EngineUpdates.fromAddress(ctx, url) } }
                 busy = null
                 r.onSuccess(::install).onFailure { failed(debugFailure(it, url, System.currentTimeMillis() - start) + "\n\n" + url) }
             }

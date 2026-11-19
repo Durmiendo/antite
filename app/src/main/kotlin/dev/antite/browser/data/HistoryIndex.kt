@@ -1,6 +1,7 @@
 package dev.antite.browser.data
 
 import java.net.URI
+import java.net.URISyntaxException
 
 // The history of one category in memory, built from the events of its log, answering what the interface asks: the
 // history list, the address bar, the frequent sites, the visited links.
@@ -82,7 +83,11 @@ class HistoryIndex(private val now: () -> Long = System::currentTimeMillis) {
         val titles = HashMap<String, String>()
         val roots = HashMap<String, String>()
         for (p in pages.values.filter { it.last > cutoff }.sortedByDescending { it.visits }) {
-            val u = runCatching { URI(p.url) }.getOrNull() ?: continue
+            val u = try {
+                URI(p.url)
+            } catch (e: URISyntaxException) {
+                continue
+            }
             val host = u.host ?: continue
             val h = host.removePrefix("www.")
             if (h in skipHosts) continue

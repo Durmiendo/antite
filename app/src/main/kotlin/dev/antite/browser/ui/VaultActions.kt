@@ -10,6 +10,7 @@ import dev.antite.browser.FormField
 import dev.antite.browser.data.MediaVault
 import dev.antite.browser.data.VaultShare
 import dev.antite.browser.l10n.T
+import dev.antite.browser.lang.catching
 
 // What can be done to files of the storage, from the grid's selection and from the viewer alike. Files leave the
 // storage only by "Restore" (back to downloads) and "Share", which streams them decrypted (VaultShare).
@@ -20,7 +21,7 @@ fun Browser.vaultMove(items: List<MediaVault.Item>, done: () -> Unit = {}) = pic
 }
 
 fun Browser.vaultShare(items: List<MediaVault.Item>) {
-    runCatching { activity.startActivity(VaultShare.intent(activity, items)) }
+    catching { activity.startActivity(VaultShare.intent(activity, items)) }
         .onFailure { android.util.Log.w("Antite", "vault share failed", it) }
 }
 

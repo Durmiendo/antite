@@ -12,6 +12,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.caverock.androidsvg.SVG
+import dev.antite.browser.lang.catching
+import dev.antite.browser.lang.decodedOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -48,7 +50,7 @@ class Categories(private val context: Context, private val prefs: Prefs) {
     val list = mutableStateListOf<TabCategory>()
 
     init {
-        runCatching {
+        catching {
             val arr = JSONArray(prefs.string(PREF, "[]"))
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
@@ -104,7 +106,7 @@ class Categories(private val context: Context, private val prefs: Prefs) {
         dir.mkdirs()
         val name = "${c.id}-${System.currentTimeMillis()}.$ext"
         val file = File(dir, name)
-        runCatching { context.contentResolver.openInputStream(uri)!!.use { input -> file.outputStream().use { input.copyTo(it) } } }
+        catching { context.contentResolver.openInputStream(uri)!!.use { input -> file.outputStream().use { input.copyTo(it) } } }
             .onFailure { file.delete(); return null }
         if (bitmap(file) == null) {
             file.delete()
@@ -132,7 +134,7 @@ class Categories(private val context: Context, private val prefs: Prefs) {
     // A square bitmap of the icon; svg is drawn by AndroidSVG, the rest decoded by Android. Runs off the main thread.
     fun bitmap(file: File): Bitmap? = cache[file.path] ?: decode(file)?.also { cache[file.path] = it }
 
-    private fun decode(file: File): Bitmap? = runCatching {
+    private fun decode(file: File): Bitmap? = decodedOrNull {
         if (file.extension == "svg") {
             val svg = file.inputStream().use { SVG.getFromInputStream(it) }
             if (svg.documentViewBox == null && svg.documentWidth > 0 && svg.documentHeight > 0) {
@@ -148,5 +150,5 @@ class Categories(private val context: Context, private val prefs: Prefs) {
             while (bounds.outWidth / (sample * 2) >= ICON_PX && bounds.outHeight / (sample * 2) >= ICON_PX) sample *= 2
             BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
         }
-    }.getOrNull()
+    }
 }

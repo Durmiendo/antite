@@ -49,7 +49,11 @@ object Secure {
 
     // XChaCha20 by default (decision 0013); AES stays a choice.
     fun cipher(context: Context): Cipher256 =
-        runCatching { Cipher256.of(Prefs(context).int(PREF_CIPHER, Cipher256.XCHACHA.id)) }.getOrDefault(Cipher256.XCHACHA)
+        try {
+            Cipher256.of(Prefs(context).int(PREF_CIPHER, Cipher256.XCHACHA.id))
+        } catch (e: IOException) {
+            Cipher256.XCHACHA
+        }
 
     fun wipeZeros(context: Context) = Prefs(context).bool(PREF_WIPE, false)
 

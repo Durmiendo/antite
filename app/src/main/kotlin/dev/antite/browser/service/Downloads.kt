@@ -15,6 +15,7 @@ import dev.antite.browser.Urls
 import dev.antite.browser.data.Entry
 import dev.antite.browser.data.Tab
 import dev.antite.browser.l10n.T
+import dev.antite.browser.lang.catching
 import dev.antite.engine.DownloadRequest
 import kotlinx.coroutines.launch
 import java.io.InputStream
@@ -38,7 +39,7 @@ class Downloads(private val b: Browser) {
         val source = if (t.incognito) "" else Urls.host(r.url)
         whereTo(t, name) { vault ->
             when (vault) {
-                null -> runCatching { r.body.close() }
+                null -> catching { r.body.close() }
                 true -> toVault(r.body, name, mime, r.contentLength, source)
                 false -> toDownloads(r.body, name, mime, r.contentLength, source)
             }
@@ -52,7 +53,7 @@ class Downloads(private val b: Browser) {
             val source = if (t.incognito) "" else Urls.host(t.url)
             whereTo(t, "$base.pdf") { vault ->
                 when (vault) {
-                    null -> runCatching { input.close() }
+                    null -> catching { input.close() }
                     true -> toVault(input, "$base.pdf", "application/pdf", -1, source)
                     false -> save(input, "$base.pdf", "application/pdf", null, -1, source)
                 }
@@ -90,7 +91,7 @@ class Downloads(private val b: Browser) {
     private fun toDownloads(body: InputStream, name: String, mime: String, total: Long, source: String) {
         if (!b.prefs.bool("dlAsk", false)) return save(body, name, mime, null, total, source)
         b.activity.createDocument(name, mime) { uri ->
-            if (uri == null) runCatching { body.close() } else save(body, name, mime, uri, total, source)
+            if (uri == null) catching { body.close() } else save(body, name, mime, uri, total, source)
         }
     }
 
@@ -138,7 +139,7 @@ class Downloads(private val b: Browser) {
 
     private fun save(body: InputStream, name: String, mime: String, chosen: Uri?, total: Long, source: String) {
         // Without it "Open" stops working for a file saved where the user chose once the device restarts.
-        if (chosen != null) runCatching {
+        if (chosen != null) catching {
             b.activity.contentResolver.takePersistableUriPermission(chosen,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         }

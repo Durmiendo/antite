@@ -225,7 +225,7 @@ class GeckoEngine private constructor(internal val context: Context) : Engine {
         result.accept({ resp ->
             val body = resp?.body
             if (resp == null || resp.statusCode !in 200..299 || body == null) {
-                runCatching { body?.close() }
+                try { body?.close() } catch (e: java.io.IOException) { Log.w("Antite", "fetch body not closed", e) }
                 main.post { done(null) }
                 return@accept
             }

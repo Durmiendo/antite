@@ -441,7 +441,7 @@ private fun Toolbar(b: Browser, modifier: Modifier) {
             val url = t?.url.orEmpty().let { if (it == "about:blank") "" else it }
             field = TextFieldValue(url, TextRange(0, url.length))
             b.suggestQuery = ""
-            runCatching { focus.requestFocus() }
+            focusQuietly(focus)
             keyboard?.show()
         } else {
             focusManager.clearFocus()
@@ -618,7 +618,7 @@ private fun FindBar(b: Browser) {
         IconBtn(R.drawable.ic_keyboard_arrow_down, T.findNext) { b.find(null) }
         IconBtn(R.drawable.ic_close, T.actionClose) { b.hideFind() }
     }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { focusQuietly(focus) }
 }
 
 @Composable

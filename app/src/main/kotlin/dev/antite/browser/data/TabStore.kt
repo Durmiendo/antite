@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import dev.antite.browser.lang.catching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -88,7 +89,7 @@ class TabStore(dir: File, private val warn: (String, Throwable?) -> Unit = { m, 
         val b = t.thumb ?: return
         if (t.incognito) return
         scope.launch {
-            runCatching {
+            catching {
                 FileOutputStream(File(thumbs, "${t.id}.jpg")).use { b.compress(Bitmap.CompressFormat.JPEG, 70, it) }
             }.onFailure { Log.w("Antite", "thumb write failed", it) }
         }

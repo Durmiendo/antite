@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import dev.antite.browser.R
 import dev.antite.browser.data.Db
 import dev.antite.browser.l10n.T
+import dev.antite.browser.lang.catching
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -284,7 +285,7 @@ class DownloadService : Service() {
                 Log.w("Antite", "download failed: ${t.name}", e)
                 error = e
                 t.error = e
-                runCatching { t.body?.close() }
+                catching { t.body?.close() }
                 if (t.cancelled) CANCELLED else FAILED
             }
             val cr = context.contentResolver

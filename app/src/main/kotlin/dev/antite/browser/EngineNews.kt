@@ -9,6 +9,7 @@ import dev.antite.browser.engine.Offer
 import dev.antite.browser.engine.ShellOffer
 import dev.antite.browser.engine.UpdateDownloads
 import dev.antite.browser.l10n.T
+import dev.antite.browser.lang.catching
 import dev.antite.browser.service.DownloadService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -35,7 +36,7 @@ class EngineNews(private val b: Browser) {
                     continue
                 }
                 delay(minutes * 60_000L)
-                if (withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx) }.isSuccess }) onResume()
+                if (withContext(Dispatchers.IO) { catching { EngineUpdates.check(ctx) }.isSuccess }) onResume()
                 else showIndexExpired()
             }
         }
@@ -93,14 +94,14 @@ class EngineNews(private val b: Browser) {
 
     fun recheckIndex() = ctx.lifecycleScope.launch {
         b.toast(T.updatesChecking)
-        withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx) } }
+        withContext(Dispatchers.IO) { catching { EngineUpdates.check(ctx) } }
         showIndexExpired()
         if (b.indexExpired == 0L) onResume() else b.toast(T.indexExpiredStill)
     }
 
     private fun update() = ctx.lifecycleScope.launch {
         b.toast(T.engineDownloading)
-        val offer = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx).engine }.getOrNull() }
+        val offer = withContext(Dispatchers.IO) { catching { EngineUpdates.check(ctx).engine }.getOrNull() }
         if (offer == null) return@launch b.toast(T.engineUpdateUnavailable)
         install(offer)
     }
@@ -108,7 +109,7 @@ class EngineNews(private val b: Browser) {
     // Without a progress callback nothing on screen shows the download, so a message does.
     fun updateShell(progress: ((Int) -> Unit)? = null, done: () -> Unit = {}) = ctx.lifecycleScope.launch {
         if (progress == null) b.toast(T.shellDownloading)
-        val r = withContext(Dispatchers.IO) { runCatching { EngineUpdates.check(ctx).shell } }
+        val r = withContext(Dispatchers.IO) { catching { EngineUpdates.check(ctx).shell } }
         val offer = r.getOrNull()
         if (offer == null) {
             done()

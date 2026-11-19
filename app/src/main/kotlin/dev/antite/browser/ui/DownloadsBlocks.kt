@@ -48,6 +48,7 @@ import dev.antite.browser.data.Entry
 import dev.antite.browser.data.Options
 import dev.antite.browser.l10n.L10n
 import dev.antite.browser.l10n.T
+import dev.antite.browser.lang.decodedOrNull
 import dev.antite.browser.service.Downloads
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -67,8 +68,8 @@ fun MediaThumb(b: Browser, e: Entry, modifier: Modifier, sizePx: Int, fallback: 
     val key = "$uri@$sizePx"
     val thumb by produceState(thumbs.get(key), key) {
         if (value == null) value = withContext(Dispatchers.IO) {
-            runCatching { ctx.contentResolver.loadThumbnail(Uri.parse(uri), Size(sizePx, sizePx), null).asImageBitmap() }
-                .getOrNull()?.also { thumbs.put(key, it) }
+            decodedOrNull { ctx.contentResolver.loadThumbnail(Uri.parse(uri), Size(sizePx, sizePx), null).asImageBitmap() }
+                ?.also { thumbs.put(key, it) }
         }
     }
     val bmp = thumb ?: return fallback()
