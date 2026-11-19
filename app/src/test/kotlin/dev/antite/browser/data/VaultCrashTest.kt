@@ -39,7 +39,7 @@ class VaultCrashTest {
         now = { d.clock + 3_600_000 },
     )
 
-    private fun item(c: VaultCore, name: String) = Item(c.newId(), name, "application/octet-stream", 0, 1, "")
+    private fun item(c: VaultCore, name: String) = Item(c.newFileId(), name, "application/octet-stream", 0, 1, "")
 
     private fun opened(d: CrashDisk, device: CrashDevice) = core(d, device).apply { open() }
 
@@ -176,7 +176,7 @@ class VaultCrashTest {
         setup = { d ->
             val device = CrashDevice(d)
             val c = opened(d, device)
-            c.items = listOf(Item(5, "a", "application/octet-stream", content.getValue("a").size.toLong(), 1, ""))
+            c.items = listOf(Item(VaultFileId(5), "a", "application/octet-stream", content.getValue("a").size.toLong(), 1, ""))
             c.save()
             d.write(File(dir, "5"), content.getValue("a"))
             device

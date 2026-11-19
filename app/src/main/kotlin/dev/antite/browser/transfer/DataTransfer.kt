@@ -10,6 +10,7 @@ import dev.antite.browser.l10n.T
 import dev.antite.keys.BackupCipher
 import dev.antite.keys.CoreKey
 import dev.antite.keys.Disk
+import dev.antite.keys.KeyDomain
 import dev.antite.keys.KeyRing
 import dev.antite.keys.input
 import dev.antite.keys.output
@@ -106,7 +107,7 @@ object DataTransfer {
         val swap = DataSwap(disk, root)
         swap.recover { adopt -> if (adopt) ring.adoptImports() else ring.dropImports() }
         val stage = swap.stage
-        val keys = HashMap<String, CoreKey>()
+        val keys = HashMap<KeyDomain, CoreKey>()
         try {
             disk.mkdirs(stage)
             val counted = CountingStream(input) { progress(Progress(it, total)) }
@@ -124,7 +125,7 @@ object DataTransfer {
                     val target = File(stage, e.name).canonicalFile
                     if (!target.path.startsWith(base.path + File.separator)) throw IOException("bad entry ${e.name}")
                     if (e.name.startsWith(KEYRING)) {
-                        val d = e.name.removePrefix(KEYRING)
+                        val d = KeyDomain(e.name.removePrefix(KEYRING))
                         if (d in KeyRing.DOMAINS && !e.isDirectory) {
                             val bytes = zip.readBytes()
                             keys.remove(d)?.close()

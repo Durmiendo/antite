@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
 // Each link carries a random token of its own and dies when the storage locks, so it cannot be kept and used later.
 class VaultShare : ContentProvider() {
     companion object {
-        private val links = ConcurrentHashMap<String, Long>()
+        private val links = ConcurrentHashMap<String, VaultFileId>()
         private val random = SecureRandom()
 
         private fun authority(context: Context) = "${context.packageName}.vaultshare"

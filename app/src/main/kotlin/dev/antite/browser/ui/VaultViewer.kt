@@ -59,6 +59,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import dev.antite.browser.data.VaultFileId
 import dev.antite.browser.lang.decodedOrNull
 import kotlinx.coroutines.launch
 import me.saket.telephoto.zoomable.rememberZoomableState
@@ -130,7 +131,7 @@ internal fun VaultViewer(b: Browser, start: MediaVault.Item, onClose: () -> Unit
         if (target in 0 until list.size) scope.launch { pager.animateScrollToPage(target) }
     }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        HorizontalPager(state = pager, key = { list[it].id },
+        HorizontalPager(state = pager, key = { list[it].id.value },
             modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { controls = !controls } }) { page ->
             val i = list[page]
             if (i.mime.startsWith("video/")) {
@@ -284,7 +285,7 @@ private class VaultDataSource(private val vault: MediaVault) : BaseDataSource(fa
     override fun open(spec: DataSpec): Long {
         uri = spec.uri
         transferInitializing(spec)
-        val id = spec.uri.lastPathSegment?.toLongOrNull()
+        val id = spec.uri.lastPathSegment?.toLongOrNull()?.let(::VaultFileId)
         val item = vault.items.firstOrNull { it.id == id } ?: throw java.io.FileNotFoundException(spec.uri.toString())
         val r = vault.reader(item)
         reader = r

@@ -57,12 +57,12 @@ class MediaVault(
     }
 
     data class Item(
-        val id: Long, val name: String, val mime: String, val size: Long, val time: Long, val source: String,
-        val folder: Long? = null,
+        val id: VaultFileId, val name: String, val mime: String, val size: Long, val time: Long, val source: String,
+        val folder: VaultFolderId? = null,
     )
 
     // Folders nest: parent is the folder it sits in, null for the top.
-    data class Folder(val id: Long, val name: String, val parent: Long? = null)
+    data class Folder(val id: VaultFolderId, val name: String, val parent: VaultFolderId? = null)
 
     private val core = VaultCore(disk, dir, ring, legacyUnwrap, cipher, zeros, { m, e -> Log.w("Antite", m, e) })
 
@@ -79,7 +79,7 @@ class MediaVault(
     var opened by mutableStateOf(false)
         private set
     // Files still waiting for their encryption or for the new cipher; they cannot be opened meanwhile.
-    var pending by mutableStateOf(emptySet<Long>())
+    var pending by mutableStateOf(emptySet<VaultFileId>())
         private set
     val revision = mutableIntStateOf(0)
 
@@ -133,7 +133,7 @@ class MediaVault(
     // entry joins the index only once the file is complete.
     fun reserve(name: String, mime: String, source: String): Item {
         if (!opened) throw KeyRing.LockedException()
-        return core.reserve(Item(core.newId(), sanitize(name), mime, 0, System.currentTimeMillis(), source))
+        return core.reserve(Item(core.newFileId(), sanitize(name), mime, 0, System.currentTimeMillis(), source))
     }
 
     fun output(item: Item): OutputStream = core.output(item)
@@ -191,7 +191,7 @@ class MediaVault(
         val uri = e.url ?: return done(false)
         val mime = Downloads.mime(e).takeIf { it != "*/*" } ?: "application/octet-stream"
         if (!opened) return done(false)
-        val item = Item(core.newId(), sanitize(e.title ?: "file"), mime, 0, System.currentTimeMillis(), Downloads.source(e))
+        val item = Item(core.newFileId(), sanitize(e.title ?: "file"), mime, 0, System.currentTimeMillis(), Downloads.source(e))
         io.launch {
             val ok = catching { store(context.contentResolver.openInputStream(Uri.parse(uri))!!, item) }
                 .onFailure { Log.w("Antite", "vault add failed", it) }.isSuccess
@@ -206,7 +206,7 @@ class MediaVault(
 
     // Files picked in the system file chooser or shared by another app. An original is deleted only where asked and
     // where its provider lets us; a shared file is never ours to delete.
-    fun import(uris: List<Uri>, folder: Long?, deleteOriginals: Boolean, done: (added: Int, failed: Int) -> Unit) {
+    fun import(uris: List<Uri>, folder: VaultFolderId?, deleteOriginals: Boolean, done: (added: Int, failed: Int) -> Unit) {
         if (!opened) return done(0, uris.size)
         io.launch {
             var added = 0
@@ -217,7 +217,7 @@ class MediaVault(
                         if (c.moveToFirst()) c.getString(0) else null
                     }
                 }.getOrNull() ?: uri.lastPathSegment ?: "file"
-                val item = Item(core.newId(), sanitize(name), cr.getType(uri) ?: "application/octet-stream", 0,
+                val item = Item(core.newFileId(), sanitize(name), cr.getType(uri) ?: "application/octet-stream", 0,
                     System.currentTimeMillis(), "", folder?.takeIf { id -> folders.any { it.id == id } })
                 val ok = catching { store(cr.openInputStream(uri)!!, item) }
                     .onFailure { Log.w("Antite", "vault import failed", it) }.isSuccess
@@ -280,7 +280,7 @@ class MediaVault(
         }
     }
 
-    fun move(items: List<Item>, folder: Long?) {
+    fun move(items: List<Item>, folder: VaultFolderId?) {
         val ids = items.map { it.id }.toSet()
         change { core.items = core.items.map { if (it.id in ids) it.copy(folder = folder) else it } }
     }
@@ -288,8 +288,8 @@ class MediaVault(
     fun rename(item: Item, name: String) =
         change { core.items = core.items.map { if (it.id == item.id) it.copy(name = sanitize(name)) else it } }
 
-    fun addFolder(name: String, parent: Long? = null, done: (Folder) -> Unit = {}) {
-        val f = Folder(core.newId(), sanitize(name), parent?.takeIf { id -> folders.any { it.id == id } })
+    fun addFolder(name: String, parent: VaultFolderId? = null, done: (Folder) -> Unit = {}) {
+        val f = Folder(core.newFolderId(), sanitize(name), parent?.takeIf { id -> folders.any { it.id == id } })
         change({ done(f) }) { core.folders = core.folders + f }
     }
 
@@ -302,12 +302,12 @@ class MediaVault(
         core.items = its
     }
 
-    fun moveFolder(f: Folder, parent: Long?) {
+    fun moveFolder(f: Folder, parent: VaultFolderId?) {
         if (!VaultIndex.canMove(folders, f, parent)) return
         change { core.folders = core.folders.map { if (it.id == f.id) it.copy(parent = parent) else it } }
     }
 
-    fun path(id: Long?): List<Folder> = VaultIndex.path(folders, id)
+    fun path(id: VaultFolderId?): List<Folder> = VaultIndex.path(folders, id)
 
     private fun change(done: () -> Unit = {}, block: () -> Unit) {
         io.launch {

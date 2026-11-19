@@ -62,6 +62,8 @@ import androidx.compose.ui.unit.sp
 import dev.antite.browser.Browser
 import dev.antite.browser.R
 import dev.antite.browser.data.MediaVault
+import dev.antite.browser.data.VaultFileId
+import dev.antite.browser.data.VaultFolderId
 import dev.antite.browser.l10n.T
 import dev.antite.browser.ring
 import kotlinx.coroutines.Dispatchers
@@ -69,10 +71,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-private val vaultThumbs = LruCache<Long, ImageBitmap>(48)
+private val vaultThumbs = LruCache<VaultFileId, ImageBitmap>(48)
 
 private const val SORT = "vaultSort"
-private const val TOP = -1L
+private val TOP = VaultFolderId(-1L)
 
 private fun sorted(items: List<MediaVault.Item>, sort: String) = when (sort) {
     "name" -> items.sortedBy { it.name.lowercase() }
@@ -83,11 +85,11 @@ private fun sorted(items: List<MediaVault.Item>, sort: String) = when (sort) {
 // Selected files dragged onto a folder tile or a step of the path move there. Targets and the finger are in window
 // coordinates; TOP is the top of the storage.
 private class FolderDrop {
-    val targets = mutableStateMapOf<Long, Rect>()
+    val targets = mutableStateMapOf<VaultFolderId, Rect>()
     var dragging by mutableStateOf(false)
     var finger by mutableStateOf(Offset.Unspecified)
 
-    val target: Long? get() = if (!dragging || !finger.isSpecified) null else targets.entries.firstOrNull { it.value.contains(finger) }?.key
+    val target: VaultFolderId? get() = if (!dragging || !finger.isSpecified) null else targets.entries.firstOrNull { it.value.contains(finger) }?.key
 
     fun finish(b: Browser, selected: List<MediaVault.Item>, clear: () -> Unit) {
         val to = target
@@ -108,8 +110,8 @@ fun VaultScreen(b: Browser, shown: Boolean) {
     var filter by remember { mutableStateOf("") }
     var viewer by remember { mutableStateOf<MediaVault.Item?>(null) }
     // The open folder; null is the top of the storage.
-    var folder by remember { mutableStateOf<Long?>(null) }
-    var selected by remember { mutableStateOf(emptySet<Long>()) }
+    var folder by remember { mutableStateOf<VaultFolderId?>(null) }
+    var selected by remember { mutableStateOf(emptySet<VaultFileId>()) }
     var sort by remember { mutableStateOf(b.prefs.string(SORT, "date")) }
     // Closed with the page: it comes back to the search and the grid, not to the file that was open.
     LaunchedEffect(shown) {
@@ -167,14 +169,14 @@ fun VaultScreen(b: Browser, shown: Boolean) {
 }
 
 private class VaultGridState(
-    val filter: String, val items: List<MediaVault.Item>, val found: List<MediaVault.Item>, val folder: Long?,
-    val selected: Set<Long>, val sort: String, val drop: FolderDrop,
+    val filter: String, val items: List<MediaVault.Item>, val found: List<MediaVault.Item>, val folder: VaultFolderId?,
+    val selected: Set<VaultFileId>, val sort: String, val drop: FolderDrop,
 )
 
 @Composable
 private fun VaultGrid(
-    b: Browser, s: VaultGridState, onFilter: (String) -> Unit, onFolder: (Long?) -> Unit, onSort: (String) -> Unit,
-    onSelect: (Set<Long>) -> Unit, open: (MediaVault.Item) -> Unit,
+    b: Browser, s: VaultGridState, onFilter: (String) -> Unit, onFolder: (VaultFolderId?) -> Unit, onSort: (String) -> Unit,
+    onSelect: (Set<VaultFileId>) -> Unit, open: (MediaVault.Item) -> Unit,
 ) {
     val p = LocalPalette.current
     val selecting = s.selected.isNotEmpty()
@@ -265,12 +267,12 @@ private fun AddWays() {
     }
 }
 
-private fun Modifier.dropTarget(drop: FolderDrop, id: Long): Modifier = onGloballyPositioned { drop.targets[id] = it.boundsInWindow() }
+private fun Modifier.dropTarget(drop: FolderDrop, id: VaultFolderId): Modifier = onGloballyPositioned { drop.targets[id] = it.boundsInWindow() }
 
 // Where the grid is: the top of the storage and the folders down to the open one, each a step back and a place to
 // drop files on. New folders come from "+" at the top, which stays in reach however deep the path gets.
 @Composable
-private fun PathLine(b: Browser, folder: Long?, drop: FolderDrop, onFolder: (Long?) -> Unit) {
+private fun PathLine(b: Browser, folder: VaultFolderId?, drop: FolderDrop, onFolder: (VaultFolderId?) -> Unit) {
     val p = LocalPalette.current
     val path = b.mediaVault.path(folder)
     LazyRow(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentPadding = PaddingValues(horizontal = 16.dp),
@@ -282,7 +284,7 @@ private fun PathLine(b: Browser, folder: Long?, drop: FolderDrop, onFolder: (Lon
                     .background(if (aimed) p.pill else androidx.compose.ui.graphics.Color.Transparent)
                     .clickable { onFolder(null) }.padding(6.dp))
         }
-        items(path, key = { it.id }) { f ->
+        items(path, key = { it.id.value }) { f ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("›", color = p.textSecondary, fontSize = 14.sp)
                 val aimed = drop.target == f.id

@@ -222,7 +222,7 @@ class KeyRingTest {
             }
             for ((d, raw) in raws) {
                 var blob = raw
-                if (mode.usesPassword) blob = boxRaw(Cipher256.AES, kekRaw, blob, d.toByteArray())
+                if (mode.usesPassword) blob = boxRaw(Cipher256.AES, kekRaw, blob, d.name.toByteArray())
                 if (mode.usesDevice) blob = device.wrap("antite-$d-1", blob)
                 File(dir, "$d.json").writeText(org.json.JSONObject().put("mode", mode.id).put("gen", 1).put("key", b64.encodeToString(blob)).toString())
             }

@@ -8,6 +8,7 @@ import dev.antite.browser.DialogButton
 import dev.antite.browser.UiDialog
 import dev.antite.browser.FormField
 import dev.antite.browser.data.MediaVault
+import dev.antite.browser.data.VaultFolderId
 import dev.antite.browser.data.VaultShare
 import dev.antite.browser.l10n.T
 import dev.antite.browser.lang.catching
@@ -79,7 +80,7 @@ fun Browser.vaultFolderName(title: String, name: String, done: (String) -> Unit)
 }
 
 // Every folder by its full path, and the top of the storage.
-internal fun Browser.pickFolder(except: Long? = null, done: (Long?) -> Unit) {
+internal fun Browser.pickFolder(except: VaultFolderId? = null, done: (VaultFolderId?) -> Unit) {
     val list = mediaVault.folders.filter { it.id != except }
         .map { f -> mediaVault.path(f.id).joinToString(" › ") { it.name } to f.id }.sortedBy { it.first.lowercase() }
     show(UiDialog.Items(T.vaultToFolder, listOf(DialogButton(T.vaultNoFolder) { done(null) }) +
@@ -95,7 +96,7 @@ fun Browser.vaultFolderActions(f: MediaVault.Folder) {
 }
 
 // Files from the system file chooser go into the open folder.
-fun Browser.vaultImport(folder: Long?) = activity.openDocuments { uris ->
+fun Browser.vaultImport(folder: VaultFolderId?) = activity.openDocuments { uris ->
     if (uris.isEmpty()) return@openDocuments
     toast(T.vaultAdding(count = uris.size))
     mediaVault.import(uris, folder, prefs.bool("vaultDeleteOriginal", true)) { added, failed -> vaultImported(added, failed) }
@@ -110,7 +111,7 @@ internal fun Browser.vaultSortMenu(current: String, onSort: (String) -> Unit) {
 }
 
 // "+" at the top: a folder or files, both into the open folder.
-internal fun Browser.vaultAddMenu(folder: Long?, onFolder: (Long?) -> Unit) {
+internal fun Browser.vaultAddMenu(folder: VaultFolderId?, onFolder: (VaultFolderId?) -> Unit) {
     show(UiDialog.Items(T.vaultAdd, listOf(
         DialogButton(T.vaultFolderNew) { vaultFolderName(T.vaultFolderNew, "") { mediaVault.addFolder(it, folder) { f -> onFolder(f.id) } } },
         DialogButton(T.vaultAddFiles) { vaultImport(folder) },

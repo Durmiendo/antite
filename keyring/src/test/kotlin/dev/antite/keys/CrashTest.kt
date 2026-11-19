@@ -15,7 +15,7 @@ class CrashTest {
     private val kdf = fastKdf()
     private fun pw(s: String) = s.toByteArray()
 
-    private class Ring(val device: CrashDevice, val keys: Map<String, ByteArray>)
+    private class Ring(val device: CrashDevice, val keys: Map<KeyDomain, ByteArray>)
 
     private fun ring(d: CrashDisk, device: CrashDevice) = KeyRing(d, dir, device, kdf)
 
@@ -35,7 +35,7 @@ class CrashTest {
         return r
     }
 
-    private fun assertKeys(r: KeyRing, keys: Map<String, ByteArray>, where: String) {
+    private fun assertKeys(r: KeyRing, keys: Map<KeyDomain, ByteArray>, where: String) {
         for ((d, k) in keys) assertArrayEquals("$where: $d", k, r.key(d).print())
     }
 

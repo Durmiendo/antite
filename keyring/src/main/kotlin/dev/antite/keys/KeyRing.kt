@@ -50,9 +50,9 @@ class KeyRing(
     class WrongPasswordException : IOException("wrong password")
 
     companion object {
-        const val VAULT = "vault"
-        const val SECRETS = "secrets"
-        const val HISTORY = "history"
+        val VAULT = KeyDomain("vault")
+        val SECRETS = KeyDomain("secrets")
+        val HISTORY = KeyDomain("history")
         val DOMAINS = listOf(VAULT, SECRETS, HISTORY)
         // Made at first start; later domains are made on first use, under the mode of that moment.
         private val FIRST = listOf(VAULT, SECRETS)
@@ -61,18 +61,18 @@ class KeyRing(
         private const val VERSION = 2
     }
 
-    private val keys = HashMap<String, CoreKey>()
+    private val keys = HashMap<KeyDomain, CoreKey>()
     private var kek: CoreKey? = null
 
-    private fun domainFile(domain: String) = File(dir, "$domain.json")
-    private fun nextFile(domain: String) = File(dir, "$domain.next.json")
+    private fun domainFile(domain: KeyDomain) = File(dir, "$domain.json")
+    private fun nextFile(domain: KeyDomain) = File(dir, "$domain.next.json")
     private val passwordFile get() = File(dir, "password.json")
     // A change of mode or password is written aside whole, then decided by the commit file, then moved in.
-    private fun stagedFile(domain: String) = File(dir, "$domain.mode.json")
+    private fun stagedFile(domain: KeyDomain) = File(dir, "$domain.mode.json")
     private val stagedPassword get() = File(dir, "password.mode.json")
     private val commitFile get() = File(dir, "mode.commit")
 
-    private fun alias(domain: String, gen: Int) = "$prefix-$domain-$gen"
+    private fun alias(domain: KeyDomain, gen: Int) = "$prefix-$domain-$gen"
 
     private fun write(f: File, o: JSONObject) = disk.replace(f, o.toString().toByteArray())
     private fun read(f: File) = JSONObject(String(disk.readAll(f)))
@@ -101,17 +101,17 @@ class KeyRing(
 
     // The device's wrapping key of this domain and generation, made now: its bytes go to the device key store and
     // straight into the core.
-    private fun newWrapping(domain: String, gen: Int, o: JSONObject): CoreKey {
+    private fun newWrapping(domain: KeyDomain, gen: Int, o: JSONObject): CoreKey {
         val raw = Ciphers.randomBytes(Cipher256.KEY)
         o.put("w", b64(device.wrap(alias(domain, gen), raw)))
         return CoreKey.import(raw)
     }
 
-    private fun wrapping(domain: String, o: JSONObject): CoreKey =
+    private fun wrapping(domain: KeyDomain, o: JSONObject): CoreKey =
         CoreKey.import(device.unwrap(alias(domain, o.getInt("gen")), unb64(o.getString("w"))))
 
-    private fun seal(domain: String, gen: Int, m: Mode, key: CoreKey, with: CoreKey? = kek): JSONObject {
-        val aad = domain.toByteArray()
+    private fun seal(domain: KeyDomain, gen: Int, m: Mode, key: CoreKey, with: CoreKey? = kek): JSONObject {
+        val aad = domain.name.toByteArray()
         val o = JSONObject().put("v", VERSION).put("mode", m.id).put("gen", gen)
         val byPassword = if (m.usesPassword) key.wrapUnder(with ?: throw LockedException(), cipher(), aad) else null
         val box = if (m.usesDevice) {
@@ -120,8 +120,8 @@ class KeyRing(
         return o.put("key", b64(box))
     }
 
-    private fun unseal(domain: String, o: JSONObject): CoreKey {
-        val aad = domain.toByteArray()
+    private fun unseal(domain: KeyDomain, o: JSONObject): CoreKey {
+        val aad = domain.name.toByteArray()
         val m = Mode.of(o.getInt("mode"))
         val blob = unb64(o.getString("key"))
         if (o.optInt("v", 1) == 1) return unsealV1(domain, o, m, blob)
@@ -135,10 +135,10 @@ class KeyRing(
     }
 
     // Version 1: the device key store wrapped the data key itself (or its password box). Read once, then written again.
-    private fun unsealV1(domain: String, o: JSONObject, m: Mode, blob: ByteArray): CoreKey {
+    private fun unsealV1(domain: KeyDomain, o: JSONObject, m: Mode, blob: ByteArray): CoreKey {
         val inner = if (m.usesDevice) device.unwrap(alias(domain, o.getInt("gen")), blob) else blob
         if (!m.usesPassword) return CoreKey.import(inner)
-        return CoreKey.unwrap(kek ?: throw LockedException(), inner, domain.toByteArray()) ?: throw IOException("$domain key damaged")
+        return CoreKey.unwrap(kek ?: throw LockedException(), inner, domain.name.toByteArray()) ?: throw IOException("$domain key damaged")
     }
 
     // First start: new random data keys under the device key.
@@ -153,7 +153,7 @@ class KeyRing(
 
     // The data key of a domain, held by the ring: the caller must not close it nor keep it past use, lock() closes it.
     @Synchronized
-    fun key(domain: String): CoreKey {
+    fun key(domain: KeyDomain): CoreKey {
         keys[domain]?.let { return it }
         if (mode.usesPassword && kek == null) throw LockedException()
         val f = domainFile(domain)
@@ -171,7 +171,7 @@ class KeyRing(
 
     // The domain's key for the length of block: lock() waits for it, so a key is never closed while it is in use.
     @Synchronized
-    fun <R> withKey(domain: String, block: (CoreKey) -> R): R = block(key(domain))
+    fun <R> withKey(domain: KeyDomain, block: (CoreKey) -> R): R = block(key(domain))
 
     @Synchronized
     fun unlock(password: ByteArray) {
@@ -234,13 +234,13 @@ class KeyRing(
     }
 
     // The cipher of the box that holds a domain's key under the password (the inner one when the device wraps it too).
-    private fun passwordBoxCipher(domain: String, o: JSONObject): Cipher256? {
+    private fun passwordBoxCipher(domain: KeyDomain, o: JSONObject): Cipher256? {
         val m = Mode.of(o.getInt("mode"))
         if (!m.usesPassword) return null
         val blob = unb64(o.getString("key"))
         if (o.optInt("v", 1) == 1) return Ciphers.boxCipher(if (m.usesDevice) device.unwrap(alias(domain, o.getInt("gen")), blob) else blob)
         if (!m.usesDevice) return Ciphers.boxCipher(blob)
-        return wrapping(domain, o).use { w -> Ciphers.boxCipher(Ciphers.unbox(w, blob, domain.toByteArray())) }
+        return wrapping(domain, o).use { w -> Ciphers.boxCipher(Ciphers.unbox(w, blob, domain.name.toByteArray())) }
     }
 
     // Whether a file of the ring is of the old version or has a box sealed with another cipher than the current one.
@@ -300,14 +300,14 @@ class KeyRing(
     private inline fun <T> orNull(block: () -> T): T? = try { block() } catch (e: IOException) { null } catch (e: java.security.GeneralSecurityException) { null }
         catch (e: JSONException) { null } catch (e: IllegalArgumentException) { null }
 
-    private fun destroy(domain: String, o: JSONObject) {
+    private fun destroy(domain: KeyDomain, o: JSONObject) {
         if (Mode.of(o.getInt("mode")).usesDevice) orNull { device.destroy(alias(domain, o.getInt("gen"))) }
     }
 
     // Replaces the data key of a domain. rewrite() must re-encrypt everything under the new key and make it durable;
     // the new key is stored aside first, so a stop in the middle leaves both keys for recover().
     @Synchronized
-    fun rotate(domain: String, rewrite: (old: CoreKey, new: CoreKey) -> Unit) {
+    fun rotate(domain: KeyDomain, rewrite: (old: CoreKey, new: CoreKey) -> Unit) {
         val old = key(domain)
         val current = read(domainFile(domain))
         val m = Mode.of(current.getInt("mode"))
@@ -328,7 +328,7 @@ class KeyRing(
 
     // After a stop inside rotate(): works() tells whether the data is already under the new key.
     @Synchronized
-    fun recover(domain: String, works: (CoreKey) -> Boolean) {
+    fun recover(domain: KeyDomain, works: (CoreKey) -> Boolean) {
         val next = nextFile(domain).takeIf { disk.exists(it) } ?: return
         val o = read(next)
         val k = orNull { unseal(domain, o) }
@@ -348,12 +348,12 @@ class KeyRing(
     @get:Synchronized
     val recovering get() = DOMAINS.any { disk.exists(nextFile(it)) }
 
-    private fun importFile(domain: String) = File(dir, "$domain.import.json")
+    private fun importFile(domain: KeyDomain) = File(dir, "$domain.import.json")
 
     // A data key from a backup, sealed under the current mode next to this domain's key; adoptImports() puts it in
     // place, dropImports() forgets it. The given key is closed.
     @Synchronized
-    fun stageImport(domain: String, key: CoreKey) {
+    fun stageImport(domain: KeyDomain, key: CoreKey) {
         key.use {
             val gen = if (disk.exists(domainFile(domain))) read(domainFile(domain)).getInt("gen") + 1 else 1
             write(importFile(domain), seal(domain, gen, mode, it))
@@ -384,7 +384,7 @@ class KeyRing(
 
     // A data key from a backup replaces this domain's key under the current mode; the given key is closed.
     @Synchronized
-    fun install(domain: String, key: CoreKey) {
+    fun install(domain: KeyDomain, key: CoreKey) {
         key.use {
             if (!disk.exists(domainFile(domain))) {
                 write(domainFile(domain), seal(domain, 1, mode, it))

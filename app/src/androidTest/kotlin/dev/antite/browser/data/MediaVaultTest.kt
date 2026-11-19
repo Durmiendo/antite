@@ -125,7 +125,7 @@ class MediaVaultTest {
         waitFor("old files encrypted") { vault.pending.isEmpty() && !File(dir, "index.json").exists() }
 
         assertEquals(setOf("3.enc", "4.enc", "index.box"), dir.list()!!.toSet())
-        val stray = vault.items.single { it.id == 3L }
+        val stray = vault.items.single { it.id == VaultFileId(3) }
         assertEquals("image/png", stray.mime)
         assertArrayEquals(png, content(vault, stray))
         assertEquals(setOf(3L, 4L), vault().items.map { it.id }.toSet())
@@ -151,13 +151,13 @@ class MediaVaultTest {
         assertEquals(setOf("1.enc", "2.enc", "index.box"), dir.list()!!.toSet())
         for (n in listOf("1.enc", "2.enc")) assertEquals(2, VaultFile.head(Secure.disk(context), File(dir, n)).version)
         File(dir, "1.enc").readBytes().let { assertArrayEquals(chunksBefore, it.copyOfRange(VaultFile.HEADER, it.size)) }
-        assertArrayEquals(a, content(vault, vault.items.single { it.id == 1L }))
-        assertArrayEquals(b, content(vault, vault.items.single { it.id == 2L }))
+        assertArrayEquals(a, content(vault, vault.items.single { it.id == VaultFileId(1) }))
+        assertArrayEquals(b, content(vault, vault.items.single { it.id == VaultFileId(2) }))
         assertEquals(listOf("F"), vault.folders.map { it.name })
         noneHolds("Secret a")
 
         val again = vault()
-        assertArrayEquals(a, content(again, again.items.single { it.id == 1L }))
+        assertArrayEquals(a, content(again, again.items.single { it.id == VaultFileId(1) }))
     }
 
     @Test

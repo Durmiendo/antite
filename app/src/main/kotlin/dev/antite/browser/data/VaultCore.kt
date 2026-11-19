@@ -53,10 +53,10 @@ class VaultCore(
         private set
     // The box of each file's key under the vault's data key: what the index holds. A key is opened in the core only for
     // the length of a read or a write.
-    private val fileKeys = HashMap<Long, ByteArray>()
+    private val fileKeys = HashMap<VaultFileId, ByteArray>()
     // Downloads straight into the vault that are still being written, and those finished while it was closed: their
     // keys outlive close(), the finished ones join the index at the next open().
-    private val inFlight = HashSet<Long>()
+    private val inFlight = HashSet<VaultFileId>()
     private val finished = ArrayList<Item>()
     private var nextId = 1L
     // An index that could not be read is never written over: the files it lists would be lost for good.
@@ -67,7 +67,9 @@ class VaultCore(
     }
 
     @Synchronized
-    fun newId() = nextId++
+    fun newFileId() = VaultFileId(nextId++)
+
+    fun newFolderId() = VaultFolderId(nextId++)
 
     // Reads the index; the key ring must be unlocked. True when downloads finished while closed joined the index and
     // it needs saving.
@@ -90,7 +92,7 @@ class VaultCore(
             adoptStrays()
             dropOrphans()
         }
-        nextId = maxOf(nextId, ((items + finished).maxOfOrNull { it.id } ?: 0) + 1, (folders.maxOfOrNull { it.id } ?: 0) + 1)
+        nextId = maxOf(nextId, ((items + finished).maxOfOrNull { it.id.value } ?: 0) + 1, (folders.maxOfOrNull { it.id.value } ?: 0) + 1)
         opened = true
         if (finished.isEmpty()) return false
         items = items + finished
@@ -110,7 +112,7 @@ class VaultCore(
         opened = false
     }
 
-    private fun aadOf(id: Long) = "antite-vault-file-$id".toByteArray()
+    private fun aadOf(id: VaultFileId) = "antite-vault-file-$id".toByteArray()
 
     // A version 2 index held the file keys themselves: they go into the core, are boxed under the data key and wiped,
     // and the index is written again as version 3 right away.
@@ -144,7 +146,7 @@ class VaultCore(
     fun save() = ring.withKey(KeyRing.VAULT) { save(it) }
 
     // boxes: those of the keys under dataKey (by default the current ones); force: also before open() has finished.
-    private fun save(dataKey: CoreKey, boxes: Map<Long, ByteArray> = synchronized(fileKeys) { HashMap(fileKeys) }, force: Boolean = false) {
+    private fun save(dataKey: CoreKey, boxes: Map<VaultFileId, ByteArray> = synchronized(fileKeys) { HashMap(fileKeys) }, force: Boolean = false) {
         if (!opened && !force) throw KeyRing.LockedException()
         if (unreadable) throw IOException("the vault index could not be read")
         val plain = VaultIndex.encode(items, folders, boxes)
@@ -160,7 +162,7 @@ class VaultCore(
     // A file's key goes away with a new data key: the index that held it can never be opened again. The boxes of the
     // keys that stay are made again under the new data key and written with it in one index.
     fun saveRotated() {
-        var moved: Map<Long, ByteArray>? = null
+        var moved: Map<VaultFileId, ByteArray>? = null
         ring.rotate(KeyRing.VAULT) { old, fresh ->
             val boxes = synchronized(fileKeys) { HashMap(fileKeys) }.mapValues { (id, box) ->
                 (CoreKey.unwrap(old, box, aadOf(id)) ?: throw IOException("vault file $id key damaged")).use { it.wrapUnder(fresh, cipher(), aadOf(id)) }
@@ -176,7 +178,7 @@ class VaultCore(
     // taken in under a made-up name and encrypted with the rest.
     private fun adoptStrays() {
         val known = items.map { it.id }.toSet()
-        val strays = disk.list(dir).mapNotNull { f -> f.name.toLongOrNull()?.takeIf { it !in known }?.let { it to f } }
+        val strays = disk.list(dir).mapNotNull { f -> f.name.toLongOrNull()?.let(::VaultFileId)?.takeIf { it !in known }?.let { it to f } }
         items = items + strays.map { (id, f) ->
             val mime = catching { disk.input(f).buffered().use { URLConnection.guessContentTypeFromStream(it) } }.getOrNull()
             Item(id, "recovered-$id", mime ?: "application/octet-stream", disk.length(f), disk.modified(f), "")
@@ -231,7 +233,7 @@ class VaultCore(
         return k
     }
 
-    private fun forgetKey(id: Long) {
+    private fun forgetKey(id: VaultFileId) {
         synchronized(fileKeys) { fileKeys.remove(id) }
     }
 
@@ -281,7 +283,7 @@ class VaultCore(
     // version 1 keys go into the new index before their headers are rewritten; an open file is encrypted under its
     // final name before it is erased. The old device key is no longer needed after that. done() is told of each file
     // finished; the result says whether nothing of version 1 is left.
-    fun moveOver(done: (Long) -> Unit): Boolean {
+    fun moveOver(done: (VaultFileId) -> Unit): Boolean {
         val v1 = items.filter { disk.exists(file(it)) && catching { VaultFile.head(disk, file(it)).version == 1 }.getOrDefault(false) }
         for (item in v1) {
             if (synchronized(fileKeys) { item.id in fileKeys }) continue
@@ -325,7 +327,7 @@ class VaultCore(
     // One file put under the given cipher, under a new id: the index switches to it in one write, so a stop leaves
     // either the old or the new file listed, and the other is an orphan for dropOrphans().
     fun recrypt(item: Item, target: Cipher256) {
-        val moved = item.copy(id = newId())
+        val moved = item.copy(id = newFileId())
         val key = newKey(moved)
         reader(item).stream().use { input -> VaultFile.writer(disk.output(file(moved), sync = true), target, key).use { input.copyTo(it) } }
         disk.syncFolder(dir)
@@ -343,7 +345,7 @@ class VaultCore(
         val t = now()
         for (f in disk.list(dir)) {
             if (t - disk.modified(f) < QUIET_MS) continue
-            val id = f.name.removeSuffix(".enc").removeSuffix(".thumb").removeSuffix(".enc.tmp").toLongOrNull()
+            val id = f.name.removeSuffix(".enc").removeSuffix(".thumb").removeSuffix(".enc.tmp").toLongOrNull()?.let(::VaultFileId)
             val busy = synchronized(this) { id != null && (id in inFlight || finished.any { it.id == id }) }
             if (busy) continue
             val orphan = (f.name.endsWith(".enc") || f.name.endsWith(".thumb")) && id != null && id !in known

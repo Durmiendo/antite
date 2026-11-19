@@ -5,6 +5,7 @@ import dev.antite.keys.Ciphers
 import dev.antite.keys.CrashDevice
 import dev.antite.keys.CrashDisk
 import dev.antite.keys.Crashes
+import dev.antite.keys.KeyDomain
 import dev.antite.keys.KeyRing
 import dev.antite.keys.fastKdf
 import dev.antite.keys.keyOf
@@ -27,10 +28,10 @@ class DataSwapCrashTest {
     private val before = mapOf("files/tabs.json" to "old tabs", "databases/antite.db" to "old db", "shared_prefs/antite.xml" to "old prefs")
     private val backup = mapOf("files/tabs.json" to "new tabs", "files/history/a.log" to "new log", "databases/vault.db" to "new vault")
     private val deviceOwn = mapOf("files/engines/gecko/lib.so" to "engine", "shared_prefs/engines.xml" to "sources")
-    private val importedRaw = KeyRing.DOMAINS.associateWith { d -> ByteArray(Cipher256.KEY) { (it + d.length).toByte() } }
+    private val importedRaw = KeyRing.DOMAINS.associateWith { d -> ByteArray(Cipher256.KEY) { (it + d.name.length).toByte() } }
     private val imported = importedRaw.mapValues { (_, raw) -> keyOf(raw).use { it.print() } }
 
-    private class Start(val device: CrashDevice, val keys: Map<String, ByteArray>)
+    private class Start(val device: CrashDevice, val keys: Map<KeyDomain, ByteArray>)
 
     private fun ring(d: CrashDisk, device: CrashDevice) = KeyRing(d, keysDir, device, kdf)
 
