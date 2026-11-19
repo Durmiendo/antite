@@ -12,13 +12,15 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from category_lock import LOCKED, NAME, PORT, open_category_settings  # noqa: E402
 from device import PACKAGE, Device  # noqa: E402
-from nav import open_switcher, to_browser  # noqa: E402
+from nav import open_category_settings, open_switcher, to_browser  # noqa: E402
 from prefs import no_tabs  # noqa: E402
 from server import ReportServer  # noqa: E402
 from vault import password_dialog, type_into  # noqa: E402
 
+PORT = 8775
+NAME = "Secret"
+LOCKED = f"Категория «{NAME}» заблокирована"
 PASSWORD = "kat3gory"
 TITLE = f"Parol{int(time.time()) % 100000}"
 PAGE = f"<!doctype html><title>{TITLE}</title><meta name=viewport content='width=device-width'><h1>page</h1>".encode()

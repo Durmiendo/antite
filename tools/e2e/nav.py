@@ -127,3 +127,10 @@ def set_each_count(d, on):
     d.scroll_to("Число вкладок у каждой категории")
     d.tap("Число вкладок у каждой категории", exact=True)
     to_browser(d)
+
+
+def open_category_settings(d):
+    open_tabs_settings(d)
+    d.scroll_to("Мои категории")
+    d.tap("Мои категории", exact=True)
+    time.sleep(1)

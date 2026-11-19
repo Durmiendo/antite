@@ -13,7 +13,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from device import PACKAGE, Device  # noqa: E402
-from nav import chip_count, open_switcher, open_tabs_settings, to_browser  # noqa: E402
+from nav import chip_count, open_category_settings, open_switcher, to_browser  # noqa: E402
 from prefs import no_tabs, set_prefs  # noqa: E402
 from server import ReportServer  # noqa: E402
 
@@ -52,13 +52,6 @@ def refuse_prompt(d):
         d.shell("input keyevent BACK")
         time.sleep(1.5)
     d.fail("the unlock prompt does not close")
-
-
-def open_category_settings(d):
-    open_tabs_settings(d)
-    d.scroll_to("Мои категории")
-    d.tap("Мои категории", exact=True)
-    time.sleep(1)
 
 
 def last_cards(d):
