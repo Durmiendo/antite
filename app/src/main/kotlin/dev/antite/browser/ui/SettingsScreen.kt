@@ -29,11 +29,11 @@ import dev.antite.browser.Overlay
 import dev.antite.browser.R
 import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
-import dev.antite.browser.data.Categories
 import dev.antite.browser.data.CustomValues
 import dev.antite.browser.data.Option
 import dev.antite.browser.data.Options
 import dev.antite.browser.data.Secure
+import dev.antite.browser.data.TabsPage
 import dev.antite.browser.l10n.T
 import dev.antite.browser.service.Downloads
 import dev.antite.keys.BackupCipher
@@ -78,9 +78,9 @@ fun SettingsScreen(b: Browser, shown: Boolean) {
         stack += root
         stack += Page(tabs.title) { Screen(b, it, tabs) }
         when (key) {
-            Categories.ALL -> {}
-            Categories.INCOGNITO -> incognitoPage(b).let { pg -> stack += Page(pg.title) { Screen(b, it, pg) } }
-            else -> b.categories.byId(key)?.let { c ->
+            TabsPage.All -> {}
+            TabsPage.Incognito -> incognitoPage(b).let { pg -> stack += Page(pg.title) { Screen(b, it, pg) } }
+            is TabsPage.Of -> b.categories.byId(key.id)?.let { c ->
                 val mine = categoriesPage(b)
                 stack += Page(mine.title) { Screen(b, it, mine) }
                 stack += Page(c.name) { CategoryPage(b, it, c) }

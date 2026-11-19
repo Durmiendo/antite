@@ -33,6 +33,10 @@ class ArchTest {
             .map { Source(it.relativeTo(repo).path, it.readText()) }.toList()
     }
 
+    // The package of an imported class or top-level function: the part before the first capital, or before the last dot.
+    private fun packageOf(import: String): String =
+        Regex("^(.*?)\\.[A-Z]").find(import)?.groupValues?.get(1) ?: import.substringBeforeLast('.')
+
     private fun under(s: Source, dirs: List<String>) = dirs.any { s.path.startsWith("$it/") }
 
     private fun breaches(): Map<String, Int?> {
@@ -42,7 +46,7 @@ class ArchTest {
         for (s in kotlin) {
             if (under(s, logicDirs)) s.imports.filter { i -> uiImports.any { i.startsWith(it) } }.forEach { out["logic-ui ${s.path} $it"] = null }
             if (under(s, uiDirs)) s.imports.filter { i -> storageImports.any { i.startsWith(it) } }.forEach { out["ui-storage ${s.path} $it"] = null }
-            val project = s.imports.filter { it.startsWith("dev.antite.") && it.substringBeforeLast('.') != s.pkg }.toSet().size
+            val project = s.imports.filter { it.startsWith("dev.antite.") }.map { packageOf(it) }.filter { it != s.pkg }.toSet().size
             if (project > maxProjectImports) out["fanout ${s.path}"] = project
             val swallowing = Regex("\\brunCatching\\b").findAll(s.text).count()
             if (swallowing > 0) out["runCatching ${s.path}"] = swallowing

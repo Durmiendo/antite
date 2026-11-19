@@ -17,7 +17,7 @@ class TabStoreTest {
     @Test
     fun tabsComeBackAsTheyWere() {
         val a = Tab.create(false).apply {
-            url = "https://a.example/"; title = "A"; state = "{s}"; desktop = true; category = "work"; container = "c1"; lastUsed = 5
+            url = "https://a.example/"; title = "A"; state = "{s}"; desktop = true; category = CategoryId("work"); container = ContainerId("c1"); lastUsed = 5
         }
         val b = Tab.create(false).apply { url = "https://b.example/" }
         val secret = Tab.create(true).apply { url = "https://private.example/" }
@@ -26,7 +26,7 @@ class TabStoreTest {
         assertEquals(listOf(a.id, b.id), loaded.tabs.map { it.id })
         assertEquals(b.id, loaded.selected)
         val back = loaded.tabs[0]
-        assertEquals(listOf("https://a.example/", "A", "{s}", true, "work", "c1", 5L),
+        assertEquals(listOf("https://a.example/", "A", "{s}", true, CategoryId("work"), ContainerId("c1"), 5L),
             listOf(back.url, back.title, back.state, back.desktop, back.category, back.container, back.lastUsed))
         assertEquals(null, loaded.tabs[1].category)
     }
@@ -36,7 +36,7 @@ class TabStoreTest {
         val n = Tab.create(false)
         val i = Tab.create(true)
         store().apply { save(listOf(n, i), i); flush() }
-        assertEquals(0L, store().load().selected)
+        assertEquals(null, store().load().selected)
     }
 
     // A file that cannot be read is kept aside: starting fresh must not overwrite the only copy of the user's tabs.

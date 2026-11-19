@@ -8,15 +8,15 @@ import androidx.compose.runtime.setValue
 import dev.antite.browser.l10n.T
 import dev.antite.engine.EngineTab
 
-class Tab(val id: Long, val incognito: Boolean) {
+class Tab(val id: TabId, val incognito: Boolean) {
     companion object {
         private var nextId = System.currentTimeMillis()
 
-        fun create(incognito: Boolean) = Tab(nextId++, incognito)
+        fun create(incognito: Boolean) = Tab(TabId(nextId++), incognito)
     }
 
     init {
-        if (id >= nextId) nextId = id + 1
+        if (id.value >= nextId) nextId = id.value + 1
     }
 
     var url by mutableStateOf("")
@@ -24,7 +24,7 @@ class Tab(val id: Long, val incognito: Boolean) {
     var state: String? = null
     var thumb by mutableStateOf<Bitmap?>(null)
     var thumbRequested = false
-    var parentId = 0L
+    var parentId: TabId? = null
     var lastUsed = 0L
     var lastCrashAt = 0L
     var canGoBack by mutableStateOf(false)
@@ -37,9 +37,9 @@ class Tab(val id: Long, val incognito: Boolean) {
     var httpsOnlyFailed by mutableStateOf<String?>(null)
     var desktop by mutableStateOf(false)
     // A user category id from Categories; null means only "All".
-    var category by mutableStateOf<String?>(null)
+    var category by mutableStateOf<CategoryId?>(null)
     // A container id from Containers, fixed when the tab is made; null is the common storage.
-    var container: String? = null
+    var container: ContainerId? = null
     var docLang: String? = null
     var translated by mutableStateOf(false)
     var bookmarked by mutableStateOf(false)

@@ -21,11 +21,6 @@ cycle dev.antite.browser dev.antite.browser.transfer
 cycle dev.antite.browser dev.antite.browser.ui
 cycle dev.antite.browser.data dev.antite.browser.service
 cycle dev.antite.browser.engine dev.antite.browser.ui
-fanout app/src/main/kotlin/dev/antite/browser/Browser.kt 34
-fanout app/src/main/kotlin/dev/antite/browser/TabSession.kt 18
-fanout app/src/main/kotlin/dev/antite/browser/engine/EngineSetupActivity.kt 18
-fanout app/src/main/kotlin/dev/antite/browser/ui/SettingsScreen.kt 18
-fanout engine-gecko/src/main/kotlin/dev/antite/engine/gecko/GeckoEngine.kt 32
 logic-ui app/src/main/kotlin/dev/antite/browser/data/Categories.kt androidx.compose.runtime.getValue
 logic-ui app/src/main/kotlin/dev/antite/browser/data/Categories.kt androidx.compose.runtime.mutableStateListOf
 logic-ui app/src/main/kotlin/dev/antite/browser/data/Categories.kt androidx.compose.runtime.mutableStateOf
@@ -45,7 +40,7 @@ logic-ui app/src/main/kotlin/dev/antite/browser/data/TabModel.kt androidx.compos
 logic-ui app/src/main/kotlin/dev/antite/browser/data/TabModel.kt androidx.compose.runtime.mutableStateOf
 logic-ui app/src/main/kotlin/dev/antite/browser/data/TabModel.kt androidx.compose.runtime.setValue
 logic-ui engine-api/src/main/kotlin/dev/antite/engine/Engine.kt android.view.View
-size app/src/main/kotlin/dev/antite/browser/Browser.kt 689
+size app/src/main/kotlin/dev/antite/browser/Browser.kt 688
 size app/src/main/kotlin/dev/antite/browser/ui/BrowserScreen.kt 717
 size app/src/main/kotlin/dev/antite/browser/ui/SettingsScreen.kt 433
 size engine-gecko/src/main/kotlin/dev/antite/engine/gecko/GeckoEngine.kt 625

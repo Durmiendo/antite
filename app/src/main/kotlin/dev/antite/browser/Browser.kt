@@ -18,10 +18,13 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.antite.browser.data.Categories
+import dev.antite.browser.data.CategoryId
+import dev.antite.browser.data.ContainerId
 import dev.antite.browser.data.Db
 import dev.antite.browser.data.Entry
 import dev.antite.browser.data.HistoryStore
 import dev.antite.browser.data.Secure
+import dev.antite.browser.data.TabsPage
 import dev.antite.browser.engine.EngineUpdates
 import dev.antite.browser.data.IconCache
 import dev.antite.browser.data.MediaVault
@@ -96,14 +99,13 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     var libraryKind by mutableStateOf(LibraryKind.HISTORY)
     var settingsSite by mutableStateOf<String?>(null)
     // A switcher page key: settings open on that category's page, or on tabs or incognito for the fixed pages.
-    var settingsCategory by mutableStateOf<String?>(null)
+    var settingsCategory by mutableStateOf<TabsPage?>(null)
     var settingsOpenCount by mutableStateOf(0)
     val categories = Categories(activity, prefs)
-    // The switcher's page: Categories.ALL, Categories.INCOGNITO or a category id.
-    var switcherPage by mutableStateOf(Categories.ALL)
+    var switcherPage by mutableStateOf<TabsPage>(TabsPage.All)
     val locks = Locks(object : Locks.Settings {
         override val incognitoLock get() = prefs.bool("incognitoLock", false)
-        override fun categoryLock(id: String) = categories.byId(id)?.locked == true
+        override fun categoryLock(id: CategoryId) = categories.byId(id)?.locked == true
         override val vaultLockOnExit get() = prefs.int("vaultLock", 0) == 0
         override val vaultLockMinutes get() = when (prefs.int("vaultLock", 0)) {
             1 -> 5
@@ -134,8 +136,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     val vaultAccess = VaultAccess(this)
     val categoryKeys = CategoryKeys(Secure.disk(activity), File(activity.filesDir, "history/keys"), { ring.withKey(KeyRing.HISTORY, it) }, { Secure.cipher(activity) })
     val history = HistoryStore(Secure.disk(activity), File(activity.filesDir, "history"), categoryKeys::key, { Secure.cipher(activity) })
-    // The history page shows this: Categories.ALL or a category id.
-    var historyScope by mutableStateOf(Categories.ALL)
+    // The category the history page shows; null for "All".
+    var historyScope by mutableStateOf<CategoryId?>(null)
     // The tab whose last picture is drawn over the page while it loads again after being lost in the background.
     var restoreCover by mutableStateOf<Tab?>(null)
         internal set
@@ -227,23 +229,23 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     }
 
     // Their logs and keys go: what was recorded cannot be read again, even from a copy of the files. Needs no key.
-    fun eraseHistory(categories: Collection<String?>) = categories.forEach {
+    fun eraseHistory(categories: Collection<CategoryId?>) = categories.forEach {
         history.forget(it)
         categoryKeys.forget(HistoryStore.nameOf(it))
     }
 
     // What the history page lists for its scope: a locked category lists nothing until it is opened.
-    fun historyCategories(): List<String?> = when (val s = historyScope) {
-        Categories.ALL -> openCategories()
-        else -> when {
-            categories.byId(s) == null -> openCategories()
+    fun historyCategories(): List<CategoryId?> {
+        val s = historyScope
+        return when {
+            s == null || categories.byId(s) == null -> openCategories()
             categoryLocked(s) -> emptyList()
             else -> listOf(s)
         }
     }
 
     // Categories whose history "Все" shows: those open now, and the tabs outside any category.
-    fun openCategories(): List<String?> = listOf<String?>(null) + categories.list.filter { !categoryLocked(it.id) }.map { it.id }
+    fun openCategories(): List<CategoryId?> = listOf<CategoryId?>(null) + categories.list.filter { !categoryLocked(it.id) }.map { it.id }
 
     // Before this store, history was one SQLite table: it goes into every category, as the user decided, then the table
     // is emptied. Tried again on the next start while the key ring is locked.
@@ -252,7 +254,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         val moved = db.io {
             val pages = oldHistory()
             historyOr(false) {
-                (listOf<String?>(null) + categories.list.map { it.id }).forEach { import(it, pages) }
+                (listOf<CategoryId?>(null) + categories.list.map { it.id }).forEach { import(it, pages) }
                 true
             }.also { if (it) dropOldHistory() }
         }
@@ -270,7 +272,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     // Tabs behind a lock are not counted anywhere: the count would tell how many there are.
     fun incognitoCount(incognito: Boolean) = tabs.count { it.incognito == incognito && !tabLocked(it) }
 
-    fun newTabAndFocus(incognito: Boolean, category: String? = if (incognito) null else current?.category) {
+    fun newTabAndFocus(incognito: Boolean, category: CategoryId? = if (incognito) null else current?.category) {
         openTab("about:blank", incognito, null, true, category)
         urlFocused = true
     }
@@ -278,8 +280,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     // Without a word about the container, a tab opened from a page stays in that page's container and a new tab of a
     // category takes the category's one.
     fun openTab(url: String, incognito: Boolean, parent: Tab?, select: Boolean,
-                category: String? = parent?.category?.takeIf { !incognito },
-                container: String? = if (parent != null) parent.container else categories.byId(category)?.container): Tab {
+                category: CategoryId? = parent?.category?.takeIf { !incognito },
+                container: ContainerId? = if (parent != null) parent.container else categories.byId(category)?.container): Tab {
         val t = Tab.create(incognito)
         t.url = url
         t.category = category?.takeIf { !incognito && categories.byId(it) != null }
@@ -302,7 +304,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         javascript = perms.decide(SitePerms.JS, Urls.siteHost(t.url)) == SitePerms.ALLOW,
         state = if (withState) t.state else null,
         url = t.url,
-        container = t.container?.takeIf { !t.incognito },
+        container = t.container?.takeIf { !t.incognito }?.value,
     )
 
     fun ensureSession(t: Tab): EngineTab =
@@ -473,7 +475,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     val incognitoLocked: Boolean get() = locks.incognitoLocked
 
-    fun categoryLocked(id: String?): Boolean = locks.categoryLocked(id)
+    fun categoryLocked(id: CategoryId?): Boolean = locks.categoryLocked(id)
 
     fun tabLocked(t: Tab): Boolean = locks.tabLocked(t.incognito, t.category)
 
@@ -493,7 +495,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     // A pin opens in its category: the blank tab showing the pin takes the category, otherwise a new tab is opened in it.
     fun openPin(url: String, category: String?, newTab: Boolean) {
         val t = current
-        val c = category?.takeIf { categories.byId(it) != null }
+        val c = CategoryId.parse(category)?.takeIf { categories.byId(it) != null }
         if (!newTab && t != null && !t.incognito && Urls.isBlank(t.url)) {
             t.category = c
             ensureSession(t).load(url)
@@ -505,7 +507,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         }
     }
 
-    fun moveToCategory(t: Tab, category: String?) {
+    fun moveToCategory(t: Tab, category: CategoryId?) {
         if (t.incognito) return
         t.category = category
         scheduleSave()
@@ -523,17 +525,17 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         categories.list.filter { it.container == c.id }.forEach { it.container = null }
         categories.save()
         containers.delete(c)
-        engine.storage.clearContainer(c.id) {}
+        engine.storage.clearContainer(c.id.value) {}
     }
 
     fun deleteCategory(c: TabCategory) {
         tabs.filter { it.category == c.id }.forEach { it.category = null }
         categories.delete(c)
-        if (switcherPage == c.id) switcherPage = Categories.ALL
+        if (switcherPage == TabsPage.Of(c.id)) switcherPage = TabsPage.All
         scheduleSave()
         activity.lifecycleScope.launch {
             db.io {
-                clearPinCategory(c.id)
+                clearPinCategory(c.id.value)
                 eraseHistory(listOf(c.id))
             }
             ntpRevision++
@@ -622,17 +624,14 @@ class Browser(val activity: MainActivity, val engine: Engine) {
         captureThumb(current)
         main.postDelayed({
             val c = current
-            switcherPage = when {
-                c?.incognito == true -> Categories.INCOGNITO
-                c?.category != null && categories.byId(c.category) != null -> c.category!!
-                else -> Categories.ALL
-            }
+            switcherPage = if (c?.incognito == true) TabsPage.Incognito
+                else c?.category?.takeIf { categories.byId(it) != null }?.let(TabsPage::Of) ?: TabsPage.All
             overlay = Overlay.SWITCHER
             setToolbarHidden(0f)
         }, 60)
     }
 
-    fun showSettings(site: String? = null, category: String? = null) {
+    fun showSettings(site: String? = null, category: TabsPage? = null) {
         settingsSite = site
         settingsCategory = category
         settingsOpenCount++
@@ -642,7 +641,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
 
     fun showLibrary(kind: LibraryKind) {
         libraryKind = kind
-        if (kind == LibraryKind.HISTORY) historyScope = current?.takeIf { !it.incognito }?.category ?: Categories.ALL
+        if (kind == LibraryKind.HISTORY) historyScope = current?.takeIf { !it.incognito }?.category
         overlay = Overlay.LIBRARY
         setToolbarHidden(0f)
     }

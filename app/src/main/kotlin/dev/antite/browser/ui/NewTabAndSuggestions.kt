@@ -47,6 +47,7 @@ import dev.antite.browser.FormField
 import dev.antite.browser.R
 import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
+import dev.antite.browser.data.CategoryId
 import dev.antite.browser.data.Entry
 import dev.antite.browser.l10n.T
 import dev.antite.browser.lang.catching
@@ -119,10 +120,10 @@ fun NewTabPage(b: Browser, modifier: Modifier) {
                     b.show(UiDialog.Items(pin.title?.ifEmpty { null } ?: Urls.host(pin.url), listOf(
                         DialogButton(T.openInNewTab) { b.openPin(pin.url ?: "", pin.extra, true) },
                         DialogButton(T.actionEdit) { editPin(pin) },
-                        DialogButton(T.ntpPinCategory(name = b.categories.byId(pin.extra)?.name ?: T.tabsAll)) {
-                            b.show(UiDialog.Items(T.ntpPinCategory(name = b.categories.byId(pin.extra)?.name ?: T.tabsAll),
+                        DialogButton(T.ntpPinCategory(name = b.categories.byId(CategoryId.parse(pin.extra))?.name ?: T.tabsAll)) {
+                            b.show(UiDialog.Items(T.ntpPinCategory(name = b.categories.byId(CategoryId.parse(pin.extra))?.name ?: T.tabsAll),
                                 listOf(DialogButton(T.tabsAll) { change { setPinCategory(pin.id, null) } }) +
-                                    b.categories.list.map { c -> DialogButton(c.name) { change { setPinCategory(pin.id, c.id) } } }))
+                                    b.categories.list.map { c -> DialogButton(c.name) { change { setPinCategory(pin.id, c.id.value) } } }))
                         },
                         DialogButton(T.ntpMoveLeft) { change { movePin(pin.id, -1) } },
                         DialogButton(T.ntpMoveRight) { change { movePin(pin.id, 1) } },

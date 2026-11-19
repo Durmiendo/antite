@@ -20,7 +20,7 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-class TabCategory(val id: String, name: String, color: Int, icon: String?, protectDownloads: Boolean = false, locked: Boolean = false) {
+class TabCategory(val id: CategoryId, name: String, color: Int, icon: String?, protectDownloads: Boolean = false, locked: Boolean = false) {
     var name by mutableStateOf(name)
     var color by mutableStateOf(color)
     // File name under files/categories, or null for no icon.
@@ -30,15 +30,33 @@ class TabCategory(val id: String, name: String, color: Int, icon: String?, prote
     // Its tabs show only after the device unlock, like locked incognito tabs.
     var locked by mutableStateOf(locked)
     // A container id: new tabs of the category open in it.
-    var container by mutableStateOf<String?>(null)
+    var container by mutableStateOf<ContainerId?>(null)
 }
+
+// A page of tabs: "All", incognito or one category.
+sealed interface TabsPage {
+    // For Compose lists and pagers, which keep only plain values as keys.
+    val key: String
+
+    data object All : TabsPage {
+        override val key = "all"
+    }
+
+    data object Incognito : TabsPage {
+        override val key = "incognito"
+    }
+
+    data class Of(val id: CategoryId) : TabsPage {
+        override val key get() = "c:${id.value}"
+    }
+}
+
+val TabsPage.category: CategoryId? get() = (this as? TabsPage.Of)?.id
 
 // The user's tab categories, in strip order. "All" and incognito are not stored: they always exist.
 class Categories(private val context: Context, private val prefs: Prefs) {
     companion object {
         const val PREF = "tabCategories"
-        const val ALL = "all"
-        const val INCOGNITO = "incognito"
         private const val ICON_PX = 96
         val COLORS = listOf(
             0xFF8AB4F8.toInt(), 0xFF81C995.toInt(), 0xFFFDD663.toInt(), 0xFFF28B82.toInt(), 0xFFFCAD70.toInt(),
@@ -54,27 +72,28 @@ class Categories(private val context: Context, private val prefs: Prefs) {
             val arr = JSONArray(prefs.string(PREF, "[]"))
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                list += TabCategory(o.getString("id"), o.optString("name"), o.optInt("color", COLORS[0]),
+                val id = CategoryId.parse(o.getString("id")) ?: continue
+                list += TabCategory(id, o.optString("name"), o.optInt("color", COLORS[0]),
                     o.optString("icon").ifEmpty { null }, o.optBoolean("protect"), o.optBoolean("lock"))
-                    .apply { container = o.optString("container").ifEmpty { null } }
+                    .apply { container = ContainerId.parse(o.optString("container")) }
             }
         }.onFailure { Log.w("Antite", "tab categories unreadable", it) }
     }
 
-    fun byId(id: String?) = list.firstOrNull { it.id == id }
+    fun byId(id: CategoryId?) = list.firstOrNull { it.id == id }
 
     fun save() {
         val arr = JSONArray()
         list.forEach { c ->
-            arr.put(JSONObject().put("id", c.id).put("name", c.name).put("color", c.color).put("protect", c.protectDownloads).put("lock", c.locked)
+            arr.put(JSONObject().put("id", c.id.value).put("name", c.name).put("color", c.color).put("protect", c.protectDownloads).put("lock", c.locked)
                 .apply { c.icon?.let { put("icon", it) } }
-                .apply { c.container?.let { put("container", it) } })
+                .apply { c.container?.let { put("container", it.value) } })
         }
         prefs.edit { putString(PREF, arr.toString()) }
     }
 
     fun add(name: String): TabCategory {
-        val c = TabCategory(UUID.randomUUID().toString(), name, COLORS[list.size % COLORS.size], null)
+        val c = TabCategory(CategoryId(UUID.randomUUID().toString()), name, COLORS[list.size % COLORS.size], null)
         list += c
         save()
         return c

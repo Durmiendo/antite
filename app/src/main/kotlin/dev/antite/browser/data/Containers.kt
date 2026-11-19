@@ -10,7 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-class TabContainer(val id: String, name: String, color: Int) {
+class TabContainer(val id: ContainerId, name: String, color: Int) {
     var name by mutableStateOf(name)
     var color by mutableStateOf(color)
 }
@@ -29,21 +29,22 @@ class Containers(private val prefs: Prefs) {
             val arr = JSONArray(prefs.string(PREF, "[]"))
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                list += TabContainer(o.getString("id"), o.optString("name"), o.optInt("color", Categories.COLORS[0]))
+                val id = ContainerId.parse(o.getString("id")) ?: continue
+                list += TabContainer(id, o.optString("name"), o.optInt("color", Categories.COLORS[0]))
             }
         }.onFailure { Log.w("Antite", "containers unreadable", it) }
     }
 
-    fun byId(id: String?) = list.firstOrNull { it.id == id }
+    fun byId(id: ContainerId?) = list.firstOrNull { it.id == id }
 
     fun save() {
         val arr = JSONArray()
-        list.forEach { arr.put(JSONObject().put("id", it.id).put("name", it.name).put("color", it.color)) }
+        list.forEach { arr.put(JSONObject().put("id", it.id.value).put("name", it.name).put("color", it.color)) }
         prefs.edit { putString(PREF, arr.toString()) }
     }
 
     fun add(name: String): TabContainer {
-        val c = TabContainer(UUID.randomUUID().toString(), name, Categories.COLORS[list.size % Categories.COLORS.size])
+        val c = TabContainer(ContainerId(UUID.randomUUID().toString()), name, Categories.COLORS[list.size % Categories.COLORS.size])
         list += c
         save()
         return c

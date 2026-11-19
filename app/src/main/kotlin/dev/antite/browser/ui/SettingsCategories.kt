@@ -30,6 +30,7 @@ import dev.antite.browser.data.Categories
 import dev.antite.browser.Auth
 import dev.antite.browser.data.TabCategory
 import dev.antite.browser.data.TabContainer
+import dev.antite.browser.data.TabsPage
 import dev.antite.browser.l10n.T
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -234,7 +235,7 @@ internal fun deleteCategory(b: Browser, c: TabCategory, deleted: () -> Unit = {}
 
 // Long press on a category chip in the switcher.
 internal fun categoryMenu(b: Browser, c: TabCategory) = b.show(UiDialog.Items(c.name, listOf(
-    DialogButton(T.settingsTitle) { b.showSettings(category = c.id) },
+    DialogButton(T.settingsTitle) { b.showSettings(category = TabsPage.Of(c.id)) },
     DialogButton(T.actionRename) { renameCategory(b, c) },
     DialogButton(T.ntpMoveLeft) { b.categories.move(c, -1) },
     DialogButton(T.ntpMoveRight) { b.categories.move(c, 1) },

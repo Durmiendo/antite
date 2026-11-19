@@ -4,27 +4,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.antite.browser.data.CategoryId
 
 // What is open behind a lock right now: incognito, each locked category, the secure storage; and when they close.
 class Locks(private val settings: Settings, private val now: () -> Long = System::currentTimeMillis) {
     interface Settings {
         val incognitoLock: Boolean
-        fun categoryLock(id: String): Boolean
+        fun categoryLock(id: CategoryId): Boolean
         val vaultLockOnExit: Boolean
         // Minutes away after which the storage closes on return; null when it does not close by time.
         val vaultLockMinutes: Int?
     }
 
     var incognitoUnlocked by mutableStateOf(false)
-    val unlockedCategories = mutableStateListOf<String>()
+    val unlockedCategories = mutableStateListOf<CategoryId>()
     var vaultUnlocked by mutableStateOf(false)
     private var leftAt = 0L
 
     val incognitoLocked: Boolean get() = settings.incognitoLock && !incognitoUnlocked
 
-    fun categoryLocked(id: String?): Boolean = id != null && id !in unlockedCategories && settings.categoryLock(id)
+    fun categoryLocked(id: CategoryId?): Boolean = id != null && id !in unlockedCategories && settings.categoryLock(id)
 
-    fun tabLocked(incognito: Boolean, category: String?): Boolean = if (incognito) incognitoLocked else categoryLocked(category)
+    fun tabLocked(incognito: Boolean, category: CategoryId?): Boolean = if (incognito) incognitoLocked else categoryLocked(category)
 
     // The browser left the screen: incognito and the categories close at once, the storage only with "on exit".
     // Returns whether the storage closed.

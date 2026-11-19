@@ -20,8 +20,9 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.ImageBitmap
-import dev.antite.browser.data.Categories
 import dev.antite.browser.data.TabCategory
+import dev.antite.browser.data.TabsPage
+import dev.antite.browser.data.category
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.width
@@ -77,21 +78,21 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyGridState
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
-private class SwitcherPage(val key: String, val label: String, val category: TabCategory?)
+private class SwitcherPage(val page: TabsPage, val label: String, val category: TabCategory?)
 
 // A card dragged out of the grid onto a strip chip moves its tab to that category; "All" takes the category away.
 private class ChipDrop {
-    val chips = mutableStateMapOf<String, Rect>()
+    val chips = mutableStateMapOf<TabsPage, Rect>()
     var dragging by mutableStateOf<Tab?>(null)
     // In window coordinates, like the chips; followed only while a card is dragged.
     var finger by mutableStateOf(Offset.Unspecified)
 
-    val target: String?
+    val target: TabsPage?
         get() {
             val t = dragging ?: return null
             if (t.incognito || !finger.isSpecified) return null
-            val key = chips.entries.firstOrNull { it.value.contains(finger) }?.key ?: return null
-            return key.takeIf { it != Categories.INCOGNITO && it != (t.category ?: Categories.ALL) }
+            val page = chips.entries.firstOrNull { it.value.contains(finger) }?.key ?: return null
+            return page.takeIf { it != TabsPage.Incognito && it != (t.category?.let(TabsPage::Of) ?: TabsPage.All) }
         }
 
     fun finish(b: Browser) {
@@ -100,7 +101,7 @@ private class ChipDrop {
         dragging = null
         finger = Offset.Unspecified
         if (t == null || key == null) return
-        val c = b.categories.byId(key)
+        val c = b.categories.byId(key.category)
         b.moveToCategory(t, c?.id)
         b.toast(if (c != null) T.tabsMovedTo(name = c.name) else T.tabsMovedOut)
     }
@@ -110,11 +111,11 @@ private class ChipDrop {
 fun TabSwitcher(b: Browser, open: Boolean) {
     val p = LocalPalette.current
     val pages = buildList {
-        add(SwitcherPage(Categories.ALL, T.tabsAll, null))
-        b.categories.list.forEach { add(SwitcherPage(it.id, it.name, it)) }
-        add(SwitcherPage(Categories.INCOGNITO, T.tabsIncognito, null))
+        add(SwitcherPage(TabsPage.All, T.tabsAll, null))
+        b.categories.list.forEach { add(SwitcherPage(TabsPage.Of(it.id), it.name, it)) }
+        add(SwitcherPage(TabsPage.Incognito, T.tabsIncognito, null))
     }
-    val keys by rememberUpdatedState(pages.map { it.key })
+    val keys by rememberUpdatedState(pages.map { it.page })
     val index = keys.indexOf(b.switcherPage).coerceAtLeast(0)
     val pager = rememberPagerState(index) { keys.size }
     // The strip and Browser.switcherPage lead; a swipe that settles on another page reports back.
@@ -125,14 +126,13 @@ fun TabSwitcher(b: Browser, open: Boolean) {
         snapshotFlow { pager.settledPage }.collect { i -> keys.getOrNull(i)?.let { if (it != b.switcherPage) b.switcherPage = it } }
     }
     LaunchedEffect(b.switcherPage, open) {
-        if (open && b.switcherPage == Categories.INCOGNITO && b.incognitoLocked) b.unlockIncognito()
-        if (open) b.categories.byId(b.switcherPage)?.let(b::unlockCategory)
+        if (open && b.switcherPage == TabsPage.Incognito && b.incognitoLocked) b.unlockIncognito()
+        if (open) b.categories.byId(b.switcherPage.category)?.let(b::unlockCategory)
     }
-    fun count(key: String): Int? = when {
-        key == Categories.INCOGNITO && b.incognitoLocked || b.categoryLocked(key) -> null
-        key == Categories.ALL -> b.tabs.count { !it.incognito && !b.tabLocked(it) }
-        key == Categories.INCOGNITO -> b.tabs.count { it.incognito }
-        else -> b.tabs.count { !it.incognito && it.category == key }
+    fun count(page: TabsPage): Int? = when (page) {
+        TabsPage.All -> b.tabs.count { !it.incognito && !b.tabLocked(it) }
+        TabsPage.Incognito -> if (b.incognitoLocked) null else b.tabs.count { it.incognito }
+        is TabsPage.Of -> if (b.categoryLocked(page.id)) null else b.tabs.count { !it.incognito && it.category == page.id }
     }
     val drop = remember { ChipDrop() }
     val root = remember { arrayOfNulls<LayoutCoordinates>(1) }
@@ -151,10 +151,10 @@ fun TabSwitcher(b: Browser, open: Boolean) {
             val each = b.prefs.bool("tabCountEach", false)
             LazyRow(Modifier.weight(1f), strip, contentPadding = PaddingValues(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                itemsIndexed(pages, key = { _, pg -> pg.key }) { i, pg ->
-                    CategoryChip(b, pg, i == index, if (each) count(pg.key) else null, drop, onLongClick = {
-                        pg.category?.let { categoryMenu(b, it) } ?: b.showSettings(category = pg.key)
-                    }) { b.switcherPage = pg.key }
+                itemsIndexed(pages, key = { _, pg -> pg.page.key }) { i, pg ->
+                    CategoryChip(b, pg, i == index, if (each) count(pg.page) else null, drop, onLongClick = {
+                        pg.category?.let { categoryMenu(b, it) } ?: b.showSettings(category = pg.page)
+                    }) { b.switcherPage = pg.page }
                 }
             }
             if (b.prefs.bool("tabCountTotal", true)) {
@@ -163,21 +163,21 @@ fun TabSwitcher(b: Browser, open: Boolean) {
                     modifier = Modifier.padding(start = 8.dp, end = 4.dp))
             }
             IconBtn(R.drawable.ic_add, T.tabNew) {
-                val key = b.switcherPage
+                val page = b.switcherPage
                 b.overlay = dev.antite.browser.Overlay.NONE
-                b.newTabAndFocus(key == Categories.INCOGNITO, key.takeIf { it != Categories.ALL && it != Categories.INCOGNITO })
+                b.newTabAndFocus(page == TabsPage.Incognito, page.category)
             }
         }
-        HorizontalPager(pager, Modifier.fillMaxSize(), key = { keys.getOrElse(it) { "" } }) { i ->
-            val key = keys.getOrElse(i) { Categories.ALL }
-            val shown = when (key) {
-                Categories.ALL -> b.tabs.filter { !it.incognito && !b.categoryLocked(it.category) }
-                Categories.INCOGNITO -> b.tabs.filter { it.incognito }
-                else -> b.tabs.filter { !it.incognito && it.category == key }
+        HorizontalPager(pager, Modifier.fillMaxSize(), key = { keys.getOrNull(it)?.key ?: "" }) { i ->
+            val page = keys.getOrElse(i) { TabsPage.All }
+            val shown = when (page) {
+                TabsPage.All -> b.tabs.filter { !it.incognito && !b.categoryLocked(it.category) }
+                TabsPage.Incognito -> b.tabs.filter { it.incognito }
+                is TabsPage.Of -> b.tabs.filter { !it.incognito && it.category == page.id }
             }
-            val lockedCategory = b.categories.byId(key)?.takeIf { b.categoryLocked(it.id) }
+            val lockedCategory = b.categories.byId(page.category)?.takeIf { b.categoryLocked(it.id) }
             when {
-                key == Categories.INCOGNITO && b.incognitoLocked -> IncognitoLock(b, Modifier.fillMaxSize(), showTabs = false)
+                page == TabsPage.Incognito && b.incognitoLocked -> IncognitoLock(b, Modifier.fillMaxSize(), showTabs = false)
                 lockedCategory != null -> CategoryLock(b, lockedCategory, Modifier.fillMaxSize(), showTabs = false)
                 shown.isEmpty() -> Centered { Text(T.tabsEmpty, color = p.textSecondary, fontSize = 15.sp) }
                 b.prefs.int("tabLayout", 0) == 1 -> TabList(b, shown, open, drop)
@@ -191,18 +191,18 @@ fun TabSwitcher(b: Browser, open: Boolean) {
 private fun CategoryChip(b: Browser, pg: SwitcherPage, selected: Boolean, count: Int?, drop: ChipDrop, onLongClick: () -> Unit,
     onClick: () -> Unit) {
     val p = LocalPalette.current
-    val aimed = drop.target == pg.key
-    DisposableEffect(pg.key) { onDispose { drop.chips.remove(pg.key) } }
+    val aimed = drop.target == pg.page
+    DisposableEffect(pg.page.key) { onDispose { drop.chips.remove(pg.page) } }
     val fill = when {
         aimed -> p.accent.copy(alpha = 0.3f)
         !selected -> Color.Transparent
         pg.category != null -> Color(pg.category.color)
-        pg.key == Categories.INCOGNITO -> p.toolbarIncognito
+        pg.page == TabsPage.Incognito -> p.toolbarIncognito
         else -> p.accent
     }
     val text = if (!selected || aimed) p.text else if (fill.luminance() > 0.5f) Color(0xDE000000) else Color.White
     Row(
-        Modifier.height(34.dp).onGloballyPositioned { drop.chips[pg.key] = it.boundsInWindow() }
+        Modifier.height(34.dp).onGloballyPositioned { drop.chips[pg.page] = it.boundsInWindow() }
             .clip(RoundedCornerShape(17.dp)).background(fill)
             .then(if (aimed) Modifier.border(2.dp, p.accent, RoundedCornerShape(17.dp))
                 else if (selected) Modifier else Modifier.border(1.dp, p.divider, RoundedCornerShape(17.dp)))
@@ -211,7 +211,7 @@ private fun CategoryChip(b: Browser, pg: SwitcherPage, selected: Boolean, count:
     ) {
         when {
             pg.category != null -> CategoryIcon(b, pg.category, 18, Modifier.padding(end = 6.dp))
-            pg.key == Categories.INCOGNITO -> Ico(R.drawable.ic_incognito, text, 18, Modifier.padding(end = 6.dp))
+            pg.page == TabsPage.Incognito -> Ico(R.drawable.ic_incognito, text, 18, Modifier.padding(end = 6.dp))
         }
         Text(pg.label, color = text, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
         if (count != null) {
@@ -279,8 +279,8 @@ private fun TabGrid(b: Browser, shown: List<Tab>, open: Boolean, drop: ChipDrop)
     LaunchedEffect(open) { if (open) gridState.requestScrollToItem(maxOf(0, shown.indexOf(b.current))) }
     val reorder = rememberReorderableLazyGridState(gridState) { from, to -> b.reorder(shown, from.index, to.index) }
     LazyVerticalGrid(GridCells.Fixed(2), state = gridState, contentPadding = PaddingValues(8.dp), modifier = Modifier.fillMaxSize()) {
-        items(shown, key = { it.id }) { t ->
-            ReorderableItem(reorder, key = t.id) { dragging ->
+        items(shown, key = { it.id.value }) { t ->
+            ReorderableItem(reorder, key = t.id.value) { dragging ->
                 run {
                     val selected = t === b.current
                     val card = remember { arrayOfNulls<LayoutCoordinates>(1) }
@@ -330,8 +330,8 @@ private fun TabList(b: Browser, shown: List<Tab>, open: Boolean, drop: ChipDrop)
     LaunchedEffect(open) { if (open) listState.requestScrollToItem(maxOf(0, shown.indexOf(b.current))) }
     val reorder = rememberReorderableLazyListState(listState) { from, to -> b.reorder(shown, from.index, to.index) }
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-        items(shown, key = { it.id }) { t ->
-            ReorderableItem(reorder, key = t.id) { _ ->
+        items(shown, key = { it.id.value }) { t ->
+            ReorderableItem(reorder, key = t.id.value) { _ ->
                 run {
                     val raw = if (t.incognito) 0 else b.icons.color(Urls.host(t.url))
                     val color = if (raw == 0) (if (t.incognito) p.toolbarIncognito else p.card) else Color(raw)

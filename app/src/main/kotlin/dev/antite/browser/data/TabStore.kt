@@ -19,7 +19,7 @@ import java.io.FileOutputStream
 class TabStore(dir: File, private val warn: (String, Throwable?) -> Unit = { m, e -> Log.w("Antite", m, e) }) {
     constructor(context: Context) : this(context.filesDir)
 
-    data class Loaded(val tabs: List<Tab>, val selected: Long)
+    data class Loaded(val tabs: List<Tab>, val selected: TabId?)
 
     private val file = File(dir, "tabs.json")
     private val thumbs = File(dir, "thumbs").apply { mkdirs() }
@@ -29,28 +29,28 @@ class TabStore(dir: File, private val warn: (String, Throwable?) -> Unit = { m, 
     private val scope = CoroutineScope(SupervisorJob() + io)
 
     fun load(): Loaded {
-        if (!file.exists()) return Loaded(emptyList(), 0)
+        if (!file.exists()) return Loaded(emptyList(), null)
         return try {
             val root = JSONObject(file.readText())
             val arr = root.getJSONArray("tabs")
             val tabs = (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
-                Tab(o.getLong("id"), false).apply {
+                Tab(TabId(o.getLong("id")), false).apply {
                     url = o.optString("url")
                     title = o.optString("title")
                     state = if (o.has("state")) o.getString("state") else null
                     desktop = o.optBoolean("desktop")
-                    category = o.optString("category").ifEmpty { null }
-                    container = o.optString("container").ifEmpty { null }
+                    category = CategoryId.parse(o.optString("category"))
+                    container = ContainerId.parse(o.optString("container"))
                     lastUsed = o.optLong("lastUsed")
                 }
             }
-            Loaded(tabs, root.optLong("selected"))
+            Loaded(tabs, root.optLong("selected").takeIf { it != 0L }?.let(::TabId))
         } catch (e: Exception) {
             // Kept aside, so the next save does not overwrite the only copy of the tabs.
             file.renameTo(File(file.path + ".bad"))
             warn("tabs.json unreadable, kept as tabs.json.bad, starting fresh", e)
-            Loaded(emptyList(), 0)
+            Loaded(emptyList(), null)
         }
     }
 
@@ -59,18 +59,18 @@ class TabStore(dir: File, private val warn: (String, Throwable?) -> Unit = { m, 
         for (t in tabs) {
             if (t.incognito) continue
             arr.put(JSONObject().apply {
-                put("id", t.id)
+                put("id", t.id.value)
                 put("url", t.url)
                 put("title", t.title)
                 t.state?.let { put("state", it) }
                 put("desktop", t.desktop)
-                t.category?.let { put("category", it) }
-                t.container?.let { put("container", it) }
+                t.category?.let { put("category", it.value) }
+                t.container?.let { put("container", it.value) }
                 put("lastUsed", t.lastUsed)
             })
         }
         val json = JSONObject().put("tabs", arr)
-            .put("selected", if (selected != null && !selected.incognito) selected.id else 0).toString()
+            .put("selected", if (selected != null && !selected.incognito) selected.id.value else 0L).toString()
         scope.launch {
             val tmp = File(file.path + ".tmp")
             try {
@@ -105,7 +105,7 @@ class TabStore(dir: File, private val warn: (String, Throwable?) -> Unit = { m, 
         }
     }
 
-    fun deleteThumb(id: Long) {
+    fun deleteThumb(id: TabId) {
         scope.launch { File(thumbs, "$id.jpg").delete() }
     }
 

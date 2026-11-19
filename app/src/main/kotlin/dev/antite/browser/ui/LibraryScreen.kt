@@ -42,7 +42,7 @@ import dev.antite.browser.LibraryKind
 import dev.antite.browser.R
 import dev.antite.browser.UiDialog
 import dev.antite.browser.Urls
-import dev.antite.browser.data.Categories
+import dev.antite.browser.data.CategoryId
 import dev.antite.browser.data.Db
 import dev.antite.browser.data.Entry
 import dev.antite.browser.l10n.T
@@ -80,7 +80,7 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
         for (k in LibraryKind.entries) if (k !in lists) lists[k] = load(k, "")
     }
     val scope = b.historyScope
-    val scopeLocked = kind == LibraryKind.HISTORY && b.categoryLocked(scope.takeIf { it != Categories.ALL })
+    val scopeLocked = kind == LibraryKind.HISTORY && b.categoryLocked(scope)
     LaunchedEffect(kind, filter, reload, downloadsRevision, shown, scope, scopeLocked) {
         if (!shown && kind in lists) return@LaunchedEffect
         if (filter.isEmpty()) {
@@ -222,11 +222,11 @@ fun LibraryScreen(b: Browser, shown: Boolean) {
 @Composable
 private fun HistoryScope(b: Browser) {
     val p = LocalPalette.current
-    val all = listOf(Categories.ALL to T.tabsAll) + b.categories.list.map { it.id to it.name }
+    val all = listOf<Pair<CategoryId?, String>>(null to T.tabsAll) + b.categories.list.map { it.id to it.name }
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(all, key = { it.first }) { (key, name) ->
+        items(all, key = { it.first?.value ?: "" }) { (key, name) ->
             val selected = b.historyScope == key
-            val locked = key != Categories.ALL && b.categoryLocked(key)
+            val locked = key != null && b.categoryLocked(key)
             Row(
                 Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(if (selected) p.accent else Color.Transparent)
                     .then(if (selected) Modifier else Modifier.border(1.dp, p.divider, RoundedCornerShape(17.dp)))

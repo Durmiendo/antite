@@ -6,7 +6,6 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
-import dev.antite.browser.data.Categories
 import android.os.SystemClock
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.isSpecified
@@ -108,6 +107,7 @@ import dev.antite.browser.R
 import dev.antite.browser.Urls
 import dev.antite.browser.closePopup
 import dev.antite.browser.data.Options
+import dev.antite.browser.data.TabsPage
 import dev.antite.browser.find
 import dev.antite.browser.hideFind
 import dev.antite.browser.l10n.T
@@ -246,7 +246,7 @@ fun BrowserScreen(b: Browser) {
         val overlayMotion = updateTransition(b.overlay, label = "overlay")
         // Incognito stays out of screenshots, screen recordings and the recent apps preview.
         val secure = b.prefs.bool("incognitoSecure", true) &&
-            (t?.incognito == true || (b.overlay == Overlay.SWITCHER && b.switcherPage == Categories.INCOGNITO))
+            (t?.incognito == true || (b.overlay == Overlay.SWITCHER && b.switcherPage == TabsPage.Incognito))
         LaunchedEffect(secure) {
             val flag = android.view.WindowManager.LayoutParams.FLAG_SECURE
             if (secure) b.activity.window.addFlags(flag) else b.activity.window.clearFlags(flag)

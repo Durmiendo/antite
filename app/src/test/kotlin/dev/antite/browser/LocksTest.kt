@@ -1,19 +1,22 @@
 package dev.antite.browser
 
+import dev.antite.browser.data.CategoryId
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocksTest {
+    private val work = CategoryId("work")
+    private val home = CategoryId("home")
     private var clock = 1_000_000L
 
     private class Settings(
         override var incognitoLock: Boolean = false,
-        val locked: MutableSet<String> = mutableSetOf(),
+        val locked: MutableSet<CategoryId> = mutableSetOf(),
         override var vaultLockOnExit: Boolean = true,
         override var vaultLockMinutes: Int? = null,
     ) : Locks.Settings {
-        override fun categoryLock(id: String) = id in locked
+        override fun categoryLock(id: CategoryId) = id in locked
     }
 
     private fun locks(s: Settings) = Locks(s) { clock }
@@ -34,16 +37,16 @@ class LocksTest {
 
     @Test
     fun aCategoryIsLockedOnlyWithItsLockAndUntilLeaving() {
-        val s = Settings(locked = mutableSetOf("work"))
+        val s = Settings(locked = mutableSetOf(work))
         val l = locks(s)
-        assertTrue(l.categoryLocked("work"))
-        assertFalse(l.categoryLocked("home"))
+        assertTrue(l.categoryLocked(work))
+        assertFalse(l.categoryLocked(home))
         assertFalse(l.categoryLocked(null))
-        assertFalse(l.tabLocked(incognito = false, category = "home"))
-        l.unlockedCategories += "work"
-        assertFalse(l.tabLocked(incognito = false, category = "work"))
+        assertFalse(l.tabLocked(incognito = false, category = home))
+        l.unlockedCategories += work
+        assertFalse(l.tabLocked(incognito = false, category = work))
         l.left()
-        assertTrue(l.categoryLocked("work"))
+        assertTrue(l.categoryLocked(work))
     }
 
     @Test

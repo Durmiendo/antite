@@ -2,6 +2,7 @@ package dev.antite.browser
 
 import android.net.Uri
 import androidx.lifecycle.lifecycleScope
+import dev.antite.browser.data.CategoryId
 import dev.antite.browser.data.Tab
 import dev.antite.browser.l10n.T
 import dev.antite.engine.ContextInfo
@@ -109,7 +110,7 @@ fun Browser.clearData(cache: Boolean, siteData: Boolean, permissions: Boolean, h
     if (history) {
         activity.lifecycleScope.launch {
             db.io {
-                eraseHistory(listOf<String?>(null) + categories.list.map { it.id })
+                eraseHistory(listOf<CategoryId?>(null) + categories.list.map { it.id })
                 clearClosed()
             }
         }

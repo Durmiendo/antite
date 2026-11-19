@@ -29,7 +29,7 @@ class HistoryStore(
     companion object {
         const val NONE = "-"
 
-        fun nameOf(category: String?) = category ?: NONE
+        fun nameOf(category: CategoryId?) = category?.value ?: NONE
     }
 
     @Serializable
@@ -113,19 +113,19 @@ class HistoryStore(
     }
 
     @Synchronized
-    fun visit(category: String?, url: String, title: String?) = write(nameOf(category), Event.Visit(url, title, now()))
+    fun visit(category: CategoryId?, url: String, title: String?) = write(nameOf(category), Event.Visit(url, title, now()))
 
     @Synchronized
-    fun title(category: String?, url: String, title: String) {
+    fun title(category: CategoryId?, url: String, title: String) {
         if (title.isNotEmpty()) write(nameOf(category), Event.Title(url, title))
     }
 
     @Synchronized
-    fun visited(category: String?, urls: List<String>) = book(nameOf(category)).index.visited(urls)
+    fun visited(category: CategoryId?, urls: List<String>) = book(nameOf(category)).index.visited(urls)
 
     // Entries of several categories together, newest first; extra holds the category, for deleting one.
     @Synchronized
-    fun list(categories: Collection<String?>, filter: String?, limit: Int): List<Entry> =
+    fun list(categories: Collection<CategoryId?>, filter: String?, limit: Int): List<Entry> =
         categories.map(::nameOf).distinct().flatMap { n -> book(n).index.list(filter, limit).map { it.copy(extra = n) } }
             .sortedByDescending { it.time }.take(limit)
 
@@ -136,14 +136,14 @@ class HistoryStore(
     }
 
     @Synchronized
-    fun suggest(category: String?, text: String, limit: Int) = book(nameOf(category)).index.suggest(text, limit)
+    fun suggest(category: CategoryId?, text: String, limit: Int) = book(nameOf(category)).index.suggest(text, limit)
 
     @Synchronized
-    fun frequent(category: String?, skipHosts: Set<String>, limit: Int) = book(nameOf(category)).index.frequent(skipHosts, limit)
+    fun frequent(category: CategoryId?, skipHosts: Set<String>, limit: Int) = book(nameOf(category)).index.frequent(skipHosts, limit)
 
     // Pages from before this store, added where the category has not got them yet.
     @Synchronized
-    fun import(category: String?, pages: List<Event.Page>) {
+    fun import(category: CategoryId?, pages: List<Event.Page>) {
         val b = book(nameOf(category))
         val fresh = pages.filter { !b.index.has(it.url) }
         b.log.appendAll(fresh.map(::encode))
@@ -152,7 +152,7 @@ class HistoryStore(
 
     // The category is gone: its log is deleted (its key goes with the category's key file).
     @Synchronized
-    fun forget(category: String?) {
+    fun forget(category: CategoryId?) {
         val name = nameOf(category)
         books.remove(name)
         disk.deleteDurably(file(name))

@@ -6,7 +6,7 @@ import org.junit.Test
 
 class NextAfterCloseTest {
     private fun tab(id: Long, incognito: Boolean = false, parent: Long = 0L, used: Long = 0L) =
-        Tab(id, incognito).apply { parentId = parent; lastUsed = used }
+        Tab(TabId(id), incognito).apply { parentId = parent.takeIf { it != 0L }?.let(::TabId); lastUsed = used }
 
     @Test
     fun theOpenerComesFirst() {
