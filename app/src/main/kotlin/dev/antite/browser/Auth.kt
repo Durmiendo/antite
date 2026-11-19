@@ -14,9 +14,11 @@ object Auth {
     private val lastOk = HashMap<String, Long>()
     var onUnavailable: (String) -> Unit = {}
 
-    fun require(a: Activity, reason: String, ok: () -> Unit, cancelled: () -> Unit) {
+    // strict: for a key of the device key store bound to the unlock - asked every time, and only what the key store
+    // accepts (a strong biometric or the screen lock).
+    fun require(a: Activity, reason: String, ok: () -> Unit, cancelled: () -> Unit, strict: Boolean = false) {
         val last = lastOk[reason]
-        if (last != null && SystemClock.elapsedRealtime() - last < GRACE_MS) return ok()
+        if (!strict && last != null && SystemClock.elapsedRealtime() - last < GRACE_MS) return ok()
         val km = a.getSystemService(KeyguardManager::class.java)
         if (km == null || !km.isDeviceSecure) {
             onUnavailable(T.authNeedScreenLock)
@@ -26,7 +28,8 @@ object Auth {
             .setTitle("Antite")
             .setSubtitle(reason)
             .setAllowedAuthenticators(
-                BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+                (if (strict) BiometricManager.Authenticators.BIOMETRIC_STRONG else BiometricManager.Authenticators.BIOMETRIC_WEAK) or
+                    BiometricManager.Authenticators.DEVICE_CREDENTIAL,
             )
             .build()
             .authenticate(CancellationSignal(), a.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {

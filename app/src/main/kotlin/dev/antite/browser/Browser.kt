@@ -134,7 +134,8 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     val translation get() = if (TRANSLATION_ENABLED) engine.translation else null
     val defaultBrowser = DefaultBrowserOffer(activity, prefs, ::toast)
     val vaultAccess = VaultAccess(this)
-    val categoryKeys = CategoryKeys(Secure.disk(activity), File(activity.filesDir, "history/keys"), { ring.withKey(KeyRing.HISTORY, it) }, { Secure.cipher(activity) })
+    val categoryKeys = CategoryKeys(Secure.disk(activity), File(activity.filesDir, "history/keys"), { ring.withKey(KeyRing.HISTORY, it) },
+        { Secure.cipher(activity) }) { name, dir -> Secure.categoryRing(activity, name, dir) }
     val history = HistoryStore(Secure.disk(activity), File(activity.filesDir, "history"), categoryKeys::key, { Secure.cipher(activity) })
     // The category the history page shows; null for "All".
     var historyScope by mutableStateOf<CategoryId?>(null)
@@ -262,6 +263,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     }
 
     fun restore() {
+        reconcileCategoryLocks()
         activity.lifecycleScope.launch { moveOldHistory() }
         val loaded = store.load()
         tabs.addAll(loaded.tabs)
@@ -470,6 +472,7 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     fun onStop() {
         if (prefs.bool("closeIncognito", false)) tabs.filter { it.incognito }.forEach(::closeTab)
         Uploads.wipe(activity)
+        closeLockedCategories()
         if (locks.left()) lockKeys()
     }
 
@@ -478,11 +481,6 @@ class Browser(val activity: MainActivity, val engine: Engine) {
     fun categoryLocked(id: CategoryId?): Boolean = locks.categoryLocked(id)
 
     fun tabLocked(t: Tab): Boolean = locks.tabLocked(t.incognito, t.category)
-
-    fun unlockCategory(c: TabCategory) {
-        if (!categoryLocked(c.id)) return
-        Auth.require(activity, T.categoryUnlockReason(name = c.name), { unlockedCategories += c.id }, {})
-    }
 
     fun unlockIncognito(then: () -> Unit = {}, cancelled: () -> Unit = {}) {
         if (!incognitoLocked) return then()

@@ -135,7 +135,7 @@ class CrashTest {
     private val historyKeys = File(history, "keys")
     private val domain = keyOf(ByteArray(Cipher256.KEY) { it.toByte() })
 
-    private fun categoryKeys(d: CrashDisk) = CategoryKeys(d, historyKeys, { op -> op(domain) }) { Cipher256.XCHACHA }
+    private fun categoryKeys(d: CrashDisk) = CategoryKeys(d, historyKeys, { op -> op(domain) }, cipher = { Cipher256.XCHACHA })
     private fun log(d: CrashDisk, key: CoreKey) = EncryptedLog(d, File(history, "a.log"), key) { Cipher256.XCHACHA }
     private fun texts(l: EncryptedLog) = l.read().map { String(it) }
 
@@ -256,7 +256,7 @@ class CrashTest {
     @Test
     fun rewrapCategoryKeys() = Crashes.everywhere(
         setup = { d ->
-            val old = CategoryKeys(d, historyKeys, { op -> op(domain) }) { Cipher256.AES }
+            val old = CategoryKeys(d, historyKeys, { op -> op(domain) }, cipher = { Cipher256.AES })
             listOf("a", "b", "c").associateWith { old.key(it).print() }
         },
         action = { d, _ -> categoryKeys(d).rewrap() },
@@ -264,6 +264,41 @@ class CrashTest {
             val k = categoryKeys(d)
             for ((name, key) in keys) assertArrayEquals("$where: $name", key, k.key(name).print())
             if (finished) assertFalse(where, k.needsRewrap())
+        },
+    )
+
+    private fun lockingKeys(d: CrashDisk, device: CrashDevice) = CategoryKeys(d, historyKeys, { op -> op(domain) }, cipher = { Cipher256.XCHACHA }) { name, dir ->
+        KeyRing(d, dir, device, kdf, prefix = "cat-$name", domains = listOf(CategoryKeys.DATA), first = listOf(CategoryKeys.DATA))
+    }
+
+    // Whatever the stop, the category opens with its own key: still open, or locked with the password.
+    @Test
+    fun lockingACategory() = Crashes.everywhere(
+        setup = { d -> CrashDevice(d).let { it to lockingKeys(d, it).key("a").print() } },
+        action = { d, (device, _) -> lockingKeys(d, device).setLock("a", KeyMode.BOTH, pw("pw")) },
+        check = { d, (device, key), finished, where ->
+            val k = lockingKeys(d, device)
+            if (k.lockOf("a") != null) k.open("a", pw("pw"))
+            assertArrayEquals(where, key, k.key("a").print())
+            if (finished) assertEquals(where, KeyMode.BOTH, lockingKeys(d, device).lockOf("a"))
+        },
+    )
+
+    @Test
+    fun unlockingACategory() = Crashes.everywhere(
+        setup = { d ->
+            val device = CrashDevice(d)
+            val k = lockingKeys(d, device)
+            val key = k.key("a").print()
+            k.setLock("a", KeyMode.DEVICE, null)
+            device to key
+        },
+        action = { d, (device, _) -> lockingKeys(d, device).apply { open("a", null) }.setLock("a", null, null) },
+        check = { d, (device, key), finished, where ->
+            val k = lockingKeys(d, device)
+            if (k.lockOf("a") != null) k.open("a", null)
+            assertArrayEquals(where, key, k.key("a").print())
+            if (finished) assertEquals(where, null, lockingKeys(d, device).lockOf("a"))
         },
     )
 

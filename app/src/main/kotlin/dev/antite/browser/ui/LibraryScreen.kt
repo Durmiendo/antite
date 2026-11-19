@@ -48,6 +48,7 @@ import dev.antite.browser.data.Entry
 import dev.antite.browser.l10n.T
 import dev.antite.browser.restoreClosed
 import dev.antite.browser.service.Downloads
+import dev.antite.browser.unlockCategory
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 

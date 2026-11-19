@@ -27,11 +27,12 @@ import dev.antite.browser.DialogButton
 import dev.antite.browser.FormField
 import dev.antite.browser.UiDialog
 import dev.antite.browser.data.Categories
-import dev.antite.browser.Auth
 import dev.antite.browser.data.TabCategory
 import dev.antite.browser.data.TabContainer
 import dev.antite.browser.data.TabsPage
 import dev.antite.browser.l10n.T
+import dev.antite.browser.lockChoices
+import dev.antite.browser.unlockCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -195,14 +196,11 @@ internal fun CategoryPage(b: Browser, nav: Nav, c: TabCategory) {
                 }
             })
         }
-        item(key = "lock") {
-            // Both ways need the unlock: turning it on proves the device has a screen lock, turning it off opens the tabs.
-            SwitchRow(T.incognitoLock, T.categoryLockSummary, c.locked) { on ->
-                Auth.require(b.activity, T.categoryLockChangeReason(name = c.name), {
-                    c.locked = on
-                    if (on && c.id !in b.unlockedCategories) b.unlockedCategories += c.id
-                    b.categories.save()
-                }, {})
+        // What locks the category's key, each choice with what it means (decision 0011).
+        section(T.categoryLock)
+        b.lockChoices(c).forEachIndexed { i, choice ->
+            item(key = "lock:$i") {
+                SettingRow(if (choice.selected) "✓ ${choice.title}" else choice.title, choice.summary, onClick = choice.choose)
             }
         }
         section(T.categoryPlace)
@@ -230,7 +228,7 @@ internal fun deleteCategory(b: Browser, c: TabCategory, deleted: () -> Unit = {}
         },
     )))
     // Deleting moves the tabs to "All", so a locked category asks first.
-    if (c.locked) Auth.require(b.activity, T.categoryLockChangeReason(name = c.name), ::ask, {}) else ask()
+    if (c.locked) b.unlockCategory(c, ::ask) else ask()
 }
 
 // Long press on a category chip in the switcher.

@@ -27,7 +27,7 @@ internal fun CharArray.toSecretBytes(): ByteArray {
 }
 
 // Runs work off the main thread and reports its error text, or null, back on it.
-private fun keyWork(work: () -> Unit, done: (String?) -> Unit) {
+internal fun keyWork(work: () -> Unit, done: (String?) -> Unit) {
     thread(name = "keys") {
         val error = try {
             work()

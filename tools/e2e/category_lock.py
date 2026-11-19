@@ -1,5 +1,5 @@
-"""Unlock to enter for a tab category: after leaving the browser its page is covered, its tabs are neither on its
-switcher page nor in "Все", no count tells how many there are, and the device unlock brings them back.
+"""The phone unlock as a tab category's lock: after leaving the browser its page is covered, its tabs are neither on
+its switcher page nor in "Все", no count tells how many there are, and the device unlock brings them back.
 
 Usage: python3 -I tools/e2e/category_lock.py --serial HOST:PORT  (with the androidTest APK installed)
 
@@ -142,13 +142,14 @@ def main():
         bar_open = toolbar_count(d)
         print(f"  open: {NAME} 1, all {all_open}, total {total_open}, toolbar {bar_open}")
 
-        print("2. unlock to enter turned on, with the PIN")
+        print("2. the phone unlock as its lock, with the PIN")
         open_category_settings(d)
         d.tap(NAME, exact=True)
         time.sleep(1)
-        d.scroll_to("Вход по разблокировке")
-        d.tap("Вход по разблокировке", exact=True)
+        d.scroll_to("Разблокировка телефона")
+        d.tap("Разблокировка телефона", exact=True)
         enter_pin(d)
+        d.wait("✓ Разблокировка телефона", exact=True)
         to_browser(d)
 
         print("3. after leaving the browser the page is covered")

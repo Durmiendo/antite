@@ -40,7 +40,7 @@ logic-ui app/src/main/kotlin/dev/antite/browser/data/TabModel.kt androidx.compos
 logic-ui app/src/main/kotlin/dev/antite/browser/data/TabModel.kt androidx.compose.runtime.mutableStateOf
 logic-ui app/src/main/kotlin/dev/antite/browser/data/TabModel.kt androidx.compose.runtime.setValue
 logic-ui engine-api/src/main/kotlin/dev/antite/engine/Engine.kt android.view.View
-size app/src/main/kotlin/dev/antite/browser/Browser.kt 688
+size app/src/main/kotlin/dev/antite/browser/Browser.kt 686
 size app/src/main/kotlin/dev/antite/browser/ui/BrowserScreen.kt 717
 size app/src/main/kotlin/dev/antite/browser/ui/SettingsScreen.kt 433
 size engine-gecko/src/main/kotlin/dev/antite/engine/gecko/GeckoEngine.kt 625

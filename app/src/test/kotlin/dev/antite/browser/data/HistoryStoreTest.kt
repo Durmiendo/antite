@@ -24,7 +24,7 @@ class HistoryStoreTest {
     private val domain = dev.antite.keys.CoreKey.random()
     private val work = CategoryId("work")
     private val keyDir get() = File(tmp.root, "keys")
-    private fun keys() = CategoryKeys(RealDisk(tmp.root), keyDir, { op -> op(domain) }) { Cipher256.AES }
+    private fun keys() = CategoryKeys(RealDisk(tmp.root), keyDir, { op -> op(domain) }, cipher = { Cipher256.AES })
     private fun store(k: CategoryKeys = keys()) = HistoryStore(RealDisk(tmp.root), File(tmp.root, "history"), k::key, { Cipher256.XCHACHA }) { clock }
 
     @Test

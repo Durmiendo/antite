@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import dev.antite.browser.data.TabCategory
 import dev.antite.browser.data.TabsPage
 import dev.antite.browser.data.category
+import dev.antite.browser.unlockCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.width

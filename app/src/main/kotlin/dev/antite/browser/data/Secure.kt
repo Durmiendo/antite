@@ -3,6 +3,7 @@ package dev.antite.browser.data
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import dev.antite.keys.CategoryKeys
 import dev.antite.keys.Cipher256
 import dev.antite.keys.CoreKey
 import dev.antite.keys.Disk
@@ -24,6 +25,8 @@ object Secure {
     private const val STORE = "AndroidKeyStore"
     const val PREF_CIPHER = "secureCipher"
     const val PREF_WIPE = "secureWipeZeros"
+    // How long after the device unlock a locked category's device key may be used.
+    const val AUTH_SECONDS = 30
 
     @Volatile
     private var ring: KeyRing? = null
@@ -65,7 +68,9 @@ object Secure {
         if (prefs.bool("legacyMoved:vault", false) && prefs.bool("legacyMoved:secrets", false)) Crypto.forget()
     }
 
-    object Keystore : KeyRing.DeviceKeys {
+    // auth: the key is let out only for a short time after the device unlock (a locked category, decision 0011); it
+    // is lost for good when the screen lock is taken off.
+    open class KeystoreKeys(private val auth: Boolean) : KeyRing.DeviceKeys {
         private fun store() = KeyStore.getInstance(STORE).apply { load(null) }
 
         private fun key(alias: String, create: Boolean): SecretKey {
@@ -77,6 +82,10 @@ object Secure {
                         .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                         .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                         .setKeySize(256)
+                        .apply {
+                            if (auth) setUserAuthenticationRequired(true).setInvalidatedByBiometricEnrollment(false)
+                                .setUserAuthenticationParameters(AUTH_SECONDS, KeyProperties.AUTH_DEVICE_CREDENTIAL or KeyProperties.AUTH_BIOMETRIC_STRONG)
+                        }
                         .build(),
                 )
                 generateKey()
@@ -101,6 +110,14 @@ object Secure {
 
         override fun destroy(alias: String) = store().deleteEntry(alias)
     }
+
+    object Keystore : KeystoreKeys(false)
+
+    object AuthKeystore : KeystoreKeys(true)
+
+    // The ring of a locked category: its one data key under the device unlock, a password of its own, or both.
+    fun categoryRing(context: Context, name: String, dir: File) = KeyRing(disk(context), dir, AuthKeystore, Argon2,
+        prefix = "antite-category-$name", cipher = { cipher(context) }, domains = listOf(CategoryKeys.DATA), first = listOf(CategoryKeys.DATA))
 
     // The derived key goes straight into the key core; the password is copied into guarded memory there and wiped.
     object Argon2 : KeyRing.Kdf {

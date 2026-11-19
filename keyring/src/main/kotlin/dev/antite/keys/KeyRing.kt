@@ -10,9 +10,8 @@ import java.util.Base64
 // The data keys: one per domain (the vault, the saved secrets, the history). They live in the key core; the disk
 // holds them only boxed, under a key from the password, under a wrapping key of the device, or both. The device key
 // store wraps that wrapping key, never a data key. Every rotation is a new generation; the device key of the old one
-// is destroyed, which is what makes deleted data unrecoverable.
-// prefix keeps Keystore aliases apart: tests run in the app's process and must never touch its real keys.
-// cipher: what new boxes are sealed with; boxes of any cipher open.
+// is destroyed, which is what makes deleted data unrecoverable. prefix keeps Keystore aliases apart (tests run in the
+// app's process; a locked category has its own ring); cipher: what new boxes are sealed with, boxes of any cipher open.
 class KeyRing(
     private val disk: Disk,
     private val dir: File,
@@ -20,24 +19,12 @@ class KeyRing(
     private val kdf: Kdf,
     private val prefix: String = "antite",
     private val cipher: () -> Cipher256 = { Cipher256.XCHACHA },
+    private val domains: List<KeyDomain> = DOMAINS,
+    private val first: List<KeyDomain> = FIRST, // made at first start; the others on first use, under the mode of then
 ) {
-    enum class Mode(val id: Int) {
-        DEVICE(1), PASSWORD(2), BOTH(3);
+    typealias Mode = KeyMode
 
-        val usesPassword get() = this != DEVICE
-        val usesDevice get() = this != PASSWORD
-
-        companion object {
-            fun of(id: Int) = entries.firstOrNull { it.id == id } ?: throw IOException("unknown key mode $id")
-        }
-    }
-
-    // A device key per alias (Android Keystore on the phone).
-    interface DeviceKeys {
-        fun wrap(alias: String, plain: ByteArray): ByteArray
-        fun unwrap(alias: String, blob: ByteArray): ByteArray
-        fun destroy(alias: String)
-    }
+    typealias DeviceKeys = dev.antite.keys.DeviceKeys
 
     // Password bytes and salt to a key in the core. Must not keep the password.
     fun interface Kdf {
@@ -54,10 +41,8 @@ class KeyRing(
         val SECRETS = KeyDomain("secrets")
         val HISTORY = KeyDomain("history")
         val DOMAINS = listOf(VAULT, SECRETS, HISTORY)
-        // Made at first start; later domains are made on first use, under the mode of that moment.
         private val FIRST = listOf(VAULT, SECRETS)
         val DEFAULT_KDF = KdfParams(3, 64 * 1024, 2)
-        private val CHECK = "antite-password-check".toByteArray()
         private const val VERSION = 2
     }
 
@@ -89,11 +74,11 @@ class KeyRing(
 
     @get:Synchronized
     val mode: Mode
-        get() = knownMode ?: (domainFile(VAULT).takeIf { disk.exists(it) }?.let { Mode.of(read(it).getInt("mode")) }
+        get() = knownMode ?: (domainFile(first[0]).takeIf { disk.exists(it) }?.let { Mode.of(read(it).getInt("mode")) }
             ?: Mode.DEVICE).also { knownMode = it }
 
     @get:Synchronized
-    val exists get() = FIRST.all { disk.exists(domainFile(it)) }
+    val exists get() = first.all { disk.exists(domainFile(it)) }
 
     // Whether data keys can be had without a password right now.
     @get:Synchronized
@@ -141,13 +126,25 @@ class KeyRing(
         return CoreKey.unwrap(kek ?: throw LockedException(), inner, domain.name.toByteArray()) ?: throw IOException("$domain key damaged")
     }
 
-    // First start: new random data keys under the device key.
+    // First start: the first domains under mode m, with new random data keys or those keyOf gives (the ring takes
+    // them). A password, when given, is wiped here.
     @Synchronized
-    fun create() {
-        for (d in FIRST) if (!disk.exists(domainFile(d))) {
-            val k = CoreKey.random()
-            write(domainFile(d), seal(d, 1, Mode.DEVICE, k))
-            keys[d] = k
+    fun create(m: Mode = Mode.DEVICE, password: ByteArray? = null, keyOf: (KeyDomain) -> CoreKey = { CoreKey.random() }) {
+        try {
+            if (m.usesPassword) {
+                val (record, k) = PasswordRecord.make(kdf, password ?: throw WrongPasswordException(), DEFAULT_KDF, cipher())
+                write(passwordFile, record)
+                kek?.close()
+                kek = k
+            }
+            for (d in first) if (!disk.exists(domainFile(d))) {
+                val k = keyOf(d)
+                write(domainFile(d), seal(d, 1, m, k))
+                keys[d] = k
+            }
+            knownMode = m
+        } finally {
+            password?.fill(0)
         }
     }
 
@@ -176,15 +173,7 @@ class KeyRing(
     @Synchronized
     fun unlock(password: ByteArray) {
         try {
-            val p = read(passwordFile)
-            val params = KdfParams(p.getInt("t"), p.getInt("m"), p.getInt("p"))
-            val k = kdf.derive(password, unb64(p.getString("salt")), params)
-            try {
-                Ciphers.unbox(k, unb64(p.getString("check")), CHECK).fill(0)
-            } catch (e: IOException) {
-                k.close()
-                throw WrongPasswordException()
-            }
+            val k = PasswordRecord.open(kdf, password, read(passwordFile))
             kek?.close()
             kek = k
         } finally {
@@ -207,13 +196,11 @@ class KeyRing(
     fun setMode(m: Mode, password: ByteArray?, params: KdfParams = DEFAULT_KDF) {
         var next: CoreKey? = null
         try {
-            val held = DOMAINS.associateWith { key(it) }
+            val held = domains.associateWith { key(it) }
             if (m.usesPassword) {
-                val salt = Ciphers.randomBytes(16)
-                val k = kdf.derive(password ?: throw WrongPasswordException(), salt, params)
+                val (record, k) = PasswordRecord.make(kdf, password ?: throw WrongPasswordException(), params, cipher())
                 next = k
-                write(stagedPassword, JSONObject().put("salt", b64(salt)).put("t", params.iterations).put("m", params.memoryKib)
-                    .put("p", params.parallelism).put("check", b64(Ciphers.box(cipher(), k, CHECK, CHECK))))
+                write(stagedPassword, record)
             }
             val old = ArrayList<String>()
             for ((d, k) in held) {
@@ -247,8 +234,8 @@ class KeyRing(
     @Synchronized
     fun needsRewrap(): Boolean {
         val target = cipher()
-        if (mode.usesPassword && Ciphers.boxCipher(unb64(read(passwordFile).getString("check"))) != target) return true
-        return DOMAINS.any { d ->
+        if (mode.usesPassword && PasswordRecord.cipherOf(read(passwordFile)) != target) return true
+        return domains.any { d ->
             val f = domainFile(d)
             if (!disk.exists(f)) return@any false
             val o = read(f)
@@ -264,20 +251,19 @@ class KeyRing(
     @Synchronized
     fun rewrap() {
         if (mode.usesPassword && kek == null) throw LockedException()
-        for (d in DOMAINS) {
+        for (d in domains) {
             val f = domainFile(d)
             if (!disk.exists(f)) continue
             val o = read(f)
             write(f, seal(d, o.getInt("gen"), Mode.of(o.getInt("mode")), key(d)))
         }
         val k = kek ?: return
-        val p = read(passwordFile)
-        write(passwordFile, p.put("check", b64(Ciphers.box(cipher(), k, CHECK, CHECK))))
+        write(passwordFile, PasswordRecord.resealed(read(passwordFile), k, cipher()))
     }
 
     // A change of mode cut short: without the commit file it is undone, with it it is carried through.
     private fun finishModeChange() {
-        val staged = DOMAINS.filter { disk.exists(stagedFile(it)) }
+        val staged = domains.filter { disk.exists(stagedFile(it)) }
         if (!disk.exists(commitFile)) {
             for (d in staged) {
                 orNull { destroy(d, read(stagedFile(d))) }
@@ -345,8 +331,19 @@ class KeyRing(
         }
     }
 
+    // The whole ring goes: the device keys of every file of it first, then the files. What it held cannot be opened
+    // again, even from a copy of the files.
+    @Synchronized
+    fun destroy() {
+        for (d in domains) for (f in listOf(domainFile(d), nextFile(d), stagedFile(d), importFile(d))) {
+            if (disk.exists(f)) orNull { destroy(d, read(f)) }
+        }
+        lock()
+        disk.deleteTree(dir)
+    }
+
     @get:Synchronized
-    val recovering get() = DOMAINS.any { disk.exists(nextFile(it)) }
+    val recovering get() = domains.any { disk.exists(nextFile(it)) }
 
     private fun importFile(domain: KeyDomain) = File(dir, "$domain.import.json")
 
@@ -363,7 +360,7 @@ class KeyRing(
     // Can be run again after a stop: the old device key goes first, the staged file stays until it is moved in.
     @Synchronized
     fun adoptImports() {
-        for (d in DOMAINS) {
+        for (d in domains) {
             val f = importFile(d)
             if (!disk.exists(f)) continue
             if (disk.exists(domainFile(d))) destroy(d, read(domainFile(d)))
@@ -374,7 +371,7 @@ class KeyRing(
 
     @Synchronized
     fun dropImports() {
-        for (d in DOMAINS) {
+        for (d in domains) {
             val f = importFile(d)
             if (!disk.exists(f)) continue
             orNull { destroy(d, read(f)) }
